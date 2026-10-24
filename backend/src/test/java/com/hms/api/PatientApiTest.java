@@ -1,7 +1,10 @@
 package com.hms.api;
 
 import com.hms.entity.Hospital;
+import com.hms.entity.User;
 import com.hms.repository.HospitalRepository;
+import com.hms.repository.HospitalSettingRepository;
+import com.hms.repository.UserRepository;
 import com.hms.security.JwtUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -9,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.*;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.util.List;
@@ -23,13 +27,18 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Complements CrossTenantIsolationTest (which covers cross-tenant access) — here we prove the
  * happy path and input validation for a single tenant.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+// Keep the live HTTP context's authentication fixtures independent of other JPA contexts.
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties =
+        "spring.datasource.url=jdbc:h2:mem:patient_api_test;MODE=MySQL;NON_KEYWORDS=VALUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE")
 @ActiveProfiles("test")
 class PatientApiTest {
 
     @Autowired TestRestTemplate rest;
     @Autowired JwtUtil jwtUtil;
     @Autowired HospitalRepository hospitalRepository;
+    @Autowired HospitalSettingRepository hospitalSettingRepository;
+    @Autowired UserRepository userRepository;
+    @Autowired PasswordEncoder passwordEncoder;
 
     private static final List<String> MODULES =
             List.of("OPD", "IPD", "PHARMACY", "BILLING", "NURSING", "APPOINTMENTS");
@@ -45,8 +54,77 @@ class PatientApiTest {
         h.setIsActive(true);
         h.setModules(MODULES);
         h.setIsSingleDoctor(false);
-        long hid = hospitalRepository.save(h).getId();
-        token = jwtUtil.generateToken(1L, "admin@apitest.com", "HOSPITAL_ADMIN", hid, MODULES, null, "HOSPITAL", null);
+        hospital = hospitalRepository.save(h);
+        long hid = hospital.getId();
+        User user = new User();
+        user.setEmail("admin-" + hid + "@apitest.com");
+        user.setPassword(passwordEncoder.encode("ApiTestPassword!123"));
+        user.setName("API Test Admin");
+        user.setRole("HOSPITAL_ADMIN");
+        user.setHospitalId(hid);
+        user.setIsActive(true);
+        user = userRepository.saveAndFlush(user);
+        token = jwtUtil.generateToken(user.getId(), user.getEmail(), user.getRole(), hid,
+                MODULES, null, "HOSPITAL", null, user.getTokenVersion());
+    }
+
+    private Hospital hospital;
+
+    /** A real, active DOCTOR: the JWT filter checks the user's token version, so it must exist. */
+    private HttpHeaders doctorAuth() {
+        com.hms.entity.User d = new com.hms.entity.User();
+        d.setEmail("doc-" + System.nanoTime() + "@apitest.com");
+        d.setPassword("{noop}x");
+        d.setName("Dr Front Desk");
+        d.setRole("DOCTOR");
+        d.setHospitalId(hospital.getId());
+        d.setIsActive(true);
+        d = userRepository.save(d);
+        HttpHeaders h = new HttpHeaders();
+        h.setBearerAuth(jwtUtil.generateToken(d.getId(), d.getEmail(), d.getRole(), hospital.getId(),
+                MODULES, null, "HOSPITAL", null, d.getTokenVersion()));
+        h.setContentType(MediaType.APPLICATION_JSON);
+        return h;
+    }
+
+    private void setReceptionMode(String mode) {
+        com.hms.entity.HospitalSetting s = new com.hms.entity.HospitalSetting();
+        s.setHospital(hospital);
+        s.setReceptionMode(mode);
+        if ("SOLO".equals(mode)) s.setBillingHandler("DOCTOR");
+        hospitalSettingRepository.save(s);
+    }
+
+    private static final String DOCTOR_PATIENT =
+            "{\"name\":\"Front Desk Doc\",\"dateOfBirth\":\"1990-01-01\",\"gender\":\"FEMALE\",\"phone\":\"9900112244\"}";
+
+    /**
+     * The doctor-side front desk is a hospital setting, not a role. Under HAS_RECEPTIONIST the
+     * dashboard hides the button, but the API is the boundary: a doctor must still be refused.
+     */
+    @Test
+    void registerPatient_doctorUnderHasReceptionist_returns403() {
+        // No settings row at all: the transient default is HAS_RECEPTIONIST.
+        ResponseEntity<String> res = rest.exchange("/hospital/patients", HttpMethod.POST,
+                new HttpEntity<>(DOCTOR_PATIENT, doctorAuth()), String.class);
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void registerPatient_doctorUnderBoth_succeeds() {
+        setReceptionMode("BOTH");
+        ResponseEntity<String> res = rest.exchange("/hospital/patients", HttpMethod.POST,
+                new HttpEntity<>(DOCTOR_PATIENT, doctorAuth()), String.class);
+        assertThat(res.getStatusCode().is2xxSuccessful()).as(res.getBody()).isTrue();
+        assertThat(res.getBody()).contains("Front Desk Doc");
+    }
+
+    @Test
+    void registerPatient_doctorUnderSolo_succeeds() {
+        setReceptionMode("SOLO");
+        ResponseEntity<String> res = rest.exchange("/hospital/patients", HttpMethod.POST,
+                new HttpEntity<>(DOCTOR_PATIENT, doctorAuth()), String.class);
+        assertThat(res.getStatusCode().is2xxSuccessful()).as(res.getBody()).isTrue();
     }
 
     private HttpHeaders auth() {

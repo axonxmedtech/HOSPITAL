@@ -23,12 +23,12 @@ public class HospitalSettingDTO {
 
     /**
      * Reception mode for the hospital.
-     * Must be one of: HAS_RECEPTIONIST, SOLO
+     * Must be one of: HAS_RECEPTIONIST, SOLO, BOTH
      */
     @NotBlank(message = "receptionMode is required")
     @Pattern(
-        regexp = "HAS_RECEPTIONIST|SOLO",
-        message = "receptionMode must be HAS_RECEPTIONIST or SOLO"
+        regexp = "HAS_RECEPTIONIST|SOLO|BOTH",
+        message = "receptionMode must be HAS_RECEPTIONIST, SOLO, or BOTH"
     )
     private String receptionMode;
 
@@ -66,6 +66,9 @@ public class HospitalSettingDTO {
 
     // FIRST or LAST. FIRST charges consultation + case-paper at OPD entry.
     private String billPaymentTiming = "LAST";
+
+    // Default consultation print language: EN, EN_MR, or EN_HI
+    private String defaultConsultationLanguage = "EN";
 
     public HospitalSettingDTO(String receptionMode, String billingHandler) {
         this.receptionMode = receptionMode;

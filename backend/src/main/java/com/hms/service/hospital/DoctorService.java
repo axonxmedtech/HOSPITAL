@@ -52,6 +52,9 @@ public class DoctorService {
     private SecurityContextHelper securityHelper;
 
     @Autowired
+    private com.hms.repository.HospitalSettingRepository hospitalSettingRepository;
+
+    @Autowired
     private com.hms.service.AuditLogService auditLogService;
 
     @Autowired
@@ -181,8 +184,7 @@ public class DoctorService {
         }
 
         return doctorRepository
-                .findByHospitalIdAndIsActiveTrueAndNameContainingIgnoreCaseOrHospitalIdAndIsActiveTrueAndSpecializationContainingIgnoreCase(
-                        hospitalId, query, hospitalId, query);
+                .searchActiveByNameOrSpecialization(hospitalId, query.trim());
     }
 
     /**
@@ -327,6 +329,92 @@ public class DoctorService {
         } catch (Exception e) {
             logger.warn("Failed to broadcast WebSocket refresh after doctor deletion", e);
         }
+    }
+
+    /**
+     * Get all deleted (inactive) doctors for the current hospital
+     * Automatically filters by hospital_id from security context
+     * 
+     * @return List of deleted doctors for the hospital
+     */
+    @Transactional(readOnly = true)
+    public List<Doctor> getDeletedDoctors() {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+
+        if (hospitalId == null) {
+            throw new UnauthorizedException("Hospital ID not found in context");
+        }
+
+        return doctorRepository.findByHospitalIdAndIsActiveFalseOrderByCreatedAtDesc(hospitalId);
+    }
+
+    /**
+     * Restore a soft-deleted doctor and their user account
+     * 
+     * @param publicId Doctor Public ID or ID
+     * @return Restored Doctor entity
+     */
+    @Transactional
+    public Doctor restoreDoctor(String publicId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new UnauthorizedException("Hospital ID not found in context");
+        }
+
+        // Find doctor belonging to this hospital (active or inactive)
+        Optional<Doctor> docOpt = doctorRepository.findByPublicIdAndHospitalId(publicId, hospitalId);
+        if (docOpt.isEmpty()) {
+            try {
+                Long id = Long.parseLong(publicId);
+                docOpt = doctorRepository.findByIdAndHospitalId(id, hospitalId);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        Doctor doctor = docOpt.orElseThrow(() -> new ResourceNotFoundException("Doctor not found"));
+
+        // If doctor is already active, return safely
+        if (Boolean.TRUE.equals(doctor.getIsActive())) {
+            logger.info("Doctor ID {} is already active", LogSanitizer.clean(publicId));
+            return doctor;
+        }
+
+        // Set Doctor.isActive = true
+        doctor.setIsActive(true);
+        Doctor savedDoctor = doctorRepository.save(doctor);
+
+        // Find associated user account and set User.isActive = true
+        Optional<User> userOpt = userRepository.findByEmail(doctor.getEmail());
+        if (userOpt.isPresent()) {
+            User user = userOpt.get();
+            user.setIsActive(true);
+            userRepository.save(user);
+        }
+
+        logger.info("Doctor restored: ID={}, Name={}, Email={}", LogSanitizer.clean(publicId),
+                LogSanitizer.clean(savedDoctor.getName()), LogSanitizer.clean(savedDoctor.getEmail()));
+
+        // Audit log DOCTOR_RESTORED
+        try {
+            auditLogService.logAction(
+                    "DOCTOR_RESTORED",
+                    "Doctor " + savedDoctor.getName() + " was restored.",
+                    securityHelper.getCurrentUserEmail(),
+                    hospitalId,
+                    "DOCTOR",
+                    publicId,
+                    null);
+        } catch (Exception e) {
+            logger.warn("Failed to create audit log for doctor restoration", e);
+        }
+
+        // Broadcast real-time refresh
+        try {
+            webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after doctor restoration", e);
+        }
+
+        return savedDoctor;
     }
 
     /**
@@ -492,38 +580,69 @@ public class DoctorService {
             }
         }
 
-        // Resolve doctor id: prefer appointment.doctorId, otherwise map current user to Doctor entity
+        // Resolve doctor id: prefer appointment.doctorId, then OPD doctor, then authenticated doctor, then active hospital doctors
         Long resolvedDoctorId = null;
-        if (appointment != null) {
+        if (appointment != null && appointment.getDoctorId() != null) {
             resolvedDoctorId = appointment.getDoctorId();
-        } else {
+        } else if (request.getOpdId() != null) {
+            try {
+                var existingOpdOpt = opdRepository.findByIdAndHospitalIdWithPatientAndDoctor(request.getOpdId(), hospitalId);
+                if (existingOpdOpt.isPresent() && existingOpdOpt.get().getDoctor() != null) {
+                    resolvedDoctorId = existingOpdOpt.get().getDoctor().getId();
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (resolvedDoctorId == null) {
             try {
                 java.util.Optional<com.hms.entity.Doctor> dopt = doctorRepository.findByEmailAndHospitalId(securityHelper.getCurrentUserEmail(), hospitalId);
                 if (dopt.isPresent()) {
                     resolvedDoctorId = dopt.get().getId();
-                } else {
-                    throw new ResourceNotFoundException("Doctor not found");
                 }
-            } catch (Exception e) {
-                throw new ResourceNotFoundException("Doctor not found");
-            }
+            } catch (Exception ignored) {}
         }
 
-        if (resolvedDoctorId != null) {
-            java.util.Optional<com.hms.entity.Doctor> docOpt = doctorRepository.findByIdOrUserId(resolvedDoctorId, userRepository);
-            if (docOpt.isPresent()) {
-                resolvedDoctorId = docOpt.get().getId();
-            }
+        if (resolvedDoctorId == null) {
+            try {
+                Long currentUserId = securityHelper.getCurrentUserId();
+                if (currentUserId != null) {
+                    var docOpt = doctorRepository.findByIdOrUserId(currentUserId, userRepository);
+                    if (docOpt.isPresent()) {
+                        resolvedDoctorId = docOpt.get().getId();
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (resolvedDoctorId == null) {
+            try {
+                var activeDocs = doctorRepository.findByHospitalIdAndIsActiveTrue(hospitalId);
+                if (activeDocs != null && !activeDocs.isEmpty()) {
+                    resolvedDoctorId = activeDocs.get(0).getId();
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (resolvedDoctorId == null) {
+            throw new ResourceNotFoundException("No active doctor found for consultation");
         }
 
         // Create OPD if it's an appointment consultation
         com.hms.entity.Opd opd = null;
         if (request.getOpdId() != null) {
-            opd = opdRepository.findById(request.getOpdId()).orElse(null);
-            if (opd != null && request.getIpdAdmitRecommended() != null) {
-                opd.setIpdAdmitRecommended(request.getIpdAdmitRecommended());
-                opd = opdRepository.save(opd);
+            // Tenant comes from the authenticated principal, never from the OPD row. A
+            // cross-tenant id must be indistinguishable from a missing one, so this throws
+            // rather than falling through to the create-a-new-OPD branch below.
+            opd = opdRepository.findByIdAndHospitalIdWithPatientAndDoctor(request.getOpdId(), hospitalId)
+                    .orElseThrow(() -> new com.hms.exception.ResourceNotFoundException("OPD not found"));
+            if (opd.getStatus() == com.hms.entity.Opd.Status.COMPLETED) {
+                throw new com.hms.exception.ConflictException("OPD consultation has already been completed");
             }
+            opd.setStatus(com.hms.entity.Opd.Status.COMPLETED);
+            if (request.getIpdAdmitRecommended() != null) {
+                opd.setIpdAdmitRecommended(request.getIpdAdmitRecommended());
+            }
+            opd = opdRepository.save(opd);
         } else if (appointment != null) {
             opd = new com.hms.entity.Opd();
             opd.setPatient(patient);
@@ -551,17 +670,51 @@ public class DoctorService {
         }
 
 
-        // 1. Create Medical Record
-        com.hms.entity.MedicalRecord record = new com.hms.entity.MedicalRecord();
-        record.setHospitalId(hospitalId);
-        record.setPatientId(patient.getId());
+        // 1. Create or Update Medical Record (prevent duplicate key violation on unique opd_id / appointment_id)
+        com.hms.entity.MedicalRecord record = null;
+        if (opd != null && opd.getId() != null) {
+            record = medicalRecordRepository.findByOpdId(opd.getId()).orElse(null);
+        }
+        if (record == null && appointment != null && appointment.getId() != null) {
+            record = medicalRecordRepository.findByAppointmentId(appointment.getId()).orElse(null);
+        }
+        if (record == null) {
+            record = new com.hms.entity.MedicalRecord();
+            record.setHospitalId(hospitalId);
+            record.setPatientId(patient.getId());
+            record.setAppointmentId(appointment != null ? appointment.getId() : null);
+            record.setOpdId(opd != null ? opd.getId() : null);
+        }
         record.setDoctorId(resolvedDoctorId);
-        record.setAppointmentId(appointment != null ? appointment.getId() : null);
-        record.setOpdId(opd != null ? opd.getId() : null);
         record.setSymptoms(request.getSymptoms());
         record.setDiagnosis(request.getDiagnosis());
         record.setTreatmentNotes(request.getTreatmentNotes());
         record.setFollowUpDate(request.getFollowUpDate());
+        record.setFollowUpInstructions(request.getFollowUpInstructions());
+        String consultLang = request.getConsultationLanguage();
+        if (consultLang == null || consultLang.trim().isEmpty() || "EN".equalsIgnoreCase(consultLang.trim())) {
+            try {
+                if (hospitalSettingRepository != null) {
+                    String defaultLang = hospitalSettingRepository.findByHospital_Id(hospitalId)
+                            .map(com.hms.entity.HospitalSetting::getDefaultConsultationLanguage)
+                            .orElse(null);
+                    if (defaultLang != null && !defaultLang.isBlank()) {
+                        consultLang = defaultLang;
+                    }
+                }
+            } catch (Exception e) {
+                logger.warn("Could not load default consultation language for hospital {}", hospitalId, e);
+            }
+        }
+        if (consultLang != null && !consultLang.trim().isEmpty()) {
+            record.setConsultationLanguage(com.hms.service.pdf.PatientInstructionFormatter.normalizeMode(consultLang));
+        } else {
+            record.setConsultationLanguage("EN");
+        }
+        // A follow-up starts open. Left null when no date was given, so a consultation with no
+        // follow-up never appears in anyone's due list.
+        record.setFollowUpStatus(request.getFollowUpDate() != null
+                ? com.hms.entity.MedicalRecord.FOLLOW_UP_OPEN : null);
 
         com.hms.entity.MedicalRecord savedRecord = medicalRecordRepository.save(record);
 
@@ -589,6 +742,7 @@ public class DoctorService {
                 p.setDosage(item.getDosage());
                 p.setFrequency(item.getFrequency());
                 p.setDuration(item.getDuration());
+                p.setFoodTiming(com.hms.entity.FoodTiming.normalize(item.getFoodTiming()));
                 p.setInstructions(item.getInstructions());
                 prescriptionRepository.save(p);
 
@@ -639,7 +793,8 @@ public class DoctorService {
         Long opdIdToUse = request.getOpdId() != null ? request.getOpdId() : (opd != null ? opd.getId() : null);
         if (opdIdToUse != null) {
             try {
-                java.util.Optional<com.hms.entity.Opd> opdOpt = opdRepository.findById(opdIdToUse);
+                java.util.Optional<com.hms.entity.Opd> opdOpt = opdRepository
+                        .findByIdAndHospitalIdWithPatientAndDoctor(opdIdToUse, hospitalId);
                 if (opdOpt.isPresent()) {
                     com.hms.entity.Opd o = opdOpt.get();
                     o.setStatus(com.hms.entity.Opd.Status.COMPLETED);
@@ -682,10 +837,10 @@ public class DoctorService {
         try {
             com.hms.entity.Billing bill = null;
             if (appointment != null) {
-                bill = billingRepository.findByAppointmentId(appointment.getId()).orElse(null);
+                bill = billingRepository.findFirstByAppointmentIdOrderByIdDesc(appointment.getId()).orElse(null);
             }
             if (bill == null && opdIdToUse != null) {
-                bill = billingRepository.findByOpdId(opdIdToUse).orElse(null);
+                bill = billingRepository.findFirstByOpdIdOrderByIdDesc(opdIdToUse).orElse(null);
             }
             if (bill == null) {
                 // Always use OPD bill flow: create itemized bill (case paper + consultation)
@@ -821,8 +976,18 @@ public class DoctorService {
             }
         } catch (Exception e) {
             logger.error("Failed to create OPD bill or administer stocks", e);
-            if (e instanceof RuntimeException && e.getMessage().contains("Insufficient stock")) {
-                throw (RuntimeException) e; // Prevent consultation completion if stock check fails
+            // Classified by type, not by message text: getMessage() is null often enough that
+            // matching on it turned a business refusal into a NullPointerException, and a 400
+            // into a 500.
+            //
+            // Every refusal above -- inactive medicine, a medicine from another facility, a
+            // missing unit price, not enough stock -- is an answer to the doctor, not an
+            // infrastructure hiccup. Swallowing one completes a consultation that says a
+            // medicine was given while nothing was deducted and nothing was billed, which is
+            // worse than failing. Anything else (a bill that could not be written, a total that
+            // could not be recalculated) is still logged and left alone, as before.
+            if (e instanceof IllegalArgumentException) {
+                throw (IllegalArgumentException) e;
             }
         }
 
@@ -853,4 +1018,3 @@ public class DoctorService {
         return opd;
     }
 }
-

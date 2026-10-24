@@ -10,6 +10,7 @@ import PageHeader from '../../components/PageHeader';
 import PlansTab from '../../components/PlansTab';
 import PlatformInventoryItemsTab from '../../components/PlatformInventoryItemsTab';
 import PlatformMedicinesTab from '../../components/PlatformMedicinesTab';
+import PlatformStatementsTab from '../../components/PlatformStatementsTab';
 import ProfileModal from '../../components/ProfileModal';
 import Sidebar from '../../components/Sidebar';
 import { SkeletonTable, SkeletonDashboard } from '../../components/Skeleton';
@@ -17,6 +18,7 @@ import { useToast } from '../../context/ToastContext';
 import { API_BASE_URL } from '../../services/apiService';
 import authService from '../../services/authService';
 import platformService from '../../services/platformService';
+import statsCache from '../../services/platformStatsCache';
 import { extractApiError } from '../../utils/apiError';
 import { backdropProps } from '../../utils/modalA11y';
 import { validateForm } from '../../utils/validation';
@@ -34,25 +36,6 @@ import { validateForm } from '../../utils/validation';
  */
 // BUG-015: Named constant – single source of truth for platform list page size
 const PLATFORM_PAGE_SIZE = 10;
-
-// BUG-027: Lightweight in-memory stats cache with a 60-second TTL.
-// Prevents redundant API calls every time the user returns to the dashboard tab.
-const statsCache = {
-  data: null,
-  fetchedAt: 0,
-  TTL_MS: 60_000,
-  isValid() {
-    return this.data !== null && Date.now() - this.fetchedAt < this.TTL_MS;
-  },
-  set(data) {
-    this.data = data;
-    this.fetchedAt = Date.now();
-  },
-  clear() {
-    this.data = null;
-    this.fetchedAt = 0;
-  },
-};
 
 // Compact single-card summary (Total/Active/Inactive) for one business type
 // (Hospitals, Clinics, or Pharmacies). One component instead of three
@@ -306,7 +289,7 @@ const PlatformDashboard = () => {
     } else if (subtab === 'faqs') {
       loadFaqs();
     }
-  }, [activeTab]);
+  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // BUG-015: default size uses PLATFORM_PAGE_SIZE constant
   // BUG-014: AbortController cancels in-flight request on re-invocation
@@ -406,7 +389,11 @@ const PlatformDashboard = () => {
     // Reload the tenant list the Super Admin is actually looking at — same page, same type —
     // so a live refresh never yanks them back to page 1 of a different group.
     reloadTenantsRef.current = () => {
+      // Whatever changed elsewhere may have moved the counts too, so drop the cached
+      // overview as well as reloading the list.
+      statsCache.clear();
       loadHospitals(hospitalPage.number, hospitalPage.size, getEntityType(activeTab));
+      if (activeTab === 'dashboard') loadHospitalStats();
     };
   });
 
@@ -567,6 +554,7 @@ const PlatformDashboard = () => {
       async () => {
         try {
           await platformService.createHospital(formData);
+          statsCache.clear();
           setShowCreateModal(false);
           setFormData({
             hospitalName: '',
@@ -594,6 +582,8 @@ const PlatformDashboard = () => {
       async (reason) => {
         try {
           await platformService.updateHospitalStatus(id, !currentStatus, reason);
+          // The active/inactive split on the overview just changed.
+          statsCache.clear();
           // BUG-015: use PLATFORM_PAGE_SIZE constant
           loadHospitals(0, PLATFORM_PAGE_SIZE, getEntityType(activeTab));
         } catch (err) {
@@ -627,6 +617,7 @@ const PlatformDashboard = () => {
         );
       }
 
+      statsCache.clear();
       success('Updated successfully');
       setEditHospitalModal((prev) => ({ ...prev, isOpen: false }));
       loadHospitals(hospitalPage.number, hospitalPage.size, getEntityType(activeTab));
@@ -698,7 +689,7 @@ const PlatformDashboard = () => {
     setResetPwModal({ isOpen: true, hospitalId: id });
   };
 
-  const handleUserResetPassword = (id) => {
+  const _handleUserResetPassword = (id) => {
     openConfirmation(
       'Reset User Password',
       'Are you sure you want to reset the password for this user?',
@@ -711,7 +702,7 @@ const PlatformDashboard = () => {
             password: data.password,
           });
           success('Password reset successfully');
-        } catch (err) {
+        } catch {
           setError('Failed to reset password');
         }
       }
@@ -730,6 +721,7 @@ const PlatformDashboard = () => {
       subItems: [
         { id: 'hospital:hospitals', label: 'Hospitals' },
         { id: 'hospital:inventory_items', label: 'Inventory Items' },
+        { id: 'hospital:statements', label: 'Patient Instructions' },
         { id: 'hospital:plans', label: 'Plans' },
         { id: 'hospital:tickets', label: 'Tickets' },
         { id: 'hospital:faqs', label: 'FAQs' },
@@ -743,6 +735,7 @@ const PlatformDashboard = () => {
       subItems: [
         { id: 'clinic:clinics', label: 'Clinics' },
         { id: 'clinic:inventory_items', label: 'Inventory Items' },
+        { id: 'clinic:statements', label: 'Patient Instructions' },
         { id: 'clinic:plans', label: 'Plans' },
         { id: 'clinic:tickets', label: 'Tickets' },
         { id: 'clinic:faqs', label: 'FAQs' },
@@ -755,6 +748,7 @@ const PlatformDashboard = () => {
       isExpanded: !!expandedGroups['pharmacy'],
       subItems: [
         { id: 'pharmacy:pharmacies', label: 'Pharmacies' },
+        { id: 'pharmacy:statements', label: 'Patient Instructions' },
         { id: 'pharmacy:plans', label: 'Plans' },
         { id: 'pharmacy:tickets', label: 'Tickets' },
         { id: 'pharmacy:faqs', label: 'FAQs' },
@@ -833,6 +827,8 @@ const PlatformDashboard = () => {
                   subtitle = 'Manage the central unified global medicine catalog directory.';
                 else if (subtab === 'inventory_items')
                   subtitle = 'Manage the central unified global hospital inventory item directory.';
+                else if (subtab === 'statements')
+                  subtitle = 'Manage bilingual consultation instructions and doctor advice.';
                 else if (subtab === 'tickets')
                   subtitle = 'View and resolve support tickets submitted by hospital admins.';
                 else if (isFaqTab)
@@ -1056,6 +1052,13 @@ const PlatformDashboard = () => {
                 <PlatformInventoryItemsTab hospitalType={hospitalType} />
               )
             );
+          })()}
+
+          {/* Statements / Patient Instructions Tab */}
+          {(() => {
+            const subtab = activeTab.split(':')[1];
+            const hospitalType = getCurrentHospitalType();
+            return subtab === 'statements' && <PlatformStatementsTab hospitalType={hospitalType} />;
           })()}
 
           {/* Content Sections */}
@@ -2283,7 +2286,7 @@ const PasswordResetModal = ({ email, password, onClose }) => {
 // SuperAdminProfileModal Component
 const SuperAdminProfileModal = ({ user, onClose }) => {
   const [name, setName] = useState(user?.name || 'Super Admin');
-  const [phone, setPhone] = useState(user?.phone || '');
+  const phone = user?.phone || '';
   const [showPwSection, setShowPwSection] = useState(false);
   const [currentPw, setCurrentPw] = useState('');
   const [newPw, setNewPw] = useState('');
@@ -3261,7 +3264,7 @@ const AuditLogsTable = ({ auditLogs }) => {
 };
 
 // Users Table Component
-const UsersTable = ({ users, userPage, onResetPassword, loadUsers }) => {
+const _UsersTable = ({ users, userPage, onResetPassword, loadUsers }) => {
   const columnHelper = createColumnHelper();
 
   const columns = [

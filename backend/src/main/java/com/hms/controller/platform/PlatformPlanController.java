@@ -2,6 +2,7 @@ package com.hms.controller.platform;
 
 import com.hms.dto.AssignPlanRequest;
 import com.hms.dto.CreatePlanRequest;
+import com.hms.entitlement.EntitlementRegistry;
 import com.hms.entity.HospitalType;
 import com.hms.entity.Plan;
 import com.hms.service.platform.PlatformPlanService;
@@ -28,6 +29,15 @@ public class PlatformPlanController {
             return ResponseEntity.ok(planService.getPlansByType(HospitalType.valueOf(type)));
         }
         return ResponseEntity.ok(planService.getAllPlans());
+    }
+
+    @GetMapping("/capabilities")
+    public ResponseEntity<?> getCapabilities(@RequestParam String type) {
+        try {
+            return ResponseEntity.ok(EntitlementRegistry.catalogFor(HospitalType.valueOf(type)));
+        } catch (Exception e) {
+            return com.hms.util.ApiErrors.handle(e);
+        }
     }
 
     @PostMapping

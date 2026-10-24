@@ -22,7 +22,7 @@ const ReturnsView = () => {
   const [billSearch, setBillSearch] = useState('');
   const [searchingBill, setSearchingBill] = useState(false);
   const [originalSale, setOriginalSale] = useState(null);
-  const [patientReturns, setPatientReturns] = useState({}); // { batchId: { qtyToReturn: 0, restock: true } }
+  const [patientReturns, setPatientReturns] = useState({}); // { batchId: { qtyToReturn: 0 } }
   const [processingRefund, setProcessingRefund] = useState(false);
 
   // --- 2. SUPPLIER RETURN STATE ---
@@ -97,7 +97,6 @@ const ReturnsView = () => {
       sale.items.forEach((item) => {
         initialReturns[item.medicineBatchId] = {
           qtyToReturn: 0,
-          restock: true,
           unitPrice: item.unitPrice,
           maxQty: item.quantity,
           medicineName: item.medicineBatch?.medicine?.medicineName || 'Unknown Medicine',
@@ -129,15 +128,6 @@ const ReturnsView = () => {
     }));
   };
 
-  const handlePatientRestockToggle = (batchId) => {
-    setPatientReturns((prev) => ({
-      ...prev,
-      [batchId]: {
-        ...prev[batchId],
-        restock: !prev[batchId].restock,
-      },
-    }));
-  };
 
   // Calculate customer refund total
   const patientRefundTotal = useMemo(() => {
@@ -157,7 +147,6 @@ const ReturnsView = () => {
       .map((key) => ({
         medicineBatchId: parseInt(key),
         quantityToReturn: patientReturns[key].qtyToReturn,
-        restock: patientReturns[key].restock,
       }))
       .filter((item) => item.quantityToReturn > 0);
 
@@ -366,7 +355,7 @@ const ReturnsView = () => {
                   <div>
                     <h3 className="font-bold text-gray-800 text-sm">Bill Items Overview</h3>
                     <p className="text-[10px] text-gray-400 mt-0.5">
-                      Specify quantities and restock options per item.
+                      Specify the quantity being returned per item. Refunded medicine is not returned to saleable stock.
                     </p>
                   </div>
                   <span className="text-xs font-black bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full">
@@ -389,7 +378,6 @@ const ReturnsView = () => {
                       {originalSale.items.map((item) => {
                         const ret = patientReturns[item.medicineBatchId] || {
                           qtyToReturn: 0,
-                          restock: true,
                         };
                         const refundSub = ret.qtyToReturn * item.unitPrice;
 
@@ -443,20 +431,14 @@ const ReturnsView = () => {
                               />
                             </td>
                             <td className="px-6 py-4 text-center">
-                              <label
-                                htmlFor={`restock-${item.medicineBatchId}`}
-                                className="inline-flex items-center cursor-pointer"
+{/* Medicine that has been with a patient is not put back on the shelf, so there is
+                                  no choice to offer here. The refund still goes through. */}
+                              <span
+                                className="text-[10px] font-black uppercase tracking-widest text-gray-500"
+                                title="Returned medicine is refunded but not added back to saleable stock."
                               >
-                                <input
-                                  id={`restock-${item.medicineBatchId}`}
-                                  type="checkbox"
-                                  aria-label="Restock this item"
-                                  checked={isExpired ? false : ret.restock}
-                                  onChange={() => handlePatientRestockToggle(item.medicineBatchId)}
-                                  disabled={isExpired}
-                                  className="w-4 h-4 text-gray-900 border-gray-300 rounded focus:ring-0 focus:ring-offset-0 focus:outline-none disabled:opacity-30 disabled:cursor-not-allowed"
-                                />
-                              </label>
+                                Not restocked
+                              </span>
                             </td>
                             <td className="px-6 py-4 text-right font-semibold text-gray-600">
                               ₹{item.unitPrice}

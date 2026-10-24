@@ -19,6 +19,7 @@ import java.util.UUID;
 public class CorrelationIdFilter extends GenericFilter {
 
     private static final String HEADER = "X-Correlation-ID";
+    public static final String MDC_KEY = "correlationId";
 
     @Override
     public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain)
@@ -37,5 +38,10 @@ public class CorrelationIdFilter extends GenericFilter {
         } finally {
             MDC.remove("correlationId");
         }
+    }
+
+    /** The current request's id, or null outside a request. Used to stamp error bodies. */
+    public static String currentId() {
+        return MDC.get(MDC_KEY);
     }
 }

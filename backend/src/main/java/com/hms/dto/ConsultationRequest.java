@@ -20,7 +20,11 @@ public class ConsultationRequest {
     private String diagnosis;
     private String treatmentNotes;
     private LocalDate followUpDate;
+
+    /** Optional. Absent on every consultation recorded before this field existed. */
+    private String followUpInstructions;
     private Boolean ipdAdmitRecommended;
+    private String consultationLanguage;
 
     @Valid
     private List<PrescriptionItem> prescription;
@@ -56,6 +60,8 @@ public class ConsultationRequest {
 
         @NotBlank(message = "Prescription duration is required")
         private String duration;
+
+        private String foodTiming;
 
         private String instructions;
     }

@@ -25,9 +25,15 @@ on:
       ssh_port:
         type: string
         default: '22'
+      # Optional override for the backend's own HTTP port on the server. Normally left empty: the
+      # deploy job resolves it from the environment's STAGING_/PRODUCTION_HEALTH_PORT variable,
+      # which a caller cannot read (environment variables reach only jobs that declare
+      # `environment:`). No default port: a default once pointed staging verification at another
+      # service on the same host.
       health_port:
         type: string
-        default: '8080'
+        required: false
+        default: ''
       app_url:
         type: string
         default: ''
@@ -37,13 +43,12 @@ on:
       notify_slack:
         type: boolean
         default: false
-    secrets:
-      ssh_key:
-        required: true
-      ssh_user:
-        required: false
-      slack_webhook:
-        required: false
+    # No `secrets:` section, on purpose. The deploy key and user (DEPLOY_SSH_KEY, DEPLOY_SSH_USER)
+    # are ENVIRONMENT secrets of Staging / Production, read by the deploy job below, which declares
+    # `environment:`. Callers use `secrets: inherit`. Declaring them here made them workflow_call
+    # inputs: nothing passes them, so they arrived EMPTY and hid the environment's values (staging
+    # run 37947902662). A repository-level copy must not exist -- every branch's workflows could
+    # read it, bypassing the Production approval and deployment-branch rules.
 
 jobs:
   deploy:
@@ -66,6 +71,16 @@ jobs:
         with:
           fetch-depth: 0 # tags/history for version derivation
 
+      # ── Refuse a run from a branch that may not deploy here (before anything else) ──
+      # Production only from main; a deploy only from the branch it deploys. Catches a manual
+      # dispatch on the wrong branch. The environment's deployment-branch rule enforces the same
+      # thing in GitHub, where a branch cannot edit it.
+      - name: Check the run may deploy to this environment
+        env:
+          ENV_NAME: ${{ inputs.environment }}
+          DEPLOY_BRANCH: ${{ inputs.git_branch }}
+        run: bash scripts/deploy/check-deploy-ref.sh "$ENV_NAME" "$GITHUB_REF" "$DEPLOY_BRANCH"
+
       # ── Deployment header ────────────────────────────────────────────────
       - name: Write deployment header
         run: |
@@ -81,15 +96,27 @@ jobs:
           | Started | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |
           EOF
 
+      # ── Resolve the health port once; EVERY post-deploy check below uses this value ──
+      - name: Resolve health port
+        id: hport
+        env:
+          INPUT_PORT: ${{ inputs.health_port }}
+          ENV_NAME: ${{ inputs.environment }}
+          STAGING_PORT: ${{ vars.STAGING_HEALTH_PORT }}
+          PRODUCTION_PORT: ${{ vars.PRODUCTION_HEALTH_PORT }}
+        run: bash scripts/deploy/resolve-health-port.sh >> "$GITHUB_OUTPUT"
+
       # ── Fail fast if required configuration is missing (never prints values) ──
       - name: Validate deployment configuration
+        id: validate
         env:
           HMS_SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
-          HMS_SSH_KEY: ${{ secrets.ssh_key }}
+          HMS_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           HMS_REPO_PATH: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
           HMS_SERVICE: ${{ inputs.service_name || vars.SERVICE_NAME }}
           HMS_BRANCH: ${{ inputs.git_branch || vars.BRANCH_NAME }}
-        run: bash scripts/deploy/validate-config.sh HMS_SSH_HOST HMS_SSH_KEY HMS_REPO_PATH HMS_SERVICE HMS_BRANCH
+          HMS_HEALTH_PORT: ${{ steps.hport.outputs.port }}
+        run: bash scripts/deploy/validate-config.sh HMS_SSH_HOST HMS_SSH_KEY HMS_REPO_PATH HMS_SERVICE HMS_BRANCH HMS_HEALTH_PORT:port
 
       # ── SSH Connection Diagnostics ───────────────────────────────────────
       # Retries TCP check 5 times before failing — surfaces Hostinger hPanel
@@ -131,10 +158,10 @@ jobs:
         id: prev
         continue-on-error: true
         env:
-          SSH_KEY: ${{ secrets.ssh_key }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
-          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || 'deploy' }}
+          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.DEPLOY_SSH_USER || 'deploy' }}
           REPO: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
         run: |
           echo "$SSH_KEY" > /tmp/deploy_key && chmod 600 /tmp/deploy_key
@@ -178,8 +205,8 @@ jobs:
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
-          username: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || 'deploy' }}
-          key: ${{ secrets.ssh_key }}
+          username: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.DEPLOY_SSH_USER || 'deploy' }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
           timeout: 60s
           command_timeout: 5m
@@ -190,10 +217,18 @@ jobs:
             REPO="${{ inputs.repo_path || vars.DEPLOY_PATH }}"
             BRANCH="${{ inputs.git_branch || vars.BRANCH_NAME }}"
 
-            echo "[$(TS)] Pulling latest code..."
+            # The exact commit this run built and is deploying -- not whatever the branch tip is
+            # by now. The artifacts are named after it, and release verification compares the
+            # running revision against it.
+            EXPECTED_SHA="${{ github.sha }}"
+
+            echo "[$(TS)] Pulling code for $EXPECTED_SHA ($BRANCH)..."
             cd "$REPO"
+            # What is deployed NOW, captured before the checkout moves: it is what a rollback
+            # restores. (It used to be read after the reset, so it recorded the new commit.)
+            PREV_SHA=$(git rev-parse HEAD 2>/dev/null || echo "")
             git fetch origin
-            git reset --hard "origin/$BRANCH"
+            git reset --hard "$EXPECTED_SHA"
             git log -1 --oneline
 
             # Ensure build directories exist
@@ -207,7 +242,6 @@ jobs:
               cp -f backend/target/*.jar ../rollback_backup/prev_backend.jar || true
               rm -rf ../rollback_backup/prev_frontend_dist
               cp -r frontend/dist ../rollback_backup/prev_frontend_dist || true
-              PREV_SHA=$(git rev-parse HEAD)
               echo "$PREV_SHA" > ../rollback_backup/prev_sha.txt
             fi
 
@@ -218,10 +252,10 @@ jobs:
       # ("operation was canceled"). Now a stall aborts in <=5 min and retries.
       - name: Copy Deployment Package via SCP
         env:
-          SSH_KEY: ${{ secrets.ssh_key }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
-          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || 'deploy' }}
+          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.DEPLOY_SSH_USER || 'deploy' }}
           TARGET: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
         run: |
           echo "$SSH_KEY" > /tmp/deploy_key
@@ -253,10 +287,10 @@ jobs:
       - name: Pre-deploy database backup
         if: inputs.environment == 'Production'
         env:
-          SSH_KEY: ${{ secrets.ssh_key }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
-          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || 'deploy' }}
+          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.DEPLOY_SSH_USER || 'deploy' }}
           REPO: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
         run: |
           # pipefail is REQUIRED here: `rc=$?` after a pipeline reads tee's status, not ssh's, so
@@ -284,11 +318,12 @@ jobs:
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
-          username: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || 'deploy' }}
-          key: ${{ secrets.ssh_key }}
+          username: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.DEPLOY_SSH_USER || 'deploy' }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
           timeout: 60s
-          command_timeout: 10m
+          # Verification may take up to 300s (+30s stabilisation), and a rollback as long again.
+          command_timeout: 15m
           script: |
             set -euo pipefail
             TS() { date -u '+%Y-%m-%dT%H:%M:%SZ'; }
@@ -323,93 +358,92 @@ jobs:
               sudo systemctl daemon-reload
             fi
 
+            # The one health port for this deployment, validated before anything on the server
+            # changed. Release verification and rollback verification both use it.
+            HPORT="${{ steps.hport.outputs.port }}"
+            BASE_URL="http://localhost:${HPORT}"
+            EXPECTED_SHA="${{ github.sha }}"
+            # Copied out of the checkout: a rollback resets it to an older commit that may predate
+            # the verifier.
+            AWAIT="$(mktemp)"
+            cp scripts/deploy/await-release.sh "$AWAIT"
+
             # Restart service
-            echo "[$(TS)] Restarting $SERVICE ..."
+            PREV_PID=$(systemctl show -p MainPID --value "$SERVICE" 2>/dev/null || echo 0)
+            echo "[$(TS)] Restarting $SERVICE (current PID ${PREV_PID:-0}) ..."
             sudo systemctl restart "$SERVICE"
 
-            # Health check
-            MAX=15
-            DELAY=10
-            URL="http://localhost:${{ inputs.health_port || vars.PORT || vars.STAGING_HEALTH_PORT || vars.PRODUCTION_HEALTH_PORT || '8080' }}/api/public/health"
-            echo "[$(TS)] Health check: $URL"
-            HEALTHY=false
-            for i in $(seq 1 $MAX); do
-              STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$URL" || echo 000)
-              echo "[$(TS)] Attempt $i/$MAX — HTTP $STATUS"
-              if [ "$STATUS" = "200" ]; then
-                HEALTHY=true
-                break
-              fi
-              sleep "$DELAY"
-            done
-
-            if $HEALTHY; then
-              echo "[$(TS)] Service is healthy."
+            # Release verification. The NEW process (a different MainPID) must report EXACTLY this
+            # commit on /actuator/info, be ready (Spring accepting traffic, post-start schema
+            # initialisation complete, database up) and live, and stay so for 6 checks. An HTTP 200
+            # alone -- which the old JVM can give while it shuts down -- is never accepted.
+            if bash "$AWAIT" --expected-sha "$EXPECTED_SHA" --service "$SERVICE" \
+                 --previous-pid "${PREV_PID:-0}" --base-url "$BASE_URL" \
+                 --timeout 300 --interval 5 --stable-checks 6; then
+              rm -f "$AWAIT"
+              echo "[$(TS)] Release verified."
               exit 0
             fi
 
-            # ── Health check failed ───────────────────────────────────────
+            # ── Release not verified ──────────────────────────────────────
+            echo "[$(TS)] Hint: check 'journalctl -u $SERVICE -n 150' on the server."
             if [ "${{ inputs.enable_rollback }}" = "true" ]; then
-              PREV_SHA=$(cat ../rollback_backup/prev_sha.txt || echo "")
+              PREV_SHA=$(cat ../rollback_backup/prev_sha.txt 2>/dev/null || echo "")
+              FAILED_PID=$(systemctl show -p MainPID --value "$SERVICE" 2>/dev/null || echo 0)
               echo ""
               echo "============================================"
-              echo "  HEALTH CHECK FAILED — INITIATING ROLLBACK"
-              echo "  Rolling back to: $PREV_SHA"
+              echo "  RELEASE NOT VERIFIED — APPLICATION ROLLBACK"
+              echo "  Rolling back to: ${PREV_SHA:-<unknown>}"
+              echo "  The DATABASE is NOT rolled back: migrations already applied stay applied."
+              echo "  Restore the pre-deploy backup if the data must be returned to its prior state."
               echo "============================================"
               cd "$REPO"
-              git reset --hard "$PREV_SHA"
-              
+              if [ -n "$PREV_SHA" ]; then git reset --hard "$PREV_SHA"; fi
+
               # Restore backups
               echo "Restoring previous build artifacts..."
               cp -f ../rollback_backup/prev_backend.jar backend/target/hospital-management-system-1.0.0.jar || true
               rm -rf frontend/dist
               cp -r ../rollback_backup/prev_frontend_dist frontend/dist || true
-              
+
               echo "Restarting service..."
-              sudo systemctl restart "${{ inputs.service_name || vars.SERVICE_NAME }}"
-              
-              # Post-rollback health check
-              ROLLBACK_HEALTHY=false
-              for i in $(seq 1 $MAX); do
-                STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$URL" || echo 000)
-                echo "[$(TS)] Rollback health $i/$MAX — HTTP $STATUS"
-                if [ "$STATUS" = "200" ]; then
-                  ROLLBACK_HEALTHY=true
-                  break
-                fi
-                sleep "$DELAY"
-              done
-              
-              if $ROLLBACK_HEALTHY; then
-                echo "[$(TS)] Rollback succeeded. Previous version is live."
+              sudo systemctl restart "$SERVICE"
+
+              # Same verification against the previous revision. --allow-abbrev only because the
+              # previous artifact may predate the full revision in /actuator/info.
+              if [ -n "$PREV_SHA" ] && bash "$AWAIT" --expected-sha "$PREV_SHA" --service "$SERVICE" \
+                   --previous-pid "${FAILED_PID:-0}" --base-url "$BASE_URL" \
+                   --timeout 300 --interval 5 --stable-checks 6 --allow-abbrev; then
+                echo "[$(TS)] Application rollback verified: $PREV_SHA is running and ready."
+                echo "[$(TS)] The database was NOT rolled back."
               else
-                echo "[$(TS)] Rollback health check also failed. Manual intervention required."
+                echo "[$(TS)] Application rollback could NOT be verified. Manual intervention required."
               fi
+              rm -f "$AWAIT"
               echo "[$(TS)] Deployment FAILED — exiting with error."
               exit 1
             else
-              echo "[$(TS)] Health check failed. Rollback disabled."
-              echo "[$(TS)] Hint: check 'journalctl -u ${{ inputs.service_name || vars.SERVICE_NAME }} -n 100' on the server."
+              rm -f "$AWAIT"
+              echo "[$(TS)] Release not verified. Rollback disabled."
               exit 1
             fi
 
       # ── Extended health verification (readiness, dependencies, resources) ──
-      # The proven step above is the rollback gate (liveness 200). This adds readiness (Actuator
-      # overall status reflects DB/Redis/disk) + host resource checks and records structured
-      # results for the manifest. Report-only for now (continue-on-error) so it augments the
-      # signal without destabilising the proven flow — promote to a hard gate after validating
-      # on staging (see docs/deployment/DEPLOYMENT.md §Health verification).
+      # The rollback gate is release verification in the step above (exact revision, new PID,
+      # readiness, liveness, stabilisation -- scripts/deploy/await-release.sh). This step records
+      # host resources and overall health for the manifest and stays report-only
+      # (continue-on-error): it is a diagnostic record, not the gate.
       - name: Extended health verification
         id: verify
         if: success()
         continue-on-error: true
         env:
-          SSH_KEY: ${{ secrets.ssh_key }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
-          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || 'deploy' }}
+          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.DEPLOY_SSH_USER || 'deploy' }}
           REPO: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
-          HPORT: ${{ inputs.health_port || vars.PORT || vars.STAGING_HEALTH_PORT || vars.PRODUCTION_HEALTH_PORT || '8080' }}
+          HPORT: ${{ steps.hport.outputs.port }}
           APP_URL: ${{ inputs.app_url }}
         run: |
           mkdir -p deployment-logs
@@ -456,13 +490,15 @@ jobs:
 
       # ── Archive manifest into VPS deployment history (best-effort) ────────
       - name: Archive manifest to deployment history
-        if: always()
+        # Only with a validated key and host: never log in to the server with an empty key (it
+        # fills the auth log with failures and can get the runner banned).
+        if: always() && steps.validate.outcome == 'success'
         continue-on-error: true
         env:
-          SSH_KEY: ${{ secrets.ssh_key }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
-          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || 'deploy' }}
+          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.DEPLOY_SSH_USER || 'deploy' }}
           REPO: ${{ inputs.repo_path || vars.DEPLOY_PATH }}
         run: |
           [ -f deployment-logs/deployment-manifest.json ] || exit 0
@@ -478,25 +514,30 @@ jobs:
 
       # ── Collect service logs ─────────────────────────────────────────────
       - name: Collect service logs
-        if: always()
+        if: always() && steps.validate.outcome == 'success'
         env:
-          SSH_KEY: ${{ secrets.ssh_key }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           SSH_HOST: ${{ inputs.ssh_host || vars.HOST || vars.SSH_HOST || vars.STAGING_SSH_HOST || vars.PRODUCTION_SSH_HOST }}
           SSH_PORT: ${{ inputs.ssh_port || vars.PORT || vars.SSH_PORT || vars.STAGING_SSH_PORT || vars.PRODUCTION_SSH_PORT || '22' }}
-          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.ssh_user || 'deploy' }}
+          SSH_USER: ${{ vars.SSH_USER || vars.SSH_USERNAME || secrets.DEPLOY_SSH_USER || 'deploy' }}
         run: |
           mkdir -p deployment-logs
 
           echo "$SSH_KEY" > /tmp/deploy_key
           chmod 600 /tmp/deploy_key
 
-          ssh -i /tmp/deploy_key \
-            -o StrictHostKeyChecking=no \
-            -o ConnectTimeout=15 \
-            -p "$SSH_PORT" \
-            "$SSH_USER@$SSH_HOST" \
-            "journalctl -u ${{ inputs.service_name || vars.SERVICE_NAME }} --since '30 minutes ago' --no-pager 2>&1" \
-            > deployment-logs/service.log 2>&1 \
+          # The journal is redacted on the runner before it is written, so credentials, tokens,
+          # password hashes and e-mail addresses never reach the uploaded artifact, which any
+          # signed-in GitHub user can download from this public repository.
+          {
+            ssh -i /tmp/deploy_key \
+              -o StrictHostKeyChecking=no \
+              -o ConnectTimeout=15 \
+              -p "$SSH_PORT" \
+              "$SSH_USER@$SSH_HOST" \
+              "journalctl -u ${{ inputs.service_name || vars.SERVICE_NAME }} --since '30 minutes ago' --no-pager 2>&1" \
+              2>&1 || echo "[log collection failed]"
+          } | bash scripts/deploy/redact-log.sh > deployment-logs/service.log \
             || echo "[log collection failed]" > deployment-logs/service.log
 
           ssh -i /tmp/deploy_key \
@@ -518,7 +559,8 @@ jobs:
         with:
           name: ${{ inputs.environment }}-deploy-logs-${{ github.run_id }}
           path: deployment-logs/
-          retention-days: 90
+          # Staging diagnostics are kept two weeks; production keeps its existing 90 days.
+          retention-days: ${{ inputs.environment == 'Staging' && 14 || 90 }}
           if-no-files-found: warn
 
       # ── Slack notification ───────────────────────────────────────────────
@@ -536,7 +578,7 @@ jobs:
             ICON=":warning:"
           fi
           if [ "$STATUS" = "success" ]; then COLOR="good"; else COLOR="danger"; fi
-          WEBHOOK="${{ secrets.slack_webhook }}"
+          WEBHOOK="${{ secrets.PRODUCTION_SLACK_WEBHOOK }}"
           if [ -n "$WEBHOOK" ]; then
             curl -sSf -X POST "$WEBHOOK" \
               -H "Content-Type: application/json" \

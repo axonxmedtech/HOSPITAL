@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useToast } from '../context/ToastContext';
 import suppliersApi from '../services/pharmacy/suppliersApi';
 import { backdropProps } from '../utils/modalA11y';
+import { extractApiError } from '../utils/apiError';
 
 /**
  * SupplierForm – modal used for both adding and editing a supplier.
@@ -111,8 +112,7 @@ const SupplierForm = ({ isOpen = false, onClose, onSuccess, mode = 'create', sup
       if (onSuccess) onSuccess();
       if (onClose) onClose();
     } catch (err) {
-      const msg = err.response?.data?.message || err.message || 'Failed to save supplier';
-      toastError(msg);
+      toastError(extractApiError(err, 'Failed to save supplier'));
     } finally {
       setIsSubmitting(false);
     }

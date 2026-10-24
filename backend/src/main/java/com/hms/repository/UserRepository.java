@@ -37,11 +37,33 @@ public interface UserRepository extends JpaRepository<User, Long> {
          */
         boolean existsByEmail(String email);
 
+        /** True if any user, active or not, holds this role. */
+        boolean existsByRole(String role);
+
+        /**
+         * E-mail and stored password hash of every ACTIVE super admin, for the known-default
+         * credential check at startup. Active means what the authentication filter means: null
+         * isActive counts as active. Only these two columns are read.
+         */
+        @Query("SELECT u.email AS email, u.password AS passwordHash FROM User u "
+                        + "WHERE u.role = 'SUPER_ADMIN' AND (u.isActive IS NULL OR u.isActive = true)")
+        java.util.List<StoredCredential> findActiveSuperAdminCredentials();
+
+        /** Projection for {@link #findActiveSuperAdminCredentials()}. */
+        interface StoredCredential {
+                String getEmail();
+
+                String getPasswordHash();
+        }
+
         /**
          * Find active users by hospital ID and role
          * Used for fetching lists like Receptionists
          */
         Optional<User> findByPublicId(String publicId);
+
+        /** A user of one facility. Used to name who uploaded a document, without a global by-id read. */
+        Optional<User> findByIdAndHospitalId(Long id, Long hospitalId);
 
         /**
          * Find active users by hospital ID and role
@@ -133,6 +155,20 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
         @Query(value = "SELECT COALESCE(MAX(CAST(SUBSTRING(custom_id, 4) AS UNSIGNED)), 0) FROM users WHERE role = 'NURSE' AND custom_id LIKE 'NRS%'", nativeQuery = true)
         Integer findMaxNurseSequence();
+
+        /**
+         * The session generation of an ACTIVE user, or empty.
+         *
+         * <p>Deliberately fail-closed and deliberately one query: a missing row and a deactivated
+         * row are both "empty", so the authentication filter cannot accidentally treat a deleted
+         * user as authenticated. Null isActive is read as active, matching the login check, which
+         * has always treated it that way.
+         */
+        @org.springframework.data.jpa.repository.Query(
+                "SELECT COALESCE(u.tokenVersion, 0) FROM User u WHERE u.id = :id "
+                        + "AND (u.isActive IS NULL OR u.isActive = true)")
+        java.util.Optional<Integer> findActiveTokenVersion(
+                @org.springframework.data.repository.query.Param("id") Long id);
 
         @org.springframework.data.jpa.repository.Query("SELECT new com.hms.dto.UserSummaryDTO(u, h.name) FROM User u LEFT JOIN Hospital h ON u.hospitalId = h.id "
                         +

@@ -55,4 +55,7 @@ public class RecoveryEpisode {
 
     @Column(name = "discharged_by_user_id")
     private Long dischargedByUserId;
+    /** OT-P0B: the tenant-owned recovery bay this patient occupies. Required at admit time. */
+    @Column(name = "recovery_bay_id")
+    private Long recoveryBayId;
 }

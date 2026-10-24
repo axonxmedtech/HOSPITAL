@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useToast } from '../../../context/ToastContext';
 import otService from '../../../services/otService';
 import { backdropProps } from '../../../utils/modalA11y';
+import useOtPermissions from '../../../hooks/useOtPermissions';
 
 /**
  * SurgeryTeamModal - the surgical team on one case.
@@ -16,6 +17,12 @@ const SurgeryTeamModal = ({ surgery, onClose }) => {
   const [surgeons, setSurgeons] = useState([]);
   const [team, setTeam] = useState([]);
   const [loading, setLoading] = useState(true);
+  // Reading the team needs OT_VIEW; changing it needs OT_ASSIGN_TEAM, which reception does not
+  // hold. Without this the Add and Remove controls were drawn for anyone who could open the
+  // modal and answered with Access Denied.
+  const { can } = useOtPermissions();
+  const canAssign = can('OT_ASSIGN_TEAM');
+
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ caseRoleCode: '', staffId: '', externalName: '' });
 
@@ -153,7 +160,8 @@ const SurgeryTeamModal = ({ surgery, onClose }) => {
                         )}
                       </div>
                       <button
-                        disabled={busy}
+                        disabled={busy || !canAssign}
+                        title={canAssign ? undefined : 'Assigned by the surgeon or theatre incharge'}
                         onClick={() => remove(m)}
                         className="text-xs text-red-500 hover:text-red-700"
                       >
@@ -216,7 +224,8 @@ const SurgeryTeamModal = ({ surgery, onClose }) => {
                 )}
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={busy || !canAssign}
+                  title={canAssign ? undefined : 'Assigned by the surgeon or theatre incharge'}
                   onClick={add}
                   className="w-full px-4 py-2 rounded-lg text-sm font-semibold bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-300"
                 >

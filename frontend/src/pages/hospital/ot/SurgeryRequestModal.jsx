@@ -3,6 +3,7 @@ import DateSelect from '../../../components/DateSelect';
 import { useToast } from '../../../context/ToastContext';
 import otService from '../../../services/otService';
 import { backdropProps } from '../../../utils/modalA11y';
+import useOtPermissions from '../../../hooks/useOtPermissions';
 
 /**
  * SurgeryRequestModal - doctor creates an OT request from the IPD case.
@@ -16,6 +17,11 @@ const SurgeryRequestModal = ({ admissionId, onClose, onCreated }) => {
     priority: 'ELECTIVE',
     preferredDate: '',
   });
+  // Requesting a surgery is OT_CREATE. Stated here as well as at the call site so the rule holds
+  // wherever this modal is mounted, rather than depending on each dashboard to remember it.
+  const { can } = useOtPermissions();
+  const canRequest = can('OT_CREATE');
+
   const [saving, setSaving] = useState(false);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -108,7 +114,8 @@ const SurgeryRequestModal = ({ admissionId, onClose, onCreated }) => {
           </button>
           <button
             onClick={submit}
-            disabled={saving}
+            disabled={saving || !canRequest}
+            title={canRequest ? undefined : 'Surgery requests are raised by the surgeon or theatre incharge'}
             className={`px-4 py-2 rounded-lg font-semibold text-white ${saving ? 'bg-gray-400' : 'bg-gray-900 hover:bg-gray-800'}`}
           >
             {saving ? 'Saving…' : 'Create Request'}

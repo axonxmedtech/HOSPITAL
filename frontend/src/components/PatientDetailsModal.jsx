@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 // BUG-028: single source-of-truth for base URL
 import authService from '../services/authService';
 import hospitalService from '../services/hospitalService';
+import PatientDocumentsPanel from './PatientDocumentsPanel';
 import PdfViewerModal from './PdfViewerModal';
 
 /**
@@ -114,9 +115,14 @@ const PatientDetailsModal = ({ patient, onClose, initialTab = 'info' }) => {
 
   if (!patient) return null;
 
+  // A pharmacy session has no patient record to attach paperwork to, and the backend refuses
+  // these routes for one outright; the tab would only ever produce an error.
+  const canSeeDocuments = ['HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST'].includes(user?.role);
+
   const tabs = [
     { id: 'info', label: 'Patient Info' },
     { id: 'medicalhistory', label: 'Medical History' },
+    ...(canSeeDocuments ? [{ id: 'documents', label: 'Documents' }] : []),
     { id: 'bills', label: 'Bills' },
   ];
 
@@ -829,6 +835,10 @@ const PatientDetailsModal = ({ patient, onClose, initialTab = 'info' }) => {
                 </div>
               )}
             </div>
+          )}
+
+          {activeTab === 'documents' && canSeeDocuments && (
+            <PatientDocumentsPanel patientId={patient.id} />
           )}
 
           {activeTab === 'bills' && (

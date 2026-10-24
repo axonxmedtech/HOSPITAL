@@ -17,6 +17,8 @@ import org.springframework.security.test.context.support.WithMockUser;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 // addFilters=false disables the security filter chain so we test controller and validation logic only
 @WebMvcTest(HospitalAuthController.class)
@@ -34,6 +36,11 @@ class HospitalAuthControllerIT {
 
     @MockBean
     UserRepository userRepository;
+
+    // R1b: JwtAuthenticationFilter now revalidates the tenant on every request, so the slice needs
+    // this bean for the context to load. UserRepository above already covers the other half.
+    @MockBean
+    com.hms.repository.HospitalRepository hospitalRepository;
 
     @MockBean
     JwtUtil jwtUtil;
@@ -62,5 +69,19 @@ class HospitalAuthControllerIT {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void login_withDisabledNurseLogin_returns403AndThePolicyMessage() throws Exception {
+        when(authService.login(any())).thenThrow(
+                new com.hms.exception.ForbiddenException("Nurse login is disabled for this hospital"));
+
+        mvc.perform(post("/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"email":"nurse@example.test","password":"correct-password"}
+                        """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("Nurse login is disabled for this hospital"));
     }
 }

@@ -25,11 +25,18 @@ import java.util.List;
  * parameter inside an `||` expression ("inconsistent binding"), so the
  * annotation is resolved from the JoinPoint: method first, then the class.
  *
- * Scope: HOSPITAL tenants only. Clinic and Pharmacy have never had module
- * enforcement, and three controllers they share with Hospital
- * (AppointmentController, HospitalFeeController, HospitalInventoryController)
- * are gated on modules their plan types cannot even be granted -- enforcing
- * here would permanently 403 them.
+ * Scope: HOSPITAL and CLINIC tenants. Standalone PHARMACY tenants bypass
+ * module gating because pharmacy ERP is their entire product rather than an optional module.
+ *
+ * Trust boundary: the tenant id comes from the authenticated principal, and
+ * EVERYTHING else -- the tenant type that decides whether this gate runs at all,
+ * and the modules it checks -- is read from the hospital row. The type used to
+ * come from the JWT's hospitalType claim, which meant a stale or tampered claim
+ * could switch module enforcement off (claim CLINIC) or on (claim HOSPITAL) for
+ * a tenant it did not describe. FacilityAccessAspect already resolves the type
+ * this way; both aspects now agree on what is authoritative. A vanished row
+ * denies rather than falling back to the token: with no authoritative state, a
+ * claim must not be able to grant a module.
  *
  * @author HMS Team
  */
@@ -54,47 +61,33 @@ public class ModuleAccessAspect {
             return;
         }
 
-        // Only HOSPITAL tenants are module-gated (see class javadoc). A null type means
-        // the token was minted before the claim existed: skip for one release rather
-        // than revoke access from a live session mid-token.
-        if (!HospitalType.HOSPITAL.name().equals(details.getHospitalType())) {
-            return;
-        }
-
         RequireModule requireModule = resolveAnnotation(joinPoint);
         if (requireModule == null) {
             return;
         }
 
-        List<String> enabledModules = resolveEnabledModules(details);
+        // One read of the authoritative row, answering both questions it is asked: which kind of
+        // tenant is this, and what does its plan hold. Neither answer comes from the caller's token.
+        Hospital hospital = hospitalRepository.findById(details.getHospitalId())
+                .orElseThrow(() -> new AccessDeniedException("Access Denied: tenant is unavailable."));
+
+        // Only HOSPITAL and CLINIC tenants are module-gated (see class javadoc). Standalone PHARMACY
+        // tenants bypass module gating because pharmacy ERP is their entire product.
+        // A row with no type is read as HOSPITAL -- the stricter reading, and the same default
+        // FacilityAccessAspect applies.
+        HospitalType type = hospital.getType() == null ? HospitalType.HOSPITAL : hospital.getType();
+        if (type != HospitalType.HOSPITAL && type != HospitalType.CLINIC) {
+            return;
+        }
+
+        List<String> enabledModules = hospital.getModules();
         String requiredModule = requireModule.value();
         if (enabledModules == null || !enabledModules.contains(requiredModule)) {
             // 403, not 401: the session is valid, the plan simply lacks this module. A 401
             // makes the frontend interceptor clear the token and bounce the user to /login.
             throw new AccessDeniedException(
-                    "Access Denied: Module '" + requiredModule + "' is not enabled for your hospital.");
+                    "Access Denied: Module '" + requiredModule + "' is not enabled for your facility.");
         }
-    }
-
-    /**
-     * The live module list for the caller's hospital — read from the hospital row, NOT from the
-     * caller's JWT.
-     *
-     * The token's "modules" claim is a snapshot taken at login. When the Super Admin changes a
-     * tenant's plan, every already-signed-in user of that tenant kept enforcing the old plan until
-     * they logged out and back in: a module they just bought would 403, and one that was just
-     * removed would still work. The hospital row is the live truth — the platform rewrites it on
-     * every plan assignment and plan edit (PlatformPlanService.applyPlanToHospital) — so read it
-     * here and a plan change takes effect on the very next request.
-     *
-     * Cheap: Hospital.modules is an EAGER collection and the row is served from Hibernate's cache
-     * within a request. Falls back to the token claim only if the hospital row is gone, which
-     * keeps a live session working rather than locking it out.
-     */
-    private List<String> resolveEnabledModules(UserAuthenticationDetails details) {
-        return hospitalRepository.findById(details.getHospitalId())
-                .map(Hospital::getModules)
-                .orElseGet(details::getModules);
     }
 
     /** Method-level annotation wins over the class-level one. */

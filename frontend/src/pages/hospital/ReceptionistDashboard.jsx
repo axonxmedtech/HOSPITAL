@@ -6,7 +6,9 @@ import AppointmentModal from '../../components/AppointmentModal';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import DataTable from '../../components/DataTable';
 import DateSelect from '../../components/DateSelect';
+import DuplicatePhoneConflictModal from '../../components/DuplicatePhoneConflictModal';
 import EmptyState from '../../components/EmptyState';
+import FollowUpPanel from '../../components/FollowUpPanel';
 import HistoryDrawer from '../../components/HistoryDrawer';
 import HospitalInventoryTab from '../../components/HospitalInventoryTab';
 import IpdAdmitModal from '../../components/IpdAdmitModal';
@@ -19,6 +21,10 @@ import OpdPaymentFields, {
 } from '../../components/OpdPaymentFields';
 import PageHeader from '../../components/PageHeader';
 import PatientDetailsModal from '../../components/PatientDetailsModal';
+import PatientFormFields, {
+  patientFormRules,
+  stripPatientPayload,
+} from '../../components/PatientFormFields';
 import PatientModal from '../../components/PatientModal';
 import PrescriptionModal from '../../components/PrescriptionModal';
 import PrescriptionViewModal from '../../components/PrescriptionViewModal';
@@ -35,10 +41,17 @@ import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
 // BUG-028: single source-of-truth for base URL
 import otService from '../../services/otService';
-import { extractApiError } from '../../utils/apiError';
+import { extractApiError, safeLoadMessage } from '../../utils/apiError';
+import { canManageBilling } from '../../utils/billingAccess';
 import { formatDateTime, formatTime } from '../../utils/date';
+import { extractPhoneConflicts } from '../../utils/duplicatePhone';
+import { createOptionalModuleFetcher } from '../../utils/optionalModule';
 import { printPdf } from '../../utils/printPdf';
+import { validateForm } from '../../utils/validation';
 import BillingTable from './BillingTable';
+import IcuBedBoard from './icu/IcuBedBoard';
+import IcuDashboard from './icu/IcuDashboard';
+import AnaesthesiaClearanceModal from './ot/AnaesthesiaClearanceModal';
 import DayCareSurgeryModal from './ot/DayCareSurgeryModal';
 import OtAnalyticsStrip from './ot/OtAnalyticsStrip';
 import OtBoard from './ot/OtBoard';
@@ -48,17 +61,22 @@ import RecoveryModal from './ot/RecoveryModal';
 import ScheduleSurgeryModal from './ot/ScheduleSurgeryModal';
 import SurgeryExecutionModal from './ot/SurgeryExecutionModal';
 import SurgeryTeamModal from './ot/SurgeryTeamModal';
+import IcuDashboardView from './IcuDashboardView';
 
 const ReceptionistDashboard = () => {
   const [user, setUser] = useState(() => authService.getCurrentUser());
   const modules = user?.modules || [];
   const hasOPD = modules.includes('OPD');
   const hasIPD = modules.includes('IPD');
-  const hasBilling = modules.includes('BILLING');
+  // Module AND billing handler AND not solo mode — the backend refuses the rest (utils/billingAccess).
+  const hasBilling = canManageBilling(user);
   const hasAppointments = modules.includes('APPOINTMENTS');
   const hasMedicalInventory = modules.includes('MEDICAL_INVENTORY');
   const hasHospitalInventory = modules.includes('HOSPITAL_INVENTORY');
   const hasOT = modules.includes('OT');
+  // Reception admits and moves patients, so it needs live ICU capacity. IcuBoardService
+  // withholds diagnosis and vitals for this role (ICU-1 D6); the tab flag does not.
+  const hasICU = modules.includes('ICU');
   // Tenant-aware label: clinic logins say "Clinic" wherever we'd otherwise say "Hospital".
   const tenantWord = user?.hospitalType === 'CLINIC' ? 'Clinic' : 'Hospital';
   const [searchParams, setSearchParams] = useSearchParams();
@@ -90,6 +108,10 @@ const ReceptionistDashboard = () => {
   const [billingStatus, setBillingStatus] = useState('PENDING');
   const [recPrintingId, setRecPrintingId] = useState(null);
   const [loading, setLoading] = useState(false);
+  // A failed load is its own state. Without it the screen falls back to whatever it already
+  // held -- [] on a first load -- and an unreachable server draws a desk with no patients
+  // booked, which is a sentence the software has no business saying.
+  const [loadError, setLoadError] = useState('');
   // Scoped loading indicator for just the Appointments list, so switching the
   // Today/Upcoming filter doesn't blow away the whole dashboard's full-page
   // skeleton (that's reserved for actual tab switches).
@@ -108,8 +130,14 @@ const ReceptionistDashboard = () => {
   const [editBillItemsSubmitting, setEditBillItemsSubmitting] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isAddPatientModalOpen, setIsAddPatientModalOpen] = useState(false);
+  // Patients this hospital already has on the number typed into the OPD intake form. Set means
+  // the submit is waiting on a person to say whether it is the same patient or a different one.
+  const [opdPhoneConflicts, setOpdPhoneConflicts] = useState(null);
   const [isOpdModalOpen, setIsOpdModalOpen] = useState(false);
   const [opdSubmitting, setOpdSubmitting] = useState(false);
+  // setState is asynchronous; the ref closes the same-frame double-click window the state
+  // flag alone leaves open. Same guard as the admin OPD modal.
+  const opdInFlight = useRef(false);
   const [isIpdAdmitOpen, setIsIpdAdmitOpen] = useState(false);
   const [ipdOpdForAdmit, setIpdOpdForAdmit] = useState(null);
   const [ipdSubTab, setIpdSubTab] = useState('current'); // 'current' | 'requested'
@@ -135,12 +163,24 @@ const ReceptionistDashboard = () => {
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [patientSearchText, setPatientSearchText] = useState('');
   const [showPatientDropdown, setShowPatientDropdown] = useState(false);
+  // OPD "New Patient": the patient fields are rendered inline in this same OPD form, so one
+  // submit registers the patient and opens their OPD. Same fields, same client rules and the
+  // same endpoint as the Patients tab - the existing-patient search path below is untouched.
+  const [opdPatientMode, setOpdPatientMode] = useState('existing'); // 'existing' | 'new'
+  const [newPatientForm, setNewPatientForm] = useState({ insurance: 'NO' });
+  const [newPatientErrors, setNewPatientErrors] = useState({});
+  // POST /hospital/patients allows only these roles, so the option is hidden for
+  // anyone else rather than letting them walk into a 403.
+  const canCreatePatient = user?.role === 'HOSPITAL_ADMIN' || user?.role === 'RECEPTIONIST';
 
   // Reset OPD patient search state when modal is opened or closed
   useEffect(() => {
     if (!isOpdModalOpen) {
       setPatientSearchText('');
       setShowPatientDropdown(false);
+      setOpdPatientMode('existing');
+      setNewPatientForm({ insurance: 'NO' });
+      setNewPatientErrors({});
       setOpdForm((prev) => ({
         ...prev,
         patientId: null,
@@ -251,6 +291,7 @@ const ReceptionistDashboard = () => {
   const [otRows, setOtRows] = useState([]);
   const [otLoading, setOtLoading] = useState(false);
   const [otScheduleTarget, setOtScheduleTarget] = useState(null);
+  const [otAnaesthesiaTarget, setOtAnaesthesiaTarget] = useState(null);
 
   const { success, error: toastError, info } = useToast();
   const navigate = useNavigate();
@@ -311,23 +352,46 @@ const ReceptionistDashboard = () => {
     if (activeTab === 'ot') loadOt();
   }, [activeTab, otFilter, loadOt]);
 
+  /**
+   * Appointment reads that must never take the desk down — see utils/optionalModule. This is the
+   * role that suffered most: the appointment stats call was the FIRST statement of loadData, so a
+   * 403 there skipped the OPD queue, the patient lookup, the doctor list, the IPD requests and
+   * today's follow-ups behind one "Failed to load data" toast.
+   */
+  const fetchAppointmentData = createOptionalModuleFetcher(hasAppointments);
+
   const loadData = async (showSpinner = true) => {
     const requestId = ++activeRequestRef.current;
     if (showSpinner) setLoading(true);
     try {
-      // Stats
-      const statsData = await hospitalService.getAppointmentStats();
+      let appointmentLoadFailed = false;
+      let appointmentLoadError = '';
+      const reportAppointmentFailure = (message, err) => {
+        console.error(message, err);
+        appointmentLoadError = safeLoadMessage(err, "Couldn't load this screen. Please try again.");
+        if (!appointmentLoadFailed) {
+          appointmentLoadFailed = true;
+          toastError('Failed to load appointments');
+        }
+      };
+
+      // Appointment stats are optional. A failure remains visible, but cannot prevent the desk
+      // from loading its queue, doctors, patients, or follow-ups.
+      let statsData = {};
+      try {
+        statsData = await fetchAppointmentData(() => hospitalService.getAppointmentStats(), {});
+      } catch (err) {
+        reportAppointmentFailure('[ReceptionistDashboard] Failed to load appointment stats', err);
+      }
       if (requestId !== activeRequestRef.current) return;
 
-      let ipdRequestsCount = 0;
+      let ipdRequestsCount = null;
       if (hasIPD) {
         try {
-          const opdsDataForCount = await hospitalService.getOpds('', 0, 1000, '', '');
-          const arrayForCount = opdsDataForCount.content || opdsDataForCount || [];
-          ipdRequestsCount = arrayForCount.filter(
-            (o) => o.ipdAdmitRecommended && o.status !== 'IN_IPD'
-          ).length;
+          ipdRequestsCount = await hospitalService.getPendingIpdRequestCount();
         } catch (e) {
+          // Leave the count null so the tile can say it failed. Showing 0 here would be
+          // indistinguishable from having no pending admissions.
           console.error('Failed to load IPD request count for stats', e);
         }
       }
@@ -335,33 +399,43 @@ const ReceptionistDashboard = () => {
 
       if (
         activeTab === 'overview' ||
-        activeTab === 'appointments' ||
+        (activeTab === 'appointments' && hasAppointments) ||
         activeTab === 'opd' ||
         activeTab === 'queue' ||
         activeTab === 'ipd'
       ) {
         if (activeTab === 'overview' || activeTab === 'appointments') setAppointmentsLoading(true);
-        // Fetch appointments (Server-side) + Doctors + Patients for lookup
-        const promises = [
-          activeTab === 'appointments' || activeTab === 'overview'
-            ? hospitalService.getAppointments(searchTerm, page, pageSize, viewFilter)
-            : Promise.resolve({ content: [] }),
+        // Mandatory desk data is deliberately separate from the optional appointments call.
+        const [docData, patData, followUpsData] = await Promise.all([
           hospitalService.getDoctors('', 0, 100), // Fetch doctors for lookup
           hospitalService.getPatients('', 0, 1000), // Fetch ALL patients (up to 1000) for lookup dropdown
           activeTab === 'overview' ? hospitalService.getTodaysFollowUps() : Promise.resolve([]),
-        ];
-        const [apptData, docData, patData, followUpsData] = await Promise.all(promises);
+        ]);
         if (requestId !== activeRequestRef.current) return;
 
         if (activeTab === 'appointments' || activeTab === 'overview') {
-          if (apptData.content) {
-            setAppointments(apptData.content);
-            setTotalPages(apptData.totalPages);
-            setTotalElements(apptData.totalElements);
-          } else {
-            setAppointments(apptData);
-            setTotalPages(1);
-            setTotalElements(apptData.length);
+          try {
+            const apptData = await fetchAppointmentData(
+              () => hospitalService.getAppointments(searchTerm, page, pageSize, viewFilter),
+              { content: [] }
+            );
+            if (requestId !== activeRequestRef.current) return;
+
+            if (apptData?.content) {
+              setAppointments(apptData.content);
+              setTotalPages(apptData.totalPages);
+              setTotalElements(apptData.totalElements);
+            } else if (Array.isArray(apptData)) {
+              setAppointments(apptData);
+              setTotalPages(1);
+              setTotalElements(apptData.length);
+            } else if (!hasAppointments) {
+              setAppointments([]);
+              setTotalPages(1);
+              setTotalElements(0);
+            }
+          } catch (err) {
+            reportAppointmentFailure('[ReceptionistDashboard] Failed to load appointments', err);
           }
         }
 
@@ -435,14 +509,27 @@ const ReceptionistDashboard = () => {
             setTotalPages(1);
             setTotalElements((arr && arr.length) || 0);
           } else {
-            // Requested patients: fetch OPD entries recommended for IPD
-            const opdsData = await hospitalService.getOpds(searchTerm, page, pageSize, '', '');
+            // Requested patients: pending IPD requests, resolved server-side. The predicate
+            // (ipdAdmitRecommended AND status != IN_IPD) used to be a client-side filter over one
+            // 1000-row page of ALL OPDs -- a request past that page was invisible, and admitting a
+            // patient only disappeared from the list once that same page happened to be refetched
+            // with the now-updated status. The server now derives "pending" the same way on every
+            // read, so a refetch after admit always excludes it, at any tenant size.
+            const pending = await hospitalService.getPendingIpdRequests(page, pageSize);
             if (requestId !== activeRequestRef.current) return;
-            const opdsArray = opdsData.content || opdsData || [];
-            const arr = opdsArray.filter((o) => o.ipdAdmitRecommended && o.status !== 'IN_IPD');
+            let arr = pending.content || pending || [];
+            if (searchTerm && searchTerm.trim()) {
+              const q = searchTerm.trim().toLowerCase();
+              arr = arr.filter((o) => {
+                const patient = (o.patient?.name || o.patientName || '').toString().toLowerCase();
+                const doctor = (o.doctor?.name || o.doctorName || '').toString().toLowerCase();
+                const caseId = (o.caseId || '').toString().toLowerCase();
+                return patient.includes(q) || doctor.includes(q) || caseId.includes(q);
+              });
+            }
             setOpds(arr);
-            setTotalPages(opdsData.totalPages || 1);
-            setTotalElements(opdsData.totalElements || arr.length);
+            setTotalPages(pending.totalPages || 1);
+            setTotalElements(pending.totalElements || arr.length);
           }
         }
 
@@ -505,9 +592,14 @@ const ReceptionistDashboard = () => {
           setTotalElements(data.length);
         }
       }
+      setLoadError(appointmentLoadError);
     } catch (err) {
       if (requestId !== activeRequestRef.current) return;
       console.error(`[ReceptionistDashboard] Failed to load ${activeTab}:`, err);
+      // safeLoadMessage, not extractApiError: this reaches a banner, and err.message carries
+      // whatever the transport or the JVM threw. Rows already on screen are left alone -- a
+      // failed refresh should not blank a list that was fine a moment ago.
+      setLoadError(safeLoadMessage(err, "Couldn't load this screen. Please try again."));
       // Only show toast error if it was a user-initiated action (spinner shown)
       if (showSpinner) toastError('Failed to load data');
     } finally {
@@ -771,15 +863,25 @@ const ReceptionistDashboard = () => {
     }));
   };
 
-  const handleViewPrescription = async (appointmentId) => {
+  /**
+   * Open the prescription for one consultation, whichever way the patient arrived.
+   *
+   * Reception's prescription viewer used to be appointment-keyed end to end — it read
+   * /doctors/consultation/{appointmentId} and printed /doctors/prescription/{appointmentId}/pdf.
+   * A walk-in consultation has no appointment, so for a hospital without the APPOINTMENTS module
+   * (and for the majority of visits at one with it) there was nothing to open. The doctor's side
+   * never had this problem; it has read by OPD for a while.
+   *
+   * Both keys are supported rather than one replacing the other: an appointment-origin
+   * consultation is still addressed by its appointment exactly as before.
+   */
+  const openPrescription = async ({ appointmentId = null, opdId = null }) => {
     try {
       setLoading(true);
-      const data = await hospitalService.getConsultationDetails(appointmentId);
-      setPrescriptionModal({
-        isOpen: true,
-        data: data,
-        appointmentId: appointmentId,
-      });
+      const data = appointmentId
+        ? await hospitalService.getConsultationDetails(appointmentId)
+        : await hospitalService.getConsultationDetailsByOpd(opdId);
+      setPrescriptionModal({ isOpen: true, data, appointmentId, opdId });
     } catch (err) {
       console.error(err);
       toastError('Prescription not available yet.');
@@ -788,13 +890,24 @@ const ReceptionistDashboard = () => {
     }
   };
 
+  const handleViewPrescription = (appointmentId) => openPrescription({ appointmentId });
+
+  const handleViewOpdPrescription = (opd) => openPrescription({ opdId: opd.id });
+
   const handleViewPatientPrescription = (patient) => {
     setViewPrescriptionModal({ isOpen: true, patient });
   };
 
   const handlePrintPrescription = () => {
-    if (!prescriptionModal.appointmentId) return;
-    openPdfInNewTab(`/hospital/doctors/prescription/${prescriptionModal.appointmentId}/pdf`);
+    // Print through whichever key opened the modal. The OPD route already existed and is what
+    // the doctor's dashboard has always used; reception simply never reached it.
+    if (prescriptionModal.appointmentId) {
+      openPdfInNewTab(`/hospital/doctors/prescription/${prescriptionModal.appointmentId}/pdf`);
+      return;
+    }
+    if (prescriptionModal.opdId) {
+      openPdfInNewTab(`/hospital/doctors/prescription/opd/${prescriptionModal.opdId}/pdf`);
+    }
   };
 
   const handleHistory = (type, id, name) => {
@@ -890,7 +1003,9 @@ const ReceptionistDashboard = () => {
     ...(hasOPD ? [{ id: 'patients', label: 'Patients', icon: null }] : []),
     ...(hasAppointments ? [{ id: 'appointments', label: 'Appointments', icon: null }] : []),
     ...(hasOPD ? [{ id: 'opd', label: 'OPD', icon: null }] : []),
+    ...(hasOPD ? [{ id: 'follow-ups', label: 'Follow-ups', icon: null }] : []),
     ...(hasIPD ? [{ id: 'ipd', label: 'IPD', icon: null }] : []),
+    ...(hasIPD ? [{ id: 'icu', label: 'ICU', icon: null }] : []),
     ...(hasBilling ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
     ...(hasMedicalInventory && user?.inClinic !== false
       ? [{ id: 'inventory', label: 'Medicine Inventory', icon: null }]
@@ -902,7 +1017,9 @@ const ReceptionistDashboard = () => {
       ? [{ id: 'hospital-inventory', label: `${tenantWord} Inventory`, icon: null }]
       : []),
     ...(hasOT ? [{ id: 'ot', label: 'Operation Theatre', icon: null }] : []),
-  ].filter((tab) => tab.id !== 'billing' || user?.billingHandler !== 'DOCTOR');
+    ...(hasICU ? [{ id: 'icu-dashboard', label: 'ICU Dashboard', icon: null }] : []),
+    ...(hasICU ? [{ id: 'icu-beds', label: 'ICU Bed Board', icon: null }] : []),
+  ];
 
   // Fallback if the URL parameter tab is not currently valid/visible
   useEffect(() => {
@@ -941,6 +1058,172 @@ const ReceptionistDashboard = () => {
 
   const showPatientSuggestions = showPatientDropdown && patientSearchText.trim().length >= 3;
 
+  // True while the OPD form is collecting a brand new patient inline instead of searching.
+  const isNewOpdPatient = canCreatePatient && opdPatientMode === 'new';
+
+  /**
+   * The OPD intake submit, lifted out of the form so the duplicate-phone chooser can re-enter it.
+   *
+   * @param acknowledgeDuplicatePhone resubmit confirming this is a different person who shares a
+   *        mobile number with an existing patient.
+   * @param existingPatientId the OPD is for a patient already registered on that number, picked
+   *        from the conflict list — no patient is created.
+   */
+  const submitOpd = async ({
+    acknowledgeDuplicatePhone = false,
+    existingPatientId = null,
+  } = {}) => {
+    if (opdSubmitting || opdInFlight.current) return;
+    // Every check runs before any request, so a bad vitals value can never leave a
+    // patient created with no OPD behind it.
+    if (isNewOpdPatient && !existingPatientId) {
+      const patientErrors = validateForm(newPatientForm, patientFormRules);
+      setNewPatientErrors(patientErrors);
+      if (Object.keys(patientErrors).length > 0) {
+        toastError('Please correct the highlighted patient details');
+        return;
+      }
+      // Also the branch taken when a patient was picked from the duplicate-phone list: there is
+      // nothing to validate, because nothing is being created.
+    } else if (!existingPatientId && !opdForm.patientId) {
+      toastError('Please select a valid patient from the suggestions');
+      return;
+    }
+    // Validate vitals
+    if (opdForm.bp) {
+      const bpVal = opdForm.bp.trim();
+      const bpMatch = bpVal.match(/^(\d{2,3})\s*\/\s*(\d{2,3})$/);
+      if (!bpMatch) {
+        toastError('Blood pressure must be in format Systolic/Diastolic, e.g., 120/80');
+        return;
+      }
+      const systolic = parseInt(bpMatch[1], 10);
+      const diastolic = parseInt(bpMatch[2], 10);
+      if (systolic <= diastolic) {
+        toastError('Systolic blood pressure must be greater than diastolic blood pressure');
+        return;
+      }
+    }
+    if (opdForm.temperature) {
+      const temp = parseFloat(opdForm.temperature);
+      if (isNaN(temp) || temp < 0) {
+        toastError('Temperature cannot be negative');
+        return;
+      }
+    }
+    if (opdForm.pulse) {
+      const pulse = parseInt(opdForm.pulse, 10);
+      if (isNaN(pulse) || pulse < 0) {
+        toastError('Pulse cannot be negative');
+        return;
+      }
+    }
+    if (opdForm.weight) {
+      const weight = parseFloat(opdForm.weight);
+      if (isNaN(weight) || weight < 0) {
+        toastError('Weight cannot be negative');
+        return;
+      }
+    }
+    if (opdForm.spo2) {
+      const spo2 = parseInt(opdForm.spo2, 10);
+      if (isNaN(spo2) || spo2 < 0) {
+        toastError('SpO2 cannot be negative');
+        return;
+      }
+    }
+
+    // Bill Payment = First: the fee is collected here, so the method is required.
+    const payErr = validateOpdPayment(opdForm.paymentMethod, opdForm.paymentReference);
+    if (payErr) {
+      toastError(payErr);
+      return;
+    }
+
+    // Claimed here, after every validation return above, so a rejected form can
+    // never strand the flag and block all later submits.
+    opdInFlight.current = true;
+    setOpdSubmitting(true);
+
+    // Two sequential calls to the two existing endpoints. The OPD is only
+    // attempted once the patient exists.
+    // A patient chosen from the duplicate-phone list short-circuits creation entirely: the
+    // person at the desk is one of the patients already registered on this number.
+    let patientId = existingPatientId || opdForm.patientId;
+    if (isNewOpdPatient && !existingPatientId) {
+      try {
+        const created = await hospitalService.addPatient(stripPatientPayload(newPatientForm), {
+          acknowledgeDuplicatePhone,
+        });
+        patientId = created?.id;
+        if (!patientId) throw new Error('Patient was saved without an id');
+        // The patient is committed the moment this resolves, so the form stops
+        // describing someone to create and starts describing someone who exists.
+        // Without this, a failed OPD below leaves the modal open still in "new"
+        // mode, and the obvious retry registers the same person a second time —
+        // nothing on the server rejects that, so the duplicate is permanent.
+        setOpdForm((prev) => ({ ...prev, patientId }));
+        setOpdPatientMode('existing');
+        setPatientSearchText(
+          `${created.name}${created.phone ? ` (${created.phone})` : ''}${created.customId ? ` [${created.customId}]` : ''}`
+        );
+      } catch (err) {
+        const conflicts = extractPhoneConflicts(err);
+        if (conflicts) {
+          // Paused, not failed: this number already belongs to someone here and only the person
+          // at the desk can say whether it is the same patient. The form is kept as typed.
+          setOpdPhoneConflicts(conflicts);
+          opdInFlight.current = false;
+          setOpdSubmitting(false);
+          return;
+        }
+        console.error('Failed to create patient', err);
+        toastError(extractApiError(err, 'Failed to create patient'));
+        opdInFlight.current = false;
+        setOpdSubmitting(false);
+        return;
+      }
+    }
+
+    try {
+      const payload = {
+        patientId,
+        doctorId: opdForm.doctorId,
+        bp: opdForm.bp ? opdForm.bp : null,
+        temperature: opdForm.temperature ? parseFloat(opdForm.temperature) : null,
+        pulse: opdForm.pulse ? parseInt(opdForm.pulse) : null,
+        weight: opdForm.weight ? parseFloat(opdForm.weight) : null,
+        height: opdForm.height ? parseFloat(opdForm.height) : null,
+        customVitals: opdForm.customVitals || {},
+        spo2: opdForm.spo2 ? parseInt(opdForm.spo2) : null,
+        problem: opdForm.problem,
+        visitType: opdForm.visitType,
+        ...(isPayFirst()
+          ? {
+              paymentMethod: opdForm.paymentMethod,
+              paymentReference: opdForm.paymentReference || null,
+            }
+          : {}),
+      };
+      const res = await hospitalService.createOpd(payload);
+      setCreatedOpd(res);
+      setIsOpdModalOpen(false);
+      success('OPD Case created successfully — ID: ' + res.caseId);
+      loadData(); // Refresh the data after OPD creation
+    } catch (err) {
+      console.error('Failed to create OPD', err);
+      toastError('Failed to create OPD');
+    } finally {
+      opdInFlight.current = false;
+      setOpdSubmitting(false);
+    }
+  };
+
+  const handleNewPatientChange = (field, value) => {
+    setNewPatientForm((prev) => ({ ...prev, [field]: value }));
+    setNewPatientErrors((prev) => (prev[field] ? { ...prev, [field]: null } : prev));
+  };
+
   return (
     <div className="flex h-screen bg-white">
       {/* Sidebar */}
@@ -967,6 +1250,24 @@ const ReceptionistDashboard = () => {
         />
 
         <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-8">
+          {loadError && (
+            <div
+              role="alert"
+              className="mb-6 border border-red-200 bg-red-50 rounded-lg p-4 text-sm text-red-800"
+            >
+              <p className="font-semibold">Couldn&apos;t load this screen</p>
+              <p className="mt-0.5">{loadError}</p>
+              <p className="mt-1 text-xs text-red-700">Anything shown below may be out of date.</p>
+              <button
+                type="button"
+                onClick={() => loadData(true)}
+                className="mt-2 px-3 py-1 text-xs font-semibold text-red-800 border border-red-300 rounded-md hover:bg-red-100"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
           {/* Overview Tab */}
           {activeTab === 'overview' && !loading && (
             <div className="space-y-6">
@@ -1038,9 +1339,15 @@ const ReceptionistDashboard = () => {
                   <div className="bg-white rounded-lg border border-gray-200 p-6 flex flex-col justify-between">
                     <div>
                       <p className="text-gray-600 text-sm font-medium">IPD Requests</p>
-                      <h3 className="text-3xl font-bold text-gray-900 mt-1">
-                        {stats.ipdRequests || 0}
-                      </h3>
+                      {stats.ipdRequests === null || stats.ipdRequests === undefined ? (
+                        <h3 className="text-base font-semibold text-red-600 mt-1" role="status">
+                          Couldn&apos;t load
+                        </h3>
+                      ) : (
+                        <h3 className="text-3xl font-bold text-gray-900 mt-1">
+                          {stats.ipdRequests}
+                        </h3>
+                      )}
                     </div>
                     <div className="mt-2">
                       <button
@@ -1059,42 +1366,23 @@ const ReceptionistDashboard = () => {
                 )}
               </div>
 
-              {/* Side-by-Side Lists: Appointments and Queue */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
-                {/* Left Div: Appointments */}
-                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col h-[650px] overflow-hidden">
-                  <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-gradient-to-r from-gray-50/50 to-white">
-                    <div>
-                      <h3 className="text-lg font-bold text-gray-955">Appointments</h3>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        Manage scheduled clinical slots
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => setIsAddModalOpen(true)}
-                      className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white text-xs font-semibold rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer animate-fade-in"
-                    >
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
+              {/* Follow-ups remain available for walk-in hospitals, independent of appointments. */}
+              <div
+                className={`${hasAppointments ? 'grid grid-cols-1 lg:grid-cols-3' : 'grid grid-cols-1 lg:grid-cols-2'} gap-8 mt-8`}
+              >
+                {hasAppointments && (
+                  <div className="bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col h-[650px] overflow-hidden">
+                    <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-gradient-to-r from-gray-50/50 to-white">
+                      <div>
+                        <h3 className="text-lg font-bold text-gray-955">Appointments</h3>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Manage scheduled clinical slots
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setIsAddModalOpen(true)}
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white text-xs font-semibold rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer animate-fade-in"
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 4v16m8-8H4"
-                        />
-                      </svg>
-                      Add Appointment
-                    </button>
-                  </div>
-
-                  {/* Appointment Controls */}
-                  <div className="px-6 py-3 bg-gray-50/30 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="relative flex-1 max-w-xs">
-                      <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
                         <svg
                           className="w-4 h-4"
                           fill="none"
@@ -1105,128 +1393,151 @@ const ReceptionistDashboard = () => {
                             strokeLinecap="round"
                             strokeLinejoin="round"
                             strokeWidth={2}
-                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                            d="M12 4v16m8-8H4"
                           />
                         </svg>
-                      </span>
-                      <input
-                        type="text"
-                        placeholder="Search appointments..."
-                        value={searchInput}
-                        onChange={(e) => {
-                          setSearchInput(e.target.value);
-                          setPage(0);
-                        }}
-                        className="w-full pl-9 pr-4 py-1.5 text-xs bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 transition-all"
-                      />
+                        Add Appointment
+                      </button>
                     </div>
-                    <div className="flex bg-gray-100 rounded-xl p-1 border border-gray-200">
-                      {['today', 'upcoming'].map((view) => (
-                        <button
-                          key={view}
-                          onClick={() => {
-                            setViewFilter(view);
+
+                    {/* Appointment Controls */}
+                    <div className="px-6 py-3 bg-gray-50/30 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="relative flex-1 max-w-xs">
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                            />
+                          </svg>
+                        </span>
+                        <input
+                          type="text"
+                          placeholder="Search appointments..."
+                          value={searchInput}
+                          onChange={(e) => {
+                            setSearchInput(e.target.value);
                             setPage(0);
                           }}
-                          className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                            viewFilter === view
-                              ? 'bg-white text-gray-900 shadow-sm border border-gray-100'
-                              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
-                          }`}
-                        >
-                          {view.charAt(0).toUpperCase() + view.slice(1)}
-                        </button>
-                      ))}
+                          className="w-full pl-9 pr-4 py-1.5 text-xs bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 transition-all"
+                        />
+                      </div>
+                      <div className="flex bg-gray-100 rounded-xl p-1 border border-gray-200">
+                        {['today', 'upcoming'].map((view) => (
+                          <button
+                            key={view}
+                            onClick={() => {
+                              setViewFilter(view);
+                              setPage(0);
+                            }}
+                            className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                              viewFilter === view
+                                ? 'bg-white text-gray-900 shadow-sm border border-gray-100'
+                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                            }`}
+                          >
+                            {view.charAt(0).toUpperCase() + view.slice(1)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Appointment List Content */}
+                    <div className="flex-1 overflow-auto p-6 space-y-6">
+                      <div>
+                        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                          <span className="w-1.5 h-3 bg-gray-900 rounded-full"></span>
+                          Active Appointments
+                        </h4>
+                        {appointmentsLoading ? (
+                          <SkeletonTable rows={4} cols={5} />
+                        ) : appointments.length > 0 ? (
+                          <AppointmentsTable
+                            appointments={appointments}
+                            doctors={doctors}
+                            onStatusUpdate={handleStatusUpdate}
+                            onHistory={(item) =>
+                              handleHistory('APPOINTMENT', item.publicId || item.id, 'Appointment')
+                            }
+                            onViewPrescription={handleViewPrescription}
+                            startIndex={page * pageSize}
+                            pagination={pagination}
+                          />
+                        ) : (
+                          <EmptyState
+                            icon={null}
+                            title="No Appointments Found"
+                            message="Schedule appointments for your patients."
+                            actionLabel="Schedule Appointment"
+                            onAction={() => setIsAddModalOpen(true)}
+                          />
+                        )}
+                      </div>
                     </div>
                   </div>
+                )}
 
-                  {/* Appointment List Content */}
-                  <div className="flex-1 overflow-auto p-6 space-y-6">
-                    <div>
-                      <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                        <span className="w-1.5 h-3 bg-gray-900 rounded-full"></span>
-                        Active Appointments
-                      </h4>
-                      {appointmentsLoading ? (
-                        <SkeletonTable rows={4} cols={5} />
-                      ) : appointments.length > 0 ? (
-                        <AppointmentsTable
-                          appointments={appointments}
-                          doctors={doctors}
-                          onStatusUpdate={handleStatusUpdate}
-                          onHistory={(item) =>
-                            handleHistory('APPOINTMENT', item.publicId || item.id, 'Appointment')
-                          }
-                          onViewPrescription={handleViewPrescription}
-                          startIndex={page * pageSize}
-                          pagination={pagination}
-                        />
-                      ) : (
-                        <EmptyState
-                          icon={null}
-                          title="No Appointments Found"
-                          message="Schedule appointments for your patients."
-                          actionLabel="Schedule Appointment"
-                          onAction={() => setIsAddModalOpen(true)}
-                        />
-                      )}
-                    </div>
-
-                    <div className="border-t border-gray-100 pt-6">
-                      <h4 className="text-xs font-bold text-indigo-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-                        <span className="w-1.5 h-3 bg-indigo-600 rounded-full"></span>
-                        Today&apos;s Follow-Ups
-                      </h4>
-                      {todaysFollowUps && todaysFollowUps.length > 0 ? (
-                        <div className="overflow-x-auto border border-gray-100 rounded-xl">
-                          <table className="w-full text-sm text-left">
-                            <thead>
-                              <tr className="bg-gray-50 border-b border-gray-100">
-                                <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">
-                                  Patient ID
-                                </th>
-                                <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">
-                                  Patient Name
-                                </th>
-                                <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">
-                                  Assigned Doctor
-                                </th>
-                                <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">
-                                  Diagnosis / Reason
-                                </th>
+                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col h-[650px] overflow-hidden">
+                  <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-gray-50/50 to-white">
+                    <h3 className="text-lg font-bold text-gray-955">Today&apos;s Follow-Ups</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Patients due for a follow-up today
+                    </p>
+                  </div>
+                  <div className="flex-1 overflow-auto p-6">
+                    {todaysFollowUps.length > 0 ? (
+                      <div className="overflow-x-auto border border-gray-100 rounded-xl">
+                        <table className="w-full text-sm text-left">
+                          <thead>
+                            <tr className="bg-gray-50 border-b border-gray-100">
+                              <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">
+                                Patient ID
+                              </th>
+                              <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">
+                                Patient Name
+                              </th>
+                              <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">
+                                Assigned Doctor
+                              </th>
+                              <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">
+                                Diagnosis / Reason
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-50">
+                            {todaysFollowUps.map((record) => (
+                              <tr key={record.id} className="hover:bg-gray-50/40 transition-colors">
+                                <td className="px-4 py-3.5 text-xs font-bold text-indigo-600">
+                                  {record.patientCustomId || record.patientPublicId || '-'}
+                                </td>
+                                <td className="px-4 py-3.5 text-sm font-semibold text-gray-900">
+                                  {record.patientName || '-'}
+                                </td>
+                                <td className="px-4 py-3.5 text-sm text-gray-600">
+                                  {record.doctorName || '-'}
+                                </td>
+                                <td className="px-4 py-3.5 text-sm text-gray-500 italic">
+                                  {record.diagnosis || 'Follow-up'}
+                                </td>
                               </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-50">
-                              {todaysFollowUps.map((record) => (
-                                <tr
-                                  key={record.id}
-                                  className="hover:bg-gray-50/40 transition-colors"
-                                >
-                                  <td className="px-4 py-3.5 text-xs font-bold text-indigo-600">
-                                    {record.patientCustomId || record.patientPublicId || '-'}
-                                  </td>
-                                  <td className="px-4 py-3.5 text-sm font-semibold text-gray-900">
-                                    {record.patientName || '-'}
-                                  </td>
-                                  <td className="px-4 py-3.5 text-sm text-gray-600">
-                                    {record.doctorName || '-'}
-                                  </td>
-                                  <td className="px-4 py-3.5 text-sm text-gray-500 italic">
-                                    {record.diagnosis || 'Follow-up'}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : (
-                        <div className="text-center py-8 border border-dashed border-gray-200 rounded-xl">
-                          <p className="text-sm text-gray-400 font-medium">
-                            No follow-ups scheduled for today.
-                          </p>
-                        </div>
-                      )}
-                    </div>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <EmptyState
+                        icon={null}
+                        title="No Follow-Ups Today"
+                        message="No follow-ups scheduled for today."
+                      />
+                    )}
                   </div>
                 </div>
 
@@ -1357,7 +1668,8 @@ const ReceptionistDashboard = () => {
                 activeTab === 'ipd' ||
                 activeTab === 'inventory' ||
                 activeTab === 'hospital-inventory' ||
-                activeTab === 'ot'
+                activeTab === 'ot' ||
+                activeTab === 'icu'
                   ? null
                   : () => {
                       if (activeTab === 'opd') setIsOpdModalOpen(true);
@@ -1366,7 +1678,7 @@ const ReceptionistDashboard = () => {
               }
               addLabel={activeTab === 'opd' ? 'New OPD / Case' : `Add ${activeTab.slice(0, -1)}`}
               filter={
-                activeTab === 'appointments' ? (
+                activeTab === 'appointments' && hasAppointments ? (
                   <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
                     {['today', 'upcoming'].map((view) => (
                       <button
@@ -1577,6 +1889,7 @@ const ReceptionistDashboard = () => {
           {!loading && activeTab !== 'overview' && (
             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
               {activeTab === 'appointments' &&
+                hasAppointments &&
                 (appointmentsLoading ? (
                   <SkeletonTable rows={6} cols={5} />
                 ) : appointments.length > 0 ? (
@@ -1600,6 +1913,8 @@ const ReceptionistDashboard = () => {
                     onAction={() => setIsAddModalOpen(true)}
                   />
                 ))}
+              {/* eslint-disable-next-line jsx-a11y/aria-role -- `role` is FollowUpPanel's own prop, not an ARIA role */}
+              {activeTab === 'follow-ups' && <FollowUpPanel role="RECEPTIONIST" />}
               {activeTab === 'opd' &&
                 (opds.length > 0 ? (
                   <div className="p-4 overflow-x-auto">
@@ -1631,6 +1946,12 @@ const ReceptionistDashboard = () => {
                                   className="px-3 py-1 bg-gray-900 text-white rounded"
                                 >
                                   Print
+                                </button>
+                                <button
+                                  onClick={() => handleViewOpdPrescription(o)}
+                                  className="px-3 py-1 border border-gray-300 text-gray-700 rounded hover:bg-gray-50"
+                                >
+                                  Prescription
                                 </button>
                               </div>
                             </td>
@@ -1667,7 +1988,6 @@ const ReceptionistDashboard = () => {
                             <th className="px-4 py-2">Bed</th>
                             <th className="px-4 py-2">Admitted</th>
                             <th className="px-4 py-2">Status</th>
-                            <th className="px-4 py-2">Actions</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1694,7 +2014,22 @@ const ReceptionistDashboard = () => {
                               <tr key={idx} className="border-t">
                                 <td className="px-4 py-3">{page * pageSize + idx + 1}</td>
                                 <td className="px-4 py-3">{ipdNumber || row.id}</td>
-                                <td className="px-4 py-3">{patientName}</td>
+                                <td className="px-4 py-3">
+                                  {ipdId ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        window.location.href = `/ipd/${ipdId}`;
+                                      }}
+                                      className="font-medium text-blue-600 hover:text-blue-800 hover:underline text-left cursor-pointer"
+                                      title="View IPD details"
+                                    >
+                                      {patientName}
+                                    </button>
+                                  ) : (
+                                    <span>{patientName}</span>
+                                  )}
+                                </td>
                                 <td className="px-4 py-3">{doctorName}</td>
                                 <td className="px-4 py-3">{wardName}</td>
                                 <td className="px-4 py-3">{bedNumber}</td>
@@ -1714,18 +2049,6 @@ const ReceptionistDashboard = () => {
                                       <span className="text-[10px] text-gray-500">{status}</span>
                                     )}
                                   </div>
-                                </td>
-                                <td className="px-4 py-3">
-                                  <button
-                                    className={`px-3 py-1 rounded ${ipdId ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
-                                    onClick={() => {
-                                      if (ipdId) window.location.href = `/ipd/${ipdId}`;
-                                    }}
-                                    disabled={!ipdId}
-                                    title={ipdId ? 'View IPD details' : 'IPD id not available'}
-                                  >
-                                    View
-                                  </button>
                                 </td>
                               </tr>
                             );
@@ -1870,6 +2193,11 @@ const ReceptionistDashboard = () => {
               )}
               {activeTab === 'inventory' && <MedicineInventoryTab hidePrescribingColumns />}
               {activeTab === 'hospital-inventory' && <HospitalInventoryTab />}
+              {activeTab === 'icu' && <IcuDashboardView />}
+              {activeTab === 'icu-dashboard' && (
+                <IcuDashboard onOpenBedBoard={() => setActiveTab('icu-beds')} />
+              )}
+              {activeTab === 'icu-beds' && <IcuBedBoard />}
               {activeTab === 'ot' && (
                 <div>
                   <div className="flex items-center justify-between mb-4">
@@ -1921,45 +2249,115 @@ const ReceptionistDashboard = () => {
                   ) : otLoading ? (
                     <div className="text-center text-gray-400 py-16">Loading…</div>
                   ) : (
+                    /* Each handler is supplied only when this user holds the permission its
+                       endpoint requires, so the board never draws a button that would 403. */
                     <OtBoard
                       rows={otRows}
                       mode={otFilter}
-                      onSchedule={(r) => setOtScheduleTarget(r)}
-                      onCancel={async (r) => {
-                        try {
-                          await otService.cancel(r.publicId);
-                          loadOt();
-                        } catch (e) {
-                          toastError(e?.response?.data?.error || 'Failed to cancel');
-                        }
-                      }}
-                      onStart={async (r) => {
-                        try {
-                          await otService.start(r.publicId);
-                          loadOt();
-                        } catch (e) {
-                          toastError(e?.response?.data?.error || 'Failed to start');
-                        }
-                      }}
-                      onComplete={async (r) => {
-                        try {
-                          await otService.complete(r.publicId);
-                          loadOt();
-                        } catch (e) {
-                          toastError(e?.response?.data?.error || 'Failed to complete');
-                        }
-                      }}
-                      onTeam={(r) => setOtTeamTarget(r)}
-                      onExecute={(r) => setOtExecTarget(r)}
-                      onRecovery={(r) => setOtRecoveryTarget(r)}
-                      onClose={async (r) => {
-                        try {
-                          await otService.close(r.publicId);
-                          loadOt();
-                        } catch (e) {
-                          toastError(e?.response?.data?.error || 'Failed to close');
-                        }
-                      }}
+                      onSchedule={canOt('OT_SCHEDULE') ? (r) => setOtScheduleTarget(r) : undefined}
+                      onCancel={
+                        canOt('OT_CANCEL')
+                          ? async (r) => {
+                              try {
+                                await otService.cancel(r.publicId);
+                                loadOt();
+                              } catch (e) {
+                                toastError(e?.response?.data?.error || 'Failed to cancel');
+                              }
+                            }
+                          : undefined
+                      }
+                      onStart={
+                        canOt('OT_START')
+                          ? async (r) => {
+                              try {
+                                await otService.start(r.publicId);
+                                loadOt();
+                              } catch (e) {
+                                toastError(e?.response?.data?.error || 'Failed to start');
+                              }
+                            }
+                          : undefined
+                      }
+                      onComplete={
+                        canOt('OT_COMPLETE')
+                          ? async (r) => {
+                              try {
+                                await otService.complete(r.publicId);
+                                loadOt();
+                              } catch (e) {
+                                toastError(e?.response?.data?.error || 'Failed to complete');
+                              }
+                            }
+                          : undefined
+                      }
+                      onTeam={canOt('OT_ASSIGN_TEAM') ? (r) => setOtTeamTarget(r) : undefined}
+                      onExecute={canOt('OT_VIEW') ? (r) => setOtExecTarget(r) : undefined}
+                      onRecovery={
+                        canOt('OT_RECOVERY') || canOt('OT_TRANSFER')
+                          ? (r) => setOtRecoveryTarget(r)
+                          : undefined
+                      }
+                      onClose={
+                        canOt('OT_CLOSE')
+                          ? async (r) => {
+                              try {
+                                await otService.close(r.publicId);
+                                loadOt();
+                              } catch (e) {
+                                toastError(e?.response?.data?.error || 'Failed to close');
+                              }
+                            }
+                          : undefined
+                      }
+                      onApprove={
+                        canOt('OT_APPROVE')
+                          ? async (r) => {
+                              try {
+                                await otService.approve(r.publicId);
+                                loadOt();
+                              } catch (e) {
+                                toastError(e?.response?.data?.error || 'Failed to approve');
+                              }
+                            }
+                          : undefined
+                      }
+                      onPreOp={
+                        canOt('OT_PRE_OP')
+                          ? async (r) => {
+                              try {
+                                await otService.preOp(r.publicId);
+                                loadOt();
+                              } catch (e) {
+                                toastError(e?.response?.data?.error || 'Failed to enter pre-op');
+                              }
+                            }
+                          : undefined
+                      }
+                      onAnaesthesia={
+                        canOt('OT_ANAESTHESIA_CLEARANCE')
+                          ? (r) => setOtAnaesthesiaTarget(r)
+                          : undefined
+                      }
+                      onPostpone={
+                        canOt('OT_RESCHEDULE')
+                          ? async (r) => {
+                              try {
+                                await otService.postpone(r.publicId);
+                                loadOt();
+                              } catch (e) {
+                                toastError(e?.response?.data?.error || 'Failed to postpone');
+                              }
+                            }
+                          : undefined
+                      }
+                    />
+                  )}
+                  {otAnaesthesiaTarget && (
+                    <AnaesthesiaClearanceModal
+                      surgery={otAnaesthesiaTarget}
+                      onClose={() => setOtAnaesthesiaTarget(null)}
+                      onRecorded={loadOt}
                     />
                   )}
                   {otTeamTarget && (
@@ -2001,7 +2399,7 @@ const ReceptionistDashboard = () => {
       </div>
 
       {/* Appointment Modal - Using Shared Component */}
-      {(activeTab === 'appointments' || activeTab === 'overview') && (
+      {hasAppointments && (activeTab === 'appointments' || activeTab === 'overview') && (
         <AppointmentModal
           isOpen={isAddModalOpen}
           onClose={() => setIsAddModalOpen(false)}
@@ -2012,6 +2410,30 @@ const ReceptionistDashboard = () => {
       )}
 
       {/* Patient Modal - Using Shared Component */}
+      {opdPhoneConflicts && (
+        <DuplicatePhoneConflictModal
+          isOpen
+          conflicts={opdPhoneConflicts}
+          busy={opdSubmitting}
+          onUseExisting={(patient) => {
+            // The person at the desk is this patient. Switch the form onto them so a later
+            // retry cannot register a second copy, then run the OPD against their id.
+            setOpdPhoneConflicts(null);
+            setOpdForm((prev) => ({ ...prev, patientId: patient.id }));
+            setOpdPatientMode('existing');
+            setPatientSearchText(
+              `${patient.name}${patient.customId ? ` [${patient.customId}]` : ''}`
+            );
+            submitOpd({ existingPatientId: patient.id });
+          }}
+          onRegisterDifferent={() => {
+            setOpdPhoneConflicts(null);
+            submitOpd({ acknowledgeDuplicatePhone: true });
+          }}
+          onCancel={() => setOpdPhoneConflicts(null)}
+        />
+      )}
+
       {((activeTab === 'patients' && isAddModalOpen) ||
         (activeTab === 'overview' && isAddPatientModalOpen)) && (
         <PatientModal
@@ -2072,184 +2494,146 @@ const ReceptionistDashboard = () => {
               </div>
             </div>
             <form
-              onSubmit={async (e) => {
+              onSubmit={(e) => {
                 e.preventDefault();
-                if (opdSubmitting) return;
-                if (!opdForm.patientId) {
-                  toastError('Please select a valid patient from the suggestions');
-                  return;
-                }
-                // Validate vitals
-                if (opdForm.bp) {
-                  const bpVal = opdForm.bp.trim();
-                  const bpMatch = bpVal.match(/^(\d{2,3})\s*\/\s*(\d{2,3})$/);
-                  if (!bpMatch) {
-                    toastError('Blood pressure must be in format Systolic/Diastolic, e.g., 120/80');
-                    return;
-                  }
-                  const systolic = parseInt(bpMatch[1], 10);
-                  const diastolic = parseInt(bpMatch[2], 10);
-                  if (systolic <= diastolic) {
-                    toastError(
-                      'Systolic blood pressure must be greater than diastolic blood pressure'
-                    );
-                    return;
-                  }
-                }
-                if (opdForm.temperature) {
-                  const temp = parseFloat(opdForm.temperature);
-                  if (isNaN(temp) || temp < 0) {
-                    toastError('Temperature cannot be negative');
-                    return;
-                  }
-                }
-                if (opdForm.pulse) {
-                  const pulse = parseInt(opdForm.pulse, 10);
-                  if (isNaN(pulse) || pulse < 0) {
-                    toastError('Pulse cannot be negative');
-                    return;
-                  }
-                }
-                if (opdForm.weight) {
-                  const weight = parseFloat(opdForm.weight);
-                  if (isNaN(weight) || weight < 0) {
-                    toastError('Weight cannot be negative');
-                    return;
-                  }
-                }
-                if (opdForm.spo2) {
-                  const spo2 = parseInt(opdForm.spo2, 10);
-                  if (isNaN(spo2) || spo2 < 0) {
-                    toastError('SpO2 cannot be negative');
-                    return;
-                  }
-                }
-
-                // Bill Payment = First: the fee is collected here, so the method is required.
-                const payErr = validateOpdPayment(opdForm.paymentMethod, opdForm.paymentReference);
-                if (payErr) {
-                  toastError(payErr);
-                  return;
-                }
-
-                setOpdSubmitting(true);
-                try {
-                  const payload = {
-                    patientId: opdForm.patientId,
-                    doctorId: opdForm.doctorId,
-                    bp: opdForm.bp ? opdForm.bp : null,
-                    temperature: opdForm.temperature ? parseFloat(opdForm.temperature) : null,
-                    pulse: opdForm.pulse ? parseInt(opdForm.pulse) : null,
-                    weight: opdForm.weight ? parseFloat(opdForm.weight) : null,
-                    height: opdForm.height ? parseFloat(opdForm.height) : null,
-                    customVitals: opdForm.customVitals || {},
-                    spo2: opdForm.spo2 ? parseInt(opdForm.spo2) : null,
-                    problem: opdForm.problem,
-                    visitType: opdForm.visitType,
-                    ...(isPayFirst()
-                      ? {
-                          paymentMethod: opdForm.paymentMethod,
-                          paymentReference: opdForm.paymentReference || null,
-                        }
-                      : {}),
-                  };
-                  const res = await hospitalService.createOpd(payload);
-                  setCreatedOpd(res);
-                  setIsOpdModalOpen(false);
-                  success('OPD Case created successfully — ID: ' + res.caseId);
-                  loadData(); // Refresh the data after OPD creation
-                } catch (err) {
-                  console.error('Failed to create OPD', err);
-                  toastError('Failed to create OPD');
-                } finally {
-                  setOpdSubmitting(false);
-                }
+                return submitOpd();
               }}
               className="p-6 space-y-4 max-h-[76vh] overflow-auto"
             >
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="relative">
-                  <span className="block text-sm font-semibold text-neutral-700 mb-2">
-                    Patient <span className="text-red-600">*</span>
-                  </span>
-                  <div className="relative">
-                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
-                      <svg
-                        className="w-5 h-5"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                        />
-                      </svg>
-                    </span>
-                    <input
-                      type="text"
-                      className="input-field pl-10"
-                      value={patientSearchText}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setPatientSearchText(val);
-                        setShowPatientDropdown(true);
-                        setOpdForm((prev) => ({ ...prev, patientId: null }));
-                      }}
-                      onFocus={() => setShowPatientDropdown(true)}
-                      onBlur={() => {
-                        setTimeout(() => {
-                          setShowPatientDropdown(false);
-                        }, 250);
-                      }}
-                      placeholder="Type at least 3 letters to search patient..."
-                      autoComplete="off"
-                    />
-                  </div>
-
-                  {showPatientSuggestions && (
-                    <div className="absolute left-0 right-0 mt-1 bg-white border border-neutral-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto divide-y divide-neutral-100 animate-scale-in">
-                      {filteredPatientsForOpd.length > 0 ? (
-                        filteredPatientsForOpd.map((p) => (
-                          <button
-                            type="button"
-                            key={p.id}
-                            onMouseDown={() => {
-                              setOpdForm((prev) => ({ ...prev, patientId: p.id }));
-                              setPatientSearchText(
-                                `${p.name}${p.phone ? ` (${p.phone})` : ''}${p.customId ? ` [${p.customId}]` : ''}`
-                              );
-                              setShowPatientDropdown(false);
-                            }}
-                            className="w-full px-4 py-3 hover:bg-neutral-50 cursor-pointer transition-colors duration-150 flex flex-col gap-0.5 text-left"
-                          >
-                            <div className="flex justify-between items-center">
-                              <span className="font-semibold text-neutral-800 text-sm">
-                                {p.name}
-                              </span>
-                              {p.customId && (
-                                <span className="text-[10px] font-bold px-2 py-0.5 bg-neutral-100 text-neutral-600 rounded-full tracking-wide">
-                                  {p.customId}
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex gap-4 text-xs text-neutral-500">
-                              {p.phone && <span>📞 {p.phone}</span>}
-                              {p.gender && <span>👤 {p.gender}</span>}
-                              {p.age && <span>🎂 {p.age} Yrs</span>}
-                            </div>
-                          </button>
-                        ))
-                      ) : (
-                        <div className="px-4 py-4 text-sm text-neutral-500 text-center">
-                          No matching patients found
-                        </div>
-                      )}
-                    </div>
-                  )}
+              {canCreatePatient && (
+                <div
+                  className="inline-flex p-1 bg-neutral-100 rounded-xl"
+                  role="group"
+                  aria-label="Patient source"
+                >
+                  <button
+                    type="button"
+                    aria-pressed={opdPatientMode === 'existing'}
+                    onClick={() => setOpdPatientMode('existing')}
+                    className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-colors ${
+                      opdPatientMode === 'existing'
+                        ? 'bg-white text-neutral-900 shadow-sm'
+                        : 'text-neutral-500 hover:text-neutral-700'
+                    }`}
+                  >
+                    Existing Patient
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={opdPatientMode === 'new'}
+                    onClick={() => {
+                      setOpdPatientMode('new');
+                      setShowPatientDropdown(false);
+                      // Drop any patient picked by search, so only one of the two
+                      // sources is ever in play.
+                      setPatientSearchText('');
+                      setOpdForm((prev) => ({ ...prev, patientId: null }));
+                    }}
+                    className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-colors ${
+                      opdPatientMode === 'new'
+                        ? 'bg-white text-neutral-900 shadow-sm'
+                        : 'text-neutral-500 hover:text-neutral-700'
+                    }`}
+                  >
+                    New Patient
+                  </button>
                 </div>
+              )}
+              {isNewOpdPatient && (
+                <div className="border border-neutral-200 rounded-xl p-4 space-y-4 bg-neutral-50/40">
+                  <p className="text-sm font-semibold text-neutral-800">New Patient Details</p>
+                  <PatientFormFields
+                    values={newPatientForm}
+                    errors={newPatientErrors}
+                    onChange={handleNewPatientChange}
+                  />
+                </div>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {!isNewOpdPatient && (
+                  <div className="relative">
+                    <span className="block text-sm font-semibold text-neutral-700 mb-2">
+                      Patient <span className="text-red-600">*</span>
+                    </span>
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                          />
+                        </svg>
+                      </span>
+                      <input
+                        type="text"
+                        className="input-field pl-10"
+                        value={patientSearchText}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setPatientSearchText(val);
+                          setShowPatientDropdown(true);
+                          setOpdForm((prev) => ({ ...prev, patientId: null }));
+                        }}
+                        onFocus={() => setShowPatientDropdown(true)}
+                        onBlur={() => {
+                          setTimeout(() => {
+                            setShowPatientDropdown(false);
+                          }, 250);
+                        }}
+                        placeholder="Type at least 3 letters to search patient..."
+                        autoComplete="off"
+                      />
+                    </div>
+
+                    {showPatientSuggestions && (
+                      <div className="absolute left-0 right-0 mt-1 bg-white border border-neutral-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto divide-y divide-neutral-100 animate-scale-in">
+                        {filteredPatientsForOpd.length > 0 ? (
+                          filteredPatientsForOpd.map((p) => (
+                            <button
+                              type="button"
+                              key={p.id}
+                              onMouseDown={() => {
+                                setOpdForm((prev) => ({ ...prev, patientId: p.id }));
+                                setPatientSearchText(
+                                  `${p.name}${p.phone ? ` (${p.phone})` : ''}${p.customId ? ` [${p.customId}]` : ''}`
+                                );
+                                setShowPatientDropdown(false);
+                              }}
+                              className="w-full px-4 py-3 hover:bg-neutral-50 cursor-pointer transition-colors duration-150 flex flex-col gap-0.5 text-left"
+                            >
+                              <div className="flex justify-between items-center">
+                                <span className="font-semibold text-neutral-800 text-sm">
+                                  {p.name}
+                                </span>
+                                {p.customId && (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 bg-neutral-100 text-neutral-600 rounded-full tracking-wide">
+                                    {p.customId}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex gap-4 text-xs text-neutral-500">
+                                {p.phone && <span>📞 {p.phone}</span>}
+                                {p.gender && <span>👤 {p.gender}</span>}
+                                {p.age && <span>🎂 {p.age} Yrs</span>}
+                              </div>
+                            </button>
+                          ))
+                        ) : (
+                          <div className="px-4 py-4 text-sm text-neutral-500 text-center">
+                            No matching patients found
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div>
                   <span className="block text-sm font-semibold text-neutral-700 mb-2">Doctor</span>
                   {doctors && doctors.length === 1 ? (

@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useToast } from '../context/ToastContext';
 import WardService from '../services/wardService';
 import Button from './Button';
+import { extractApiError } from '../utils/apiError';
+import authService from '../services/authService';
 
 const BedListDrawer = ({ open, ward, onClose, onStatusChange }) => {
   const { error: toastError } = useToast();
@@ -26,16 +28,17 @@ const BedListDrawer = ({ open, ward, onClose, onStatusChange }) => {
   };
 
   const [updatingBedId, setUpdatingBedId] = useState(null);
+  const canManageBeds = ['HOSPITAL_ADMIN', 'NURSE_INCHARGE'].includes(authService.getCurrentUser()?.role);
 
   const makeAvailable = async (bedId) => {
     if (updatingBedId) return;
     setUpdatingBedId(bedId);
     try {
-      await WardService.updateBedStatus(bedId, 'available');
+      await WardService.updateBedStatus(bedId, 'Back to available');
       onStatusChange && onStatusChange();
       fetchBeds();
     } catch (e) {
-      toastError(e.response?.data || e.message || 'Failed to update bed status');
+      toastError(extractApiError(e, 'Failed to update bed status'));
     } finally {
       setUpdatingBedId(null);
     }
@@ -66,7 +69,7 @@ const BedListDrawer = ({ open, ward, onClose, onStatusChange }) => {
                   <div className="text-sm text-slate-500">{b.status}</div>
                 </div>
                 <div>
-                  {b.status === 'maintenance' && (
+                  {canManageBeds && b.status === 'maintenance' && (
                     <Button
                       size="sm"
                       variant="success"

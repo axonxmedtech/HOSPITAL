@@ -26,3 +26,21 @@ export const extractApiError = (err, fallback = 'Something went wrong. Please tr
 };
 
 export default extractApiError;
+
+/**
+ * A message safe to show a user when a screen fails to load.
+ *
+ * <p>Unlike {@link extractApiError} this never falls back to `err.message`. That field carries
+ * whatever the transport or the server happened to throw — during testing a raw
+ * `java.lang.NullPointerException at com.hms…` reached a user-facing banner through it. Only text
+ * the API deliberately put in the response body is shown; anything else becomes the caller's
+ * fallback, which is written for the person reading it.
+ */
+export const safeLoadMessage = (err, fallback) => {
+  const data = err?.response?.data;
+  const fromServer =
+    (typeof data?.error === 'string' && data.error) ||
+    (typeof data?.message === 'string' && data.message) ||
+    (typeof data === 'string' && data.trim() ? data : null);
+  return fromServer || fallback;
+};

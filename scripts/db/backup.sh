@@ -87,7 +87,7 @@ if [ "${SIZE:-0}" -lt 1024 ]; then
   exit 5
 fi
 # Must contain a recognizable dump footer (dump completed).
-if ! zcat "$OUT" | tail -5 | grep -qi 'Dump completed'; then
+if ! gzip -dc "$OUT" | tail -5 | grep -qi 'Dump completed'; then
   echo "WARNING: backup missing 'Dump completed' footer — keeping but flag for review." >&2
 fi
 

@@ -28,6 +28,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(OtInchargeControllerTest.MethodSecurityTestConfig.class)
 class OtInchargeControllerTest {
 
+    // R1b: JwtAuthenticationFilter now revalidates the session against these repositories on
+    // every request. A @WebMvcTest slice does not start JPA, so they have to be supplied here
+    // for the context to load. Mocked, not stubbed -- these tests are about controllers, and
+    // the real revocation behaviour is covered by SessionRevocationTest.
+    @MockBean
+    private com.hms.repository.UserRepository r1bUserRepository;
+    @MockBean
+    private com.hms.repository.HospitalRepository r1bHospitalRepository;
+
     @TestConfiguration
     @EnableMethodSecurity
     static class MethodSecurityTestConfig {}

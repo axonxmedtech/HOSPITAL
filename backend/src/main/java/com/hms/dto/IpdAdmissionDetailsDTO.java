@@ -28,6 +28,8 @@ public class IpdAdmissionDetailsDTO {
         public String bed;
         public String doctor;
         public String primaryDiagnosis;
+        /** True once the admission form is saved and the patient confirmed as admitted. */
+        public boolean admissionConfirmed;
     }
 
     public static class MedicalRecordDTO {

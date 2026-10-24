@@ -110,6 +110,39 @@ public class NurseShiftScheduleService {
     }
 
     /** True iff the nurse has a shift today whose window contains 'now'. */
+    /**
+     * A nurse's shift for today, as the roster actually holds it, or null when none is rostered.
+     *
+     * <p>One resolver, deliberately. The incharge's roster derived a live answer from
+     * nurse_shift_schedules while the admin's nurse list showed no shift at all, so the two
+     * screens disagreed about the same nurse -- and NurseProfile.onShift, a flag nothing keeps
+     * up to date, sat there looking like a third answer. This is the only place either screen may
+     * ask, and both now report the same thing.
+     *
+     * <p>Today's row is the effective assignment: a substitution or a one-off change is written
+     * as that day's schedule, so reading today reads the substitution without needing to know one
+     * happened. Templates are snapshotted onto the row at assignment time, which is why the times
+     * come from the schedule and not from the template as it stands now.
+     */
+    public EffectiveShift effectiveShiftToday(Long nurseProfileId) {
+        return scheduleRepository.findByNurseProfileIdAndShiftDate(nurseProfileId, LocalDate.now())
+                .map(s -> {
+                    // Scoped to the schedule's own facility rather than loaded by raw id: the
+                    // template id is read off a row, and a by-id load is exactly what the tenant
+                    // fence asks us not to do even where the id looks trustworthy.
+                    String name = shiftTemplateRepository
+                            .findByIdAndHospitalId(s.getShiftTemplateId(), s.getHospitalId())
+                            .map(ShiftTemplate::getName).orElse(null);
+                    return new EffectiveShift(name, s.getStartTime(), s.getEndTime(),
+                            withinWindow(s.getStartTime(), s.getEndTime(), LocalTime.now()));
+                })
+                .orElse(null);
+    }
+
+    /** Today's rostered shift: its name, its window, and whether the nurse is inside it now. */
+    public record EffectiveShift(String shiftName, LocalTime startTime, LocalTime endTime,
+            boolean onShiftNow) {}
+
     public boolean isOnShiftNow(Long nurseProfileId) {
         return scheduleRepository.findByNurseProfileIdAndShiftDate(nurseProfileId, LocalDate.now())
                 .map(s -> withinWindow(s.getStartTime(), s.getEndTime(), LocalTime.now()))

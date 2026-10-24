@@ -1,5 +1,6 @@
 package com.hms.controller.pharmacy;
 
+import com.hms.security.RequireModule;
 import com.hms.service.pharmacy.PharmacyReportsService;
 import com.hms.entity.pharmacy.PharmacySale;
 import com.hms.security.SecurityContextHelper;
@@ -19,6 +20,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/pharmacy/reports")
+@RequireModule("PHARMACY")
 public class PharmacyReportsController {
 
     @Autowired

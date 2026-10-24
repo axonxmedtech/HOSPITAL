@@ -27,6 +27,9 @@ import java.util.Optional;
 
 @Service
 public class MedicineService {
+
+    @Autowired
+    private MedicineStockService medicineStockService;
     private static final String TABLET = "Tablet";
 
 
@@ -196,12 +199,22 @@ public class MedicineService {
         // Find existing active stock by name
         Optional<Medicine> existingOpt = medicineRepository.findByNameIgnoreCaseAndHospitalId(purchase.getName(), hospitalId);
         
+        // The medicine row is the facility's identity for the drug -- name, type, prescribing
+        // defaults. It is NOT where the stock lives any more.
+        //
+        // It used to be. Every purchase found the row by name, added the quantity, and then
+        // overwrote unitPrice and expiryDate with this delivery's. Two hundred units expiring in
+        // March plus fifty expiring next year became two hundred and fifty units expiring next
+        // year: the March stock inherited a date it did not have and stayed dispensable months
+        // past its own expiry, with the earlier cost gone too. Nothing recorded that two distinct
+        // lots had ever existed.
+        //
+        // The delivery now lands in its own batch (below) and this row keeps only the identity
+        // fields. expiryDate and unitPrice are left alone here precisely because they are
+        // per-batch facts that a single row cannot hold.
         Medicine stock;
         if (existingOpt.isPresent()) {
             stock = existingOpt.get();
-            stock.setStockQuantity(stock.getStockQuantity() + purchase.getQuantity());
-            stock.setUnitPrice(purchase.getUnitPrice());
-            stock.setExpiryDate(purchase.getExpiryDate());
             stock.setManufacturer(purchase.getManufacturer());
             stock.setMinStockLevel(purchase.getMinStockLevel());
             stock.setType(purchase.getType());
@@ -212,7 +225,7 @@ public class MedicineService {
         } else {
             stock = new Medicine();
             stock.setName(purchase.getName());
-            stock.setStockQuantity(purchase.getQuantity());
+            stock.setStockQuantity(0);
             stock.setUnitPrice(purchase.getUnitPrice());
             stock.setExpiryDate(purchase.getExpiryDate());
             stock.setMinStockLevel(purchase.getMinStockLevel());
@@ -224,7 +237,21 @@ public class MedicineService {
             stock.setHospitalId(hospitalId);
             stock.setIsActive(true);
         }
-        medicineRepository.save(stock);
+        stock = medicineRepository.save(stock);
+
+        // Receive the delivery as its own lot. A supplier batch number identifies it when one was
+        // entered; otherwise it is named after its expiry, which is the only thing about the lot
+        // we actually know. Either way a different expiry is a different row, and re-receiving
+        // the same lot tops it up. This also writes the PURCHASE_RECEIPT movement and refreshes
+        // the legacy stockQuantity cache from the batches, so the two cannot drift.
+        String batchNumber = purchase.getBatchNumber() != null && !purchase.getBatchNumber().isBlank()
+                ? purchase.getBatchNumber().trim()
+                : MedicineStockService.lotNameForExpiry(purchase.getExpiryDate());
+        medicineStockService.receiveBatch(stock.getId(), batchNumber, purchase.getExpiryDate(),
+                purchase.getQuantity(), purchase.getUnitPrice(),
+                "purchase-" + savedPurchase.getId(),
+                "Purchase " + savedPurchase.getId()
+                        + (purchase.getManufacturer() == null ? "" : " (" + purchase.getManufacturer() + ")"));
 
         // Auto-catalog medicine in lookup dictionary if it does not exist
         if (!medicineListRepository.existsByNameIgnoreCase(purchase.getName())) {

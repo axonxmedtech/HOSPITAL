@@ -40,14 +40,10 @@ public class Hospital {
     private String publicId;
 
     /**
-     * Custom readable ID for UI display (e.g., HSP1234)
+     * Custom ID for UI display, prefixed by tenant type. Assigned legacy IDs are preserved.
      */
     @Column(name = "custom_id", unique = true)
     private String customId;
-
-    // Reused SecureRandom for the numeric suffix of custom IDs (a single shared, non-predictable
-    // instance rather than a new java.util.Random() per call).
-    private static final java.security.SecureRandom CUSTOM_ID_RANDOM = new java.security.SecureRandom();
 
     @PrePersist
     public void generateIds() {
@@ -60,7 +56,8 @@ public class Hospital {
                 case PHARMACY -> "PHR";
                 default       -> "HSP";
             };
-            this.customId = prefix + (1000 + CUSTOM_ID_RANDOM.nextInt(9000));
+            // Keep the full UUID entropy; the database unique constraint remains authoritative.
+            this.customId = prefix + java.util.UUID.randomUUID().toString().replace("-", "");
         }
     }
 

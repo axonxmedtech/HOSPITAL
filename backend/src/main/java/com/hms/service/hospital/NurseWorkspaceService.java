@@ -40,6 +40,7 @@ public class NurseWorkspaceService {
     @Autowired private com.hms.repository.NurseProfileRepository nurseProfileRepository;
     @Autowired private SurgeryRepository surgeryRepository;
     @Autowired private com.hms.security.NurseInchargeGuard nurseInchargeGuard;
+    @Autowired private com.hms.service.RealtimeNotifier notifier;
     @Autowired private NurseAssignmentService nurseAssignmentService;
     @Autowired private NurseShiftScheduleService nurseShiftScheduleService;
     @Autowired private com.hms.repository.NurseAttendanceRepository nurseAttendanceRepository;
@@ -77,7 +78,17 @@ public class NurseWorkspaceService {
 
         java.util.Map<Long, MyPatientDTO> byAdmission = new java.util.LinkedHashMap<>();
 
-        // The nurse's own active assignments.
+        // Ward visibility is the authorization boundary; primary assignment only adds ownership context.
+        List<Long> wardIds = nurseInchargeGuard.myWardIds();
+        if (!wardIds.isEmpty()) {
+            for (IpdAdmission ipd : ipdAdmissionRepository.findByHospitalIdAndWardIdInAndStatusIn(
+                    hospitalId, wardIds, List.of("ADMITTED", "DISCHARGE_PLANNED"))) {
+                MyPatientDTO dto = buildMyPatient(ipd.getId(), null);
+                if (dto != null) byAdmission.putIfAbsent(dto.getIpdAdmissionId(), dto);
+            }
+        }
+
+        // Preserve historical assignment/substitution visibility as a defensive fallback.
         for (PatientNurseAssignment a : assignmentRepository.findByNurseUserIdAndIsActiveTrue(nurseId)) {
             if (!hospitalId.equals(a.getHospitalId())) continue; // defensive scope
             MyPatientDTO dto = buildMyPatient(a.getIpdAdmissionId(), null);
@@ -100,8 +111,8 @@ public class NurseWorkspaceService {
 
     /** Build the display DTO for an admission, or null if missing/discharged. */
     private MyPatientDTO buildMyPatient(Long admissionId, String coveredFor) {
-        IpdAdmission ipd = ipdAdmissionRepository.findById(admissionId).orElse(null);
-        if (ipd == null || "DISCHARGED".equalsIgnoreCase(ipd.getStatus())) return null;
+        IpdAdmission ipd = ipdAdmissionRepository.findByIdAndHospitalId(admissionId, requireHospitalId()).orElse(null);
+        if (ipd == null || !("ADMITTED".equalsIgnoreCase(ipd.getStatus()) || "DISCHARGE_PLANNED".equalsIgnoreCase(ipd.getStatus()))) return null;
 
         MyPatientDTO dto = new MyPatientDTO();
         dto.setIpdAdmissionId(ipd.getId());
@@ -134,7 +145,28 @@ public class NurseWorkspaceService {
     public NursePatientDetailDTO getPatientDetail(Long ipdAdmissionId) {
         Long hospitalId = requireHospitalId();
         nurseAccessGuard.assertAssigned(ipdAdmissionId);
+        return buildPatientDetail(ipdAdmissionId, hospitalId);
+    }
 
+    /**
+     * The same bedside view for a Nurse Incharge, scoped to the wards they run.
+     *
+     * <p>A separate entry point rather than a widened {@link #getPatientDetail}: the staff-nurse
+     * rule is "only your own patients", and an incharge is never assigned to a patient — they
+     * supervise a ward. Relaxing the staff-nurse guard to let the incharge through would have
+     * loosened it for staff nurses too, so the two rules stay separate and only the DTO builder
+     * is shared.
+     *
+     * <p>{@code assertAdmissionInMyWard} is the same ward check {@link NurseWriteAccess} already
+     * applies when an incharge records care, so read and write scope cannot drift apart.
+     */
+    public NursePatientDetailDTO getWardPatientDetail(Long ipdAdmissionId) {
+        Long hospitalId = requireHospitalId();
+        nurseInchargeGuard.assertAdmissionInMyWard(ipdAdmissionId);
+        return buildPatientDetail(ipdAdmissionId, hospitalId);
+    }
+
+    private NursePatientDetailDTO buildPatientDetail(Long ipdAdmissionId, Long hospitalId) {
         IpdAdmission ipd = ipdAdmissionRepository.findById(ipdAdmissionId)
                 .orElseThrow(() -> new IllegalArgumentException("IPD admission not found"));
         if (!hospitalId.equals(ipd.getHospitalId())) {
@@ -150,6 +182,7 @@ public class NurseWorkspaceService {
         dto.setPrimaryDiagnosis(ipd.getPrimaryDiagnosis());
 
         patientRepository.findById(ipd.getPatientId()).ifPresent(p -> {
+            dto.setPatientId(p.getId());
             dto.setPatientPublicId(p.getPublicId());
             dto.setPatientName(p.getName());
             dto.setAge(p.getAge());
@@ -231,22 +264,36 @@ public class NurseWorkspaceService {
         List<Long> wardIds = nurseInchargeGuard.myWardIds();
         List<MyPatientDTO> out = new ArrayList<>();
         if (wardIds.isEmpty()) return out;
-        for (IpdAdmission ipd :
-                ipdAdmissionRepository.findByHospitalIdAndStatus(securityHelper.getCurrentHospitalId(), "ADMITTED")) {
+        for (IpdAdmission ipd : ipdAdmissionRepository.findByHospitalIdAndWardIdInAndStatusIn(
+                securityHelper.getCurrentHospitalId(), wardIds, List.of("ADMITTED", "DISCHARGE_PLANNED"))) {
             if (!wardIds.contains(ipd.getWardId())) continue;
             MyPatientDTO dto = new MyPatientDTO();
             dto.setIpdAdmissionId(ipd.getId());
             dto.setIpdNumber(ipd.getIpdNumber());
             dto.setStatus(ipd.getStatus());
             dto.setWardId(ipd.getWardId());
+            dto.setAdmissionDateTime(ipd.getAdmissionDatetime());
             patientRepository.findById(ipd.getPatientId()).ifPresent(p -> {
                 dto.setPatientName(p.getName()); dto.setAge(p.getAge()); dto.setGender(p.getGender());
             });
             if (ipd.getWardId() != null)
                 wardRepository.findById(ipd.getWardId()).ifPresent(w -> dto.setWardName(w.getWardName()));
+            if (ipd.getBedId() != null)
+                bedRepository.findById(ipd.getBedId()).ifPresent(b -> dto.setBedCode(b.getBedCode()));
             out.add(dto);
         }
         return out;
+    }
+
+    /** Active ward-visible admissions without a primary worklist owner. */
+    public List<MyPatientDTO> getUnassignedPatients() {
+        List<MyPatientDTO> unassigned = new ArrayList<>();
+        for (MyPatientDTO patient : getWardPatients()) {
+            if (assignmentRepository.findByIpdAdmissionIdAndIsActiveTrue(patient.getIpdAdmissionId()).isEmpty()) {
+                unassigned.add(patient);
+            }
+        }
+        return unassigned;
     }
 
     @org.springframework.transaction.annotation.Transactional
@@ -265,6 +312,11 @@ public class NurseWorkspaceService {
         // NurseAssignmentService.assignNurse already closes any prior active
         // assignment for this admission before opening the new one.
         nurseAssignmentService.assignNurse(ipdAdmissionId, p.getUserId(), "Assigned by incharge");
+
+        // An assignment changes two screens at once: the incharge's ward list, and the assigned
+        // nurse's "My Patients". Without a push the nurse learns she has a new patient only when
+        // she happens to reload.
+        notifier.refresh(hospitalId);
     }
 
     /** Active, non-incharge staff nurses in a ward the caller may access (for the assign dropdown). */
@@ -306,10 +358,18 @@ public class NurseWorkspaceService {
                 m.put("wardId", wardId);
                 m.put("wardName", wardName);
                 m.put("hasLogin", p.getUserId() != null);
-                boolean onShift = false;
-                try { onShift = nurseShiftScheduleService.isOnShiftNow(p.getId()); }
-                catch (Exception ignored) { /* on-shift status is best-effort */ }
-                m.put("onShiftNow", onShift);
+                // Same resolver the admin's nurse list uses, so the two screens cannot disagree
+                // about one nurse's shift. Best-effort: a roster problem must not blank the ward.
+                try {
+                    NurseShiftScheduleService.EffectiveShift shift =
+                            nurseShiftScheduleService.effectiveShiftToday(p.getId());
+                    m.put("shiftName", shift == null ? null : shift.shiftName());
+                    m.put("shiftStartTime", shift == null ? null : String.valueOf(shift.startTime()));
+                    m.put("shiftEndTime", shift == null ? null : String.valueOf(shift.endTime()));
+                    m.put("onShiftNow", shift != null && shift.onShiftNow());
+                } catch (Exception ignored) {
+                    m.put("onShiftNow", false);
+                }
                 out.add(m);
             }
         }

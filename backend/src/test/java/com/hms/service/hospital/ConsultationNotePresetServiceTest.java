@@ -28,6 +28,7 @@ class ConsultationNotePresetServiceTest {
     @Mock ConsultationNotePresetRepository presetRepository;
     @Mock PresetOwnershipSupport ownership;
     @Mock SecurityContextHelper securityHelper;
+    @Mock com.hms.repository.ConsultationStatementRepository statementRepository;
 
     @InjectMocks ConsultationNotePresetService service;
 
@@ -127,5 +128,42 @@ class ConsultationNotePresetServiceTest {
         assertThatThrownBy(() -> service.deletePreset(99L))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("not found");
+    }
+
+    @Test
+    void createPreset_withExplicitTranslations_persistsThem() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+        when(presetRepository.findByHospitalIdAndFieldTypeAndIsActiveTrueOrderByDisplayOrderAsc(1L, "TREATMENT_NOTES"))
+                .thenReturn(List.of());
+        when(presetRepository.save(any(ConsultationNotePreset.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ConsultationNotePreset preset = service.createPreset(
+                "TREATMENT_NOTES", "Drink water", null, "पाणी प्या", "पानी पिएं");
+
+        assertThat(preset.getText()).isEqualTo("Drink water");
+        assertThat(preset.getMarathiText()).isEqualTo("पाणी प्या");
+        assertThat(preset.getHindiText()).isEqualTo("पानी पिएं");
+    }
+
+    @Test
+    void createPreset_omittedTranslations_autoMatchesFromStatementRepository() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+        when(presetRepository.findByHospitalIdAndFieldTypeAndIsActiveTrueOrderByDisplayOrderAsc(1L, "TREATMENT_NOTES"))
+                .thenReturn(List.of());
+        when(presetRepository.save(any(ConsultationNotePreset.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        com.hms.entity.ConsultationStatement stmt = new com.hms.entity.ConsultationStatement();
+        stmt.setEnglishText("Avoid oily food");
+        stmt.setMarathiText("तेलकट अन्न टाळा");
+        stmt.setHindiText("तैलीय भोजन से बचें");
+
+        when(statementRepository.findMatchingActiveStatements("Avoid oily food"))
+                .thenReturn(List.of(stmt));
+
+        ConsultationNotePreset preset = service.createPreset("TREATMENT_NOTES", "Avoid oily food", null);
+
+        assertThat(preset.getText()).isEqualTo("Avoid oily food");
+        assertThat(preset.getMarathiText()).isEqualTo("तेलकट अन्न टाळा");
+        assertThat(preset.getHindiText()).isEqualTo("तैलीय भोजन से बचें");
     }
 }

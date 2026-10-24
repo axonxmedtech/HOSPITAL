@@ -37,12 +37,16 @@ jobs:
       - name: Check Sonar Token
         id: check
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_VAR: ${{ vars.SONAR_TOKEN }}
+          # Presence only. The expression evaluates to 'true' or 'false', so the token itself never
+          # enters this step's environment, whose values GitHub prints in the log. The token is a
+          # secret and nothing else: a variable fallback once printed it in plain text.
+          SONAR_TOKEN_PRESENT: ${{ secrets.SONAR_TOKEN != '' }}
           SONAR_ORG: ${{ vars.SONAR_ORGANIZATION }}
           SONAR_KEY: ${{ vars.SONAR_PROJECT_KEY }}
         run: |
-          if { [ -n "$SONAR_TOKEN" ] || [ -n "$SONAR_VAR" ]; } && [ -n "$SONAR_ORG" ] && [ -n "$SONAR_KEY" ]; then
+          if [ "$SONAR_TOKEN_PRESENT" = "true" ]; then token=PRESENT; else token=MISSING; fi
+          echo "Sonar token secret: $token"
+          if [ "$token" = PRESENT ] && [ -n "$SONAR_ORG" ] && [ -n "$SONAR_KEY" ]; then
             echo "has_sonar_token=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_sonar_token=false" >> "$GITHUB_OUTPUT"
@@ -71,10 +75,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [build-frontend, build-backend, check-secrets]
+    # SonarCloud analysis runs on pull_request only. A push-triggered analysis of a
+    # feature branch is typed SHORT with target=main, so for staging-based branches its
+    # "new code" is the whole staging..main delta rather than the change under review.
+    # The PR analysis diffs against the real base and enforces the same quality gate.
     if: >
-      (github.event_name == 'push' ||
-       (github.event_name == 'pull_request' &&
-        github.event.pull_request.head.repo.full_name == github.repository)) &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
       needs.check-secrets.outputs.has_sonar_token == 'true'
     permissions:
       contents: read
@@ -102,9 +109,8 @@ jobs:
         continue-on-error: true
       - name: Run SonarCloud analysis
         uses: sonarsource/sonarqube-scan-action@v6
-        continue-on-error: true
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN || vars.SONAR_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
         with:
           args: >

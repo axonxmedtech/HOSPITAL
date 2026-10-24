@@ -93,6 +93,11 @@ public class Surgery {
     @Column(name = "status", nullable = false, length = 20)
     private String status = REQUESTED;
 
+    /** Optimistic revision exposed to schedule/reschedule clients. */
+    @Version
+    @Column(name = "lifecycle_version", nullable = false)
+    private Long lifecycleVersion;
+
     @Column(name = "surgeon_doctor_id")
     private Long surgeonDoctorId;
 

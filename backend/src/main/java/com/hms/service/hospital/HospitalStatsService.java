@@ -27,7 +27,6 @@ import com.hms.entity.Bed;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -39,6 +38,9 @@ import java.util.stream.Collectors;
 public class HospitalStatsService {
     private static final String ACTIVITY_TYPE = "activityType";
 
+
+    @Autowired
+    private BusinessClock businessClock;
 
     @Autowired
     private PatientService patientService;
@@ -84,21 +86,19 @@ public class HospitalStatsService {
         long todaysAppointments = appointmentService.getTodaysAppointmentsCount();
 
         // Patient-focused stats for Overview tab
-        java.time.LocalDateTime localStartOfToday = java.time.LocalDate.now().atStartOfDay();
-        java.time.LocalDateTime localEndOfToday = java.time.LocalDate.now().atTime(java.time.LocalTime.MAX);
-        java.time.LocalDateTime localStartOfMonth = java.time.LocalDate.now().withDayOfMonth(1).atStartOfDay();
+        // DATETIME values are IST business wall time, not UTC instants. Both windows are
+        // half-open [from, toExclusive) so the last microsecond of a day cannot fall through
+        // the gap that an inclusive LocalTime.MAX bound leaves against DATETIME(6).
+        LocalDate today = businessClock.today();
+        LocalDateTime startOfToday = today.atStartOfDay();
+        LocalDateTime startOfTomorrow = today.plusDays(1).atStartOfDay();
+        LocalDateTime startOfMonth = today.withDayOfMonth(1).atStartOfDay();
+        LocalDateTime startOfNextMonth = today.withDayOfMonth(1).plusMonths(1).atStartOfDay();
 
-        java.time.ZoneId sysZone = java.time.ZoneId.systemDefault();
-        java.time.ZoneOffset utcOffset = java.time.ZoneOffset.UTC;
-
-        LocalDateTime startOfToday = localStartOfToday.atZone(sysZone).withZoneSameInstant(utcOffset).toLocalDateTime();
-        LocalDateTime endOfToday = localEndOfToday.atZone(sysZone).withZoneSameInstant(utcOffset).toLocalDateTime();
-        LocalDateTime startOfMonth = localStartOfMonth.atZone(sysZone).withZoneSameInstant(utcOffset).toLocalDateTime();
-
-        long patientsToday = patientRepository.countByHospitalIdAndIsActiveTrueAndCreatedAtBetween(
-                hospitalId, startOfToday, endOfToday);
-        long patientsThisMonth = patientRepository.countByHospitalIdAndIsActiveTrueAndCreatedAtBetween(
-                hospitalId, startOfMonth, endOfToday);
+        long patientsToday = patientRepository.countActiveInDateRange(
+                hospitalId, startOfToday, startOfTomorrow);
+        long patientsThisMonth = patientRepository.countActiveInDateRange(
+                hospitalId, startOfMonth, startOfNextMonth);
 
         Map<String, Long> stats = new HashMap<>();
         // Existing keys (kept for backward compatibility)
@@ -118,14 +118,9 @@ public class HospitalStatsService {
      * Returns list sorted by activity time descending (latest first).
      */
     public List<Map<String, Object>> getPatientActivityByDate(Long hospitalId, LocalDate date) {
-        java.time.LocalDateTime localStartOfDay = date.atStartOfDay();
-        java.time.LocalDateTime localEndOfOfDay = date.atTime(LocalTime.MAX);
-
-        java.time.ZoneId sysZone = java.time.ZoneId.systemDefault();
-        java.time.ZoneOffset utcOffset = java.time.ZoneOffset.UTC;
-
-        LocalDateTime startOfDay = localStartOfDay.atZone(sysZone).withZoneSameInstant(utcOffset).toLocalDateTime();
-        LocalDateTime endOfDay = localEndOfOfDay.atZone(sysZone).withZoneSameInstant(utcOffset).toLocalDateTime();
+        // Half-open business wall-clock interval; do not shift DATETIME bounds to UTC.
+        LocalDateTime startOfDay = date.atStartOfDay();
+        LocalDateTime toExclusive = date.plusDays(1).atStartOfDay();
 
         List<Map<String, Object>> activities = new ArrayList<>();
 
@@ -134,8 +129,8 @@ public class HospitalStatsService {
         Set<Long> patientIds = new HashSet<>();
 
         // 1. OPD records for this date
-        List<Opd> opds = opdRepository.searchByHospitalAndDateRange(
-                hospitalId, null, startOfDay, endOfDay, null, PageRequest.of(0, 1000)).getContent();
+        List<Opd> opds = opdRepository.findActivityInDateRange(
+                hospitalId, startOfDay, toExclusive, PageRequest.of(0, 1000)).getContent();
         for (Opd opd : opds) {
             if (opd.getDoctor() != null) doctorIds.add(opd.getDoctor().getId());
             if (opd.getPatient() != null) patientIds.add(opd.getPatient().getId());
@@ -151,7 +146,8 @@ public class HospitalStatsService {
 
         // 3. IPD admissions for this date
         List<IpdAdmission> ipdAdmissions = ipdAdmissionRepository
-                .findByHospitalIdAndAdmissionDatetimeBetween(hospitalId, startOfDay, endOfDay);
+                .findByHospitalIdAndAdmissionDatetimeGreaterThanEqualAndAdmissionDatetimeLessThan(
+                        hospitalId, startOfDay, toExclusive);
         for (IpdAdmission ipd : ipdAdmissions) {
             if (ipd.getDoctorId() != null) doctorIds.add(ipd.getDoctorId());
             if (ipd.getPatientId() != null) patientIds.add(ipd.getPatientId());

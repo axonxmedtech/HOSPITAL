@@ -9,11 +9,13 @@ const PlatformLogin = lazy(() => import('./pages/platform/PlatformLogin'));
 const PlatformDashboard = lazy(() => import('./pages/platform/PlatformDashboard'));
 const HospitalLogin = lazy(() => import('./pages/hospital/HospitalLogin'));
 const HospitalAdminDashboard = lazy(() => import('./pages/hospital/HospitalAdminDashboard'));
+const PatientImportPage = lazy(() => import('./pages/hospital/PatientImportPage'));
 const DoctorDashboard = lazy(() => import('./pages/hospital/DoctorDashboard'));
 const ReceptionistDashboard = lazy(() => import('./pages/hospital/ReceptionistDashboard'));
 const PharmacyDashboard = lazy(() => import('./pages/hospital/PharmacyDashboard'));
 const NurseDashboard = lazy(() => import('./pages/hospital/NurseDashboard'));
 const NurseInchargeDashboard = lazy(() => import('./pages/hospital/NurseInchargeDashboard'));
+const OtInchargeDashboard = lazy(() => import('./pages/hospital/OtInchargeDashboard'));
 const IpdDetails = lazy(() => import('./pages/hospital/IpdDetails'));
 
 // Minimal loading fallback shown while a lazy chunk is fetching
@@ -122,6 +124,11 @@ const LandingRedirect = () => {
       return <Navigate to="/hospital/nurse" replace />;
     case 'NURSE_INCHARGE':
       return <Navigate to="/hospital/nurse-incharge" replace />;
+    // OT_INCHARGE previously fell through to the default below and was sent back to the login
+    // page: a hospital could create the role, the backend granted it the full clinical OT set,
+    // and the user had nowhere to land.
+    case 'OT_INCHARGE':
+      return <Navigate to="/hospital/ot-incharge" replace />;
     default:
       return <Navigate to={authService.getLoginUrl()} replace />;
   }
@@ -173,6 +180,16 @@ function App() {
             />
 
             {/* DASHBOARDS — PROTECTED */}
+            <Route
+              path="/hospital/patients/import"
+              element={
+                <ProtectedRoute allowedRoles={['HOSPITAL_ADMIN']}>
+                  <PageMeta title="HMS - Import Patients">
+                    <PatientImportPage />
+                  </PageMeta>
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/platform/dashboard"
               element={
@@ -259,6 +276,17 @@ function App() {
                 <ProtectedRoute allowedRoles={['NURSE']}>
                   <PageMeta title="HMS - Nurse">
                     <NurseDashboard />
+                  </PageMeta>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/hospital/ot-incharge"
+              element={
+                <ProtectedRoute allowedRoles={['OT_INCHARGE']}>
+                  <PageMeta title="HMS - Operation Theatre">
+                    <OtInchargeDashboard />
                   </PageMeta>
                 </ProtectedRoute>
               }

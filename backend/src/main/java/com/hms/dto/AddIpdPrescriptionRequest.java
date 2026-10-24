@@ -31,6 +31,11 @@ public class AddIpdPrescriptionRequest {
     @NotNull(message = "Start date is required")
     private LocalDate startDate;
 
+    private String foodTiming;
+
+    public String getFoodTiming() { return foodTiming; }
+    public void setFoodTiming(String foodTiming) { this.foodTiming = foodTiming; }
+
     public Long getMedicineId() { return medicineId; }
     public void setMedicineId(Long medicineId) { this.medicineId = medicineId; }
 

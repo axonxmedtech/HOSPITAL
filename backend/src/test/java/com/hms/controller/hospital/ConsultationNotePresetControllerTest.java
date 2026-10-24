@@ -28,6 +28,15 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 @Import(ConsultationNotePresetControllerTest.MethodSecurityTestConfig.class)
 class ConsultationNotePresetControllerTest {
 
+    // R1b: JwtAuthenticationFilter now revalidates the session against these repositories on
+    // every request. A @WebMvcTest slice does not start JPA, so they have to be supplied here
+    // for the context to load. Mocked, not stubbed -- these tests are about controllers, and
+    // the real revocation behaviour is covered by SessionRevocationTest.
+    @MockBean
+    private com.hms.repository.UserRepository r1bUserRepository;
+    @MockBean
+    private com.hms.repository.HospitalRepository r1bHospitalRepository;
+
     // @WebMvcTest does not load SecurityConfig (a plain @Configuration bean), so
     // @PreAuthorize on the controller is never enforced without this.
     @TestConfiguration
@@ -82,7 +91,7 @@ class ConsultationNotePresetControllerTest {
         saved.setFieldType("TREATMENT_NOTES");
         saved.setText("Avoid oily food");
         saved.setDisplayOrder(0);
-        when(presetService.createPreset(eq("TREATMENT_NOTES"), eq("Avoid oily food"), any())).thenReturn(saved);
+        when(presetService.createPreset(eq("TREATMENT_NOTES"), eq("Avoid oily food"), any(), any(), any())).thenReturn(saved);
 
         mockMvc.perform(post("/hospital/consultation-note-presets")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -95,7 +104,7 @@ class ConsultationNotePresetControllerTest {
     @Test
     @WithMockUser(roles = "DOCTOR")
     void createPreset_returnsBadRequestWhenServiceThrows() throws Exception {
-        when(presetService.createPreset(anyString(), anyString(), any()))
+        when(presetService.createPreset(any(), any(), any(), any(), any()))
                 .thenThrow(new IllegalArgumentException("Preset text is required"));
 
         mockMvc.perform(post("/hospital/consultation-note-presets")
@@ -121,7 +130,7 @@ class ConsultationNotePresetControllerTest {
         ConsultationNotePreset updated = new ConsultationNotePreset();
         updated.setId(5L);
         updated.setText("Updated text");
-        when(presetService.updatePreset(eq(5L), eq("Updated text"), any(), any())).thenReturn(updated);
+        when(presetService.updatePreset(eq(5L), eq("Updated text"), any(), any(), any(), any())).thenReturn(updated);
 
         mockMvc.perform(put("/hospital/consultation-note-presets/5")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -134,7 +143,7 @@ class ConsultationNotePresetControllerTest {
     @Test
     @WithMockUser(roles = "HOSPITAL_ADMIN")
     void updatePreset_returnsBadRequestWhenNotFound() throws Exception {
-        when(presetService.updatePreset(eq(999L), any(), any(), any()))
+        when(presetService.updatePreset(eq(999L), any(), any(), any(), any(), any()))
                 .thenThrow(new com.hms.exception.ResourceNotFoundException("Preset not found"));
 
         mockMvc.perform(put("/hospital/consultation-note-presets/999")

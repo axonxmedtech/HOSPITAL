@@ -31,7 +31,7 @@ public class HospitalSetting {
     private Hospital hospital;
 
     @Column(name = "reception_mode", nullable = false, length = 20)
-    private String receptionMode = "HAS_RECEPTIONIST"; // HAS_RECEPTIONIST or SOLO
+    private String receptionMode = "HAS_RECEPTIONIST"; // HAS_RECEPTIONIST, SOLO, or BOTH
 
     @Column(name = "billing_handler", nullable = false, length = 20)
     private String billingHandler = "RECEPTIONIST"; // RECEPTIONIST or DOCTOR
@@ -68,6 +68,10 @@ public class HospitalSetting {
     // paid there); LAST = current flow (payment at/after consultation). Defaults LAST.
     @Column(name = "bill_payment_timing", nullable = false, length = 10)
     private String billPaymentTiming = "LAST";
+
+    // Default consultation print language: EN, EN_MR, or EN_HI
+    @Column(name = "default_consultation_language", nullable = false, length = 10)
+    private String defaultConsultationLanguage = "EN";
 
     public Boolean getOtInchargeEnabled() {
         return otInchargeEnabled;

@@ -59,6 +59,7 @@ class NursingNoteServiceTest {
     void create_savesNote_whenAssignedAndValid() {
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
         when(securityHelper.getCurrentUserId()).thenReturn(20L);
+        when(securityHelper.getCurrentUserRole()).thenReturn("NURSE");
         when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(admission()));
         when(noteRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(performingNurseResolver.resolve(any())).thenReturn(20L);
@@ -69,11 +70,76 @@ class NursingNoteServiceTest {
         assertThat(saved.getNoteText()).isEqualTo("Patient resting comfortably"); // trimmed
         assertThat(saved.getNurseUserId()).isEqualTo(20L);
         assertThat(saved.getPatientId()).isEqualTo(500L);
+        assertThat(saved.getCategory()).isEqualTo("NURSE");
+    }
+
+    @Test
+    void create_doctorNote_succeeds_whenDoctor() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(securityHelper.getCurrentUserId()).thenReturn(10L);
+        when(securityHelper.getCurrentUserRole()).thenReturn("DOCTOR");
+        when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(admission()));
+        when(noteRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        NursingNoteRequest r = req("Patient evaluated on morning rounds. Stable.");
+        r.setCategory("DOCTOR");
+        r.setOrders("Continue Tab Paracetamol 650mg TDS");
+
+        NursingNote saved = service.create(r);
+
+        verify(nurseWriteAccess, never()).assertCanWriteFor(any());
+        assertThat(saved.getCategory()).isEqualTo("DOCTOR");
+        assertThat(saved.getNoteText()).isEqualTo("Patient evaluated on morning rounds. Stable.");
+        assertThat(saved.getOrders()).isEqualTo("Continue Tab Paracetamol 650mg TDS");
+        assertThat(saved.getNurseUserId()).isEqualTo(10L);
+    }
+
+    @Test
+    void create_doctorNote_rejects_whenNurse() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(securityHelper.getCurrentUserRole()).thenReturn("NURSE");
+        when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(admission()));
+
+        NursingNoteRequest r = req("Doctor note");
+        r.setCategory("DOCTOR");
+
+        assertThatThrownBy(() -> service.create(r))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("Only doctors can create Doctor Round Notes");
+    }
+
+    @Test
+    void create_nurseNote_rejects_whenDoctor() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(securityHelper.getCurrentUserRole()).thenReturn("DOCTOR");
+        when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(admission()));
+
+        NursingNoteRequest r = req("Nurse note");
+        r.setCategory("NURSE");
+
+        assertThatThrownBy(() -> service.create(r))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("Only nurses can create Nurse Round Notes");
+    }
+
+    @Test
+    void getByAdmission_filtersByCategory() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(securityHelper.getCurrentUserRole()).thenReturn("DOCTOR");
+        when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(admission()));
+        NursingNote docNote = new NursingNote();
+        docNote.setCategory("DOCTOR");
+        when(noteRepository.findByAdmissionAndCategory(1L, "DOCTOR")).thenReturn(java.util.List.of(docNote));
+
+        java.util.List<NursingNote> res = service.getByAdmission(1L, "DOCTOR");
+        assertThat(res).hasSize(1);
+        assertThat(res.get(0).getCategory()).isEqualTo("DOCTOR");
     }
 
     @Test
     void create_rejectsEmptyText() {
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(securityHelper.getCurrentUserRole()).thenReturn("NURSE");
         when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(admission()));
 
         assertThatThrownBy(() -> service.create(req("   ")))
@@ -84,6 +150,7 @@ class NursingNoteServiceTest {
     @Test
     void create_rejectsTooLongText() {
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(securityHelper.getCurrentUserRole()).thenReturn("NURSE");
         when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(admission()));
 
         assertThatThrownBy(() -> service.create(req("x".repeat(2001))))
@@ -94,6 +161,7 @@ class NursingNoteServiceTest {
     @Test
     void create_deniedWhenNotAssigned() {
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(securityHelper.getCurrentUserRole()).thenReturn("NURSE");
         when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(admission()));
         doThrow(new AccessDeniedException("no")).when(nurseWriteAccess).assertCanWriteFor(1L);
 
@@ -146,5 +214,73 @@ class NursingNoteServiceTest {
         service.softDelete("pub-1");
 
         assertThat(n.getIsActive()).isFalse();
+    }
+
+    private NursingNote editable(String category, String role) {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(securityHelper.getCurrentUserId()).thenReturn(20L);
+        when(securityHelper.getCurrentUserRole()).thenReturn(role);
+        NursingNote note = new NursingNote();
+        note.setHospitalId(7L);
+        note.setNurseUserId(20L);
+        note.setIpdAdmissionId(1L);
+        note.setCategory(category);
+        note.setNoteText("original");
+        note.setCreatedAt(LocalDateTime.now());
+        when(noteRepository.findByPublicId("pub-1")).thenReturn(Optional.of(note));
+        return note;
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"NURSE,NURSE", "DOCTOR,DOCTOR", "NURSE,NURSE_INCHARGE", "DOCTOR,HOSPITAL_ADMIN"})
+    void update_allowsAuthorInCorrectCategory(String category, String role) {
+        NursingNote note = editable(category, role);
+        when(noteRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        NursingNoteRequest request = req("updated");
+        request.setCategory(category);
+        assertThat(service.update("pub-1", request).getNoteText()).isEqualTo("updated");
+        assertThat(note.getCategory()).isEqualTo(category);
+        if ("NURSE".equals(category)) verify(nurseWriteAccess).assertCanWriteFor(1L);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"NURSE,DOCTOR", "DOCTOR,NURSE"})
+    void update_cannotChangeCategory(String persisted, String requested) {
+        NursingNote note = editable(persisted, persisted);
+        NursingNoteRequest request = req("spoofed");
+        request.setCategory(requested);
+        assertThatThrownBy(() -> service.update("pub-1", request)).isInstanceOf(IllegalArgumentException.class);
+        assertThat(note.getCategory()).isEqualTo(persisted);
+        assertThat(note.getNoteText()).isEqualTo("original");
+        verify(noteRepository, never()).save(any());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"NURSE,DOCTOR", "DOCTOR,NURSE"})
+    void update_authorizesPersistedCategory_evenWhenRequestClaimsCurrentRole(String persisted, String role) {
+        NursingNote note = editable(persisted, role);
+        NursingNoteRequest request = req("spoofed");
+        request.setCategory(role);
+        assertThatThrownBy(() -> service.update("pub-1", request)).isInstanceOf(AccessDeniedException.class);
+        assertThat(note.getNoteText()).isEqualTo("original");
+        verify(noteRepository, never()).save(any());
+    }
+
+    @Test
+    void update_rechecksNurseAssignment() {
+        editable("NURSE", "NURSE");
+        doThrow(new AccessDeniedException("Not assigned")).when(nurseWriteAccess).assertCanWriteFor(1L);
+        assertThatThrownBy(() -> service.update("pub-1", req("edit"))).isInstanceOf(AccessDeniedException.class);
+        verify(noteRepository, never()).save(any());
+    }
+
+    @Test
+    void create_rejectsUnknownCategory() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(admission()));
+        NursingNoteRequest request = req("text");
+        request.setCategory("OTHER");
+        assertThatThrownBy(() -> service.create(request)).isInstanceOf(IllegalArgumentException.class);
+        verify(noteRepository, never()).save(any());
     }
 }

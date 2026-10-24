@@ -48,6 +48,16 @@ public class CreateOpdRequest {
     @Pattern(regexp = "^(CASH|UPI)?$", message = "Payment method must be CASH or UPI")
     private String paymentMethod;
 
+    /**
+     * Makes one logical registration survive a double-click or a retry.
+     *
+     * Optional: a client that sends nothing behaves exactly as before. The client generates one
+     * key per submission and reuses it across retries — regenerating it mid-retry defeats the
+     * whole point.
+     */
+    @jakarta.validation.constraints.Size(max = 100, message = "Idempotency key is too long")
+    private String idempotencyKey;
+
     @Size(max = 100, message = "Payment reference is too long")
     @NoEmoji
     private String paymentReference;
@@ -80,4 +90,8 @@ public class CreateOpdRequest {
     public void setHeight(Double height) { this.height = height; }
     public java.util.Map<String, String> getCustomVitals() { return customVitals; }
     public void setCustomVitals(java.util.Map<String, String> customVitals) { this.customVitals = customVitals; }
+
+    public String getIdempotencyKey() { return idempotencyKey; }
+
+    public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
 }

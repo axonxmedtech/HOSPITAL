@@ -1,7 +1,10 @@
 package com.hms.exception;
 
+import com.hms.dto.ApiErrorResponse;
 import com.hms.dto.ApiResponse;
+import com.hms.filter.CorrelationIdFilter;
 import jakarta.validation.ConstraintViolationException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -35,12 +38,24 @@ public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     /**
+     * The canonical error body, for handlers that have been moved onto it.
+     *
+     * <p>Only the 409 below uses this today. The remaining handlers still answer in the older
+     * ApiResponse shape; converting them is the wider error-contract change and lands
+     * separately. ApiErrorResponse is a superset of that shape -- success and error keep their
+     * exact previous meaning -- so a client reading data.error cannot tell the two apart.
+     */
+    private static ResponseEntity<ApiErrorResponse> respond(ErrorCode code, String message) {
+        return ResponseEntity.status(code.status())
+                .body(ApiErrorResponse.of(code, message, CorrelationIdFilter.currentId()));
+    }
+
+    /**
      * Handle ResourceNotFoundException — 404 Not Found
      */
     @ExceptionHandler(ResourceNotFoundException.class)
-    public ResponseEntity<ApiResponse<Void>> handleNotFound(ResourceNotFoundException ex) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(ApiResponse.error(ex.getMessage()));
+    public ResponseEntity<ApiErrorResponse> handleNotFound(ResourceNotFoundException ex) {
+        return respond(ErrorCode.RESOURCE_NOT_FOUND, ex.getMessage());
     }
 
     /**
@@ -49,6 +64,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(UnauthorizedException.class)
     public ResponseEntity<ApiResponse<Void>> handleUnauthorized(UnauthorizedException ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    /**
+     * Handle an authenticated caller's explicit permission refusal without turning an expected
+     * policy decision into the catch-all 500 response.
+     */
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ApiResponse<Void>> handleForbidden(ForbiddenException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(ApiResponse.error(ex.getMessage()));
     }
 
@@ -182,4 +207,44 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ApiResponse.error("An unexpected error occurred. Please contact support."));
     }
+    // -- 409 ---------------------------------------------------------------------
+
+    /**
+     * A business precondition that has changed under the caller: the bed was taken, the
+     * theatre is already running another case. The message is ours, so it is shown as-is.
+     *
+     * <p>Without this the exception fell through to the catch-all as a 500, telling the caller
+     * a server fault when the truth is that someone else got there first.
+     */
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<ApiErrorResponse> handleConflict(ConflictException ex) {
+        return respond(ErrorCode.CONFLICT, ex.getMessage());
+    }
+
+    /**
+     * A registration collided with an existing active patient on the same phone number.
+     *
+     * <p>Answered as a 409 like any other conflict, but carrying the matched patients so the
+     * caller can offer the only two sensible choices: use one of them, or declare the new
+     * registration a different person who shares the number. Registered above the generic
+     * DataIntegrityViolation handler because it is the specific case and must win.
+     */
+    @ExceptionHandler(DuplicatePhoneConflictException.class)
+    public ResponseEntity<ApiErrorResponse> handleDuplicatePhone(DuplicatePhoneConflictException ex) {
+        return ResponseEntity.status(ErrorCode.CONFLICT.status())
+                .body(ApiErrorResponse.ofConflicts(ErrorCode.CONFLICT, ex.getMessage(),
+                        ex.getConflicts(), CorrelationIdFilter.currentId()));
+    }
+
+    /**
+     * A database constraint rejected an otherwise well-formed request. Constraint names and SQL
+     * fragments are deployment details, so keep them out of the public response while preserving
+     * the retryable conflict semantics callers already use for business preconditions.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiErrorResponse> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+        log.warn("Database constraint rejected request: {}", ex.getMostSpecificCause().getClass().getSimpleName());
+        return respond(ErrorCode.CONFLICT, "The requested change conflicts with existing data");
+    }
+
 }

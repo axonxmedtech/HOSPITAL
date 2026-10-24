@@ -37,24 +37,6 @@ public class JwtUtil {
     @Value("${jwt.expiration}")
     private Long expiration;
 
-    private static final String PLACEHOLDER_SECRET = "YOUR_SECRET_KEY_HERE_MUST_BE_VERY_LONG_FOR_SECURITY";
-
-    /**
-     * Fail fast at startup if the JWT secret is missing, still the placeholder, or too short for
-     * safe HMAC signing (&lt; 32 bytes). A weak or publicly-known signing key lets anyone forge
-     * tokens, so the app must refuse to boot rather than run insecurely.
-     */
-    @jakarta.annotation.PostConstruct
-    void validateSecret() {
-        if (secret == null || secret.isBlank()
-                || secret.equals(PLACEHOLDER_SECRET)
-                || secret.getBytes(StandardCharsets.UTF_8).length < 32) {
-            throw new IllegalStateException(
-                    "JWT secret is unset, using the built-in placeholder, or shorter than 32 bytes. "
-                            + "Set a strong, unique JWT_SECRET (at least 32 characters) in the environment.");
-        }
-    }
-
     /**
      * Generate a secret key from the configured secret string
      * 
@@ -91,7 +73,20 @@ public class JwtUtil {
     public String generateToken(Long userId, String email, String role, Long hospitalId,
             java.util.List<String> modules, Long branchId, String hospitalType,
             java.util.Collection<String> permissions) {
+        return generateToken(userId, email, role, hospitalId, modules, branchId, hospitalType,
+                permissions, 0);
+    }
+
+    /**
+     * @param tokenVersion the user's session generation at login. The filter refuses a token whose
+     *                     value no longer matches the user row, which is what makes a password
+     *                     reset or role change end sessions already in flight.
+     */
+    public String generateToken(Long userId, String email, String role, Long hospitalId,
+            java.util.List<String> modules, Long branchId, String hospitalType,
+            java.util.Collection<String> permissions, Integer tokenVersion) {
         Map<String, Object> claims = new HashMap<>();
+        claims.put("tokenVersion", tokenVersion == null ? 0 : tokenVersion);
         claims.put("userId", userId);
         claims.put("role", role);
         claims.put("hospitalId", hospitalId); // null for Super Admin
@@ -202,6 +197,17 @@ public class JwtUtil {
      * @param token JWT token string
      * @return List of module names
      */
+    /**
+     * The session generation stamped into this token, or null when the claim is absent.
+     *
+     * <p>Null means the token predates the mechanism. The filter treats that as a mismatch: those
+     * sessions end at deploy, which is the agreed compatibility strategy rather than an accident.
+     */
+    public Integer extractTokenVersion(String token) {
+        Object v = extractClaims(token).get("tokenVersion");
+        return v instanceof Number n ? n.intValue() : null;
+    }
+
     public java.util.List<String> extractModules(String token) {
         Object modules = extractClaims(token).get("modules");
         if (modules instanceof java.util.List) {

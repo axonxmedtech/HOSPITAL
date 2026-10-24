@@ -3,6 +3,10 @@ package com.hms.repository;
 import com.hms.entity.Patient;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import jakarta.persistence.LockModeType;
 
 import java.util.List;
 import java.util.Optional;
@@ -18,6 +22,19 @@ import java.util.Optional;
  */
 @Repository
 public interface PatientRepository extends JpaRepository<Patient, Long> {
+    boolean existsByHospitalIdAndCustomId(Long hospitalId, String customId);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Query("UPDATE Patient p SET p.customId = :customId WHERE p.id = :id AND p.hospitalId = :hospitalId")
+    int updateCustomId(@org.springframework.data.repository.query.Param("hospitalId") Long hospitalId,
+                       @org.springframework.data.repository.query.Param("id") Long id,
+                       @org.springframework.data.repository.query.Param("customId") String customId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT MAX(p.id) FROM Patient p WHERE p.hospitalId = :hospitalId")
+    Long findMaxIdByHospitalId(@org.springframework.data.repository.query.Param("hospitalId") Long hospitalId);
+
+    boolean existsByHospitalIdAndCustomIdAndIdNot(Long hospitalId, String customId, Long id);
+
 
         long countByHospitalId(Long hospitalId);
 
@@ -56,18 +73,43 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
          */
         Optional<Patient> findByIdAndHospitalIdAndIsActiveTrue(Long id, Long hospitalId);
 
+        /**
+         * Tenant-scoped lookup that also sees inactive rows. The legacy importer needs it to tell
+         * "this MRN's patient was deactivated" from "this MRN's patient is gone"; every other caller
+         * should keep using the IsActiveTrue variant.
+         */
+        Optional<Patient> findByIdAndHospitalId(Long id, Long hospitalId);
+
+        /** Serializes admission decisions for one tenant-scoped patient. */
+        @Lock(LockModeType.PESSIMISTIC_WRITE)
+        @Query("SELECT p FROM Patient p WHERE p.id = :id AND p.hospitalId = :hospitalId")
+        Optional<Patient> findByIdAndHospitalIdForUpdate(@Param("id") Long id,
+                        @Param("hospitalId") Long hospitalId);
+        /**
+         * ICU Phase 2 — batch, tenant-scoped resolve for a board that shows many patients at
+         * once. Scoped rather than a bare findAllById so a stray id can never cross tenants.
+         */
+        List<Patient> findByHospitalIdAndIdIn(Long hospitalId, java.util.Collection<Long> ids);
+
         Optional<Patient> findByPublicIdAndHospitalIdAndIsActiveTrue(String publicId, Long hospitalId);
 
         /**
          * Search active patients by name or phone
          * 
+         * <p>Written out rather than derived from a method name: the derived form emitted a LIKE
+         * ESCAPE clause that H2 rejects outright, so every search answered 409. Spelling the
+         * predicate out also keeps the tenant filter in one place instead of relying on the reader
+         * to work out AND/OR precedence across a 100-character method name.
+         *
          * @param hospitalId Hospital ID
-         * @param name       Name search term
-         * @param phone      Phone search term
+         * @param term       Name or phone search term
          * @return List of matching patients
          */
-        List<Patient> findByHospitalIdAndIsActiveTrueAndNameContainingIgnoreCaseOrHospitalIdAndIsActiveTrueAndPhoneContaining(
-                        Long hospitalId, String name, Long hospitalId2, String phone);
+        @Query("SELECT p FROM Patient p WHERE p.hospitalId = :hospitalId AND p.isActive = true "
+                        + "AND (LOWER(p.name) LIKE LOWER(CONCAT('%', :term, '%')) "
+                        + "OR p.phone LIKE CONCAT('%', :term, '%')) ORDER BY p.createdAt DESC")
+        List<Patient> searchActiveByNameOrPhone(@Param("hospitalId") Long hospitalId,
+                        @Param("term") String term);
 
         /**
          * Find patient by phone number and hospital ID
@@ -80,18 +122,40 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
         List<Patient> findByPhoneAndHospitalIdAndIsActiveTrue(String phone, Long hospitalId);
 
         /**
+         * The same tenant-scoped active-phone lookup, with the ordering written down.
+         *
+         * <p>The unordered form above returns rows in whatever order the plan happens to produce.
+         * That was tolerable while the only caller took the first element, and it stopped being
+         * tolerable the moment the result became a list shown to a human: a parent and a child on
+         * one number must appear in the same order every time, or reception is choosing from a
+         * list that reshuffles itself between attempts. Ascending id is registration order, which
+         * is also the order staff expect.
+         */
+        @Query("SELECT p FROM Patient p WHERE p.phone = :phone AND p.hospitalId = :hospitalId "
+                        + "AND p.isActive = true ORDER BY p.id ASC")
+        List<Patient> findActiveByPhoneOrdered(@Param("phone") String phone,
+                        @Param("hospitalId") Long hospitalId);
+
+        /**
          * Find active patients created within a date range (for Today filter)
          */
         Optional<Patient> findByPublicId(String publicId);
 
-        org.springframework.data.domain.Page<Patient> findByHospitalIdAndIsActiveTrueAndCreatedAtBetweenOrderByCreatedAtDesc(
-                        Long hospitalId, java.time.LocalDateTime start, java.time.LocalDateTime end,
+        /** Business wall-clock interval [from, toExclusive). */
+        @Query("SELECT p FROM Patient p WHERE p.hospitalId = :hospitalId AND p.isActive = true "
+                        + "AND p.createdAt >= :from AND p.createdAt < :toExclusive ORDER BY p.createdAt DESC")
+        org.springframework.data.domain.Page<Patient> findActiveInDateRange(
+                        @Param("hospitalId") Long hospitalId, @Param("from") java.time.LocalDateTime from,
+                        @Param("toExclusive") java.time.LocalDateTime toExclusive,
                         org.springframework.data.domain.Pageable pageable);
 
         /**
          * Count active patients created within a date range
          * Used for "Patients This Month" and "Patients Today" stats
          */
-        long countByHospitalIdAndIsActiveTrueAndCreatedAtBetween(
-                        Long hospitalId, java.time.LocalDateTime start, java.time.LocalDateTime end);
+        @Query("SELECT COUNT(p) FROM Patient p WHERE p.hospitalId = :hospitalId AND p.isActive = true "
+                        + "AND p.createdAt >= :from AND p.createdAt < :toExclusive")
+        long countActiveInDateRange(@Param("hospitalId") Long hospitalId,
+                        @Param("from") java.time.LocalDateTime from,
+                        @Param("toExclusive") java.time.LocalDateTime toExclusive);
 }

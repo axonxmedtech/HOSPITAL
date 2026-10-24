@@ -89,6 +89,19 @@ public class DoctorController {
         return ResponseEntity.ok("Doctor deleted successfully");
     }
 
+    @GetMapping("/deleted")
+    @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
+    public ResponseEntity<?> getDeletedDoctors() {
+        return ResponseEntity.ok(doctorService.getDeletedDoctors());
+    }
+
+    @PostMapping("/{id}/restore")
+    @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
+    public ResponseEntity<?> restoreDoctor(@PathVariable String id) {
+        Doctor restoredDoctor = doctorService.restoreDoctor(id);
+        return ResponseEntity.ok(restoredDoctor);
+    }
+
     @PostMapping("/{id}/reset-password")
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     public ResponseEntity<?> resetDoctorPassword(@PathVariable String id, @RequestBody java.util.Map<String, String> body) {
@@ -104,35 +117,44 @@ public class DoctorController {
     @PostMapping("/consultation")
     @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> submitConsultation(@jakarta.validation.Valid @RequestBody com.hms.dto.ConsultationRequest request) {
-        com.hms.entity.Opd opd = doctorService.submitConsultation(request);
-        java.util.Map<String, Object> response = new java.util.HashMap<>();
-        response.put("message", "Consultation submitted successfully");
-        if (opd != null) {
-            response.put("opdId", opd.getId());
-            
-            // Return a clean map representation of OPD to prevent lazy initialization exception during Jackson serialization
-            java.util.Map<String, Object> opdMap = new java.util.HashMap<>();
-            opdMap.put("id", opd.getId());
-            opdMap.put("caseId", opd.getCaseId());
-            opdMap.put("problem", opd.getProblem());
-            opdMap.put("status", opd.getStatus());
-            response.put("opd", opdMap);
+        try {
+            com.hms.entity.Opd opd = doctorService.submitConsultation(request);
+            java.util.Map<String, Object> response = new java.util.HashMap<>();
+            response.put("message", "Consultation submitted successfully");
+            if (opd != null) {
+                response.put("opdId", opd.getId());
+                
+                // Return a clean map representation of OPD to prevent lazy initialization exception during Jackson serialization
+                java.util.Map<String, Object> opdMap = new java.util.HashMap<>();
+                opdMap.put("id", opd.getId());
+                opdMap.put("caseId", opd.getCaseId());
+                opdMap.put("problem", opd.getProblem());
+                opdMap.put("status", opd.getStatus());
+                response.put("opd", opdMap);
 
-            // Fetch generated bill ID (by opdId or by appointmentId fallback)
-            java.util.Optional<com.hms.entity.Billing> billOpt = billingRepository.findByOpdId(opd.getId());
-            if (billOpt.isEmpty() && request.getAppointmentId() != null) {
-                billOpt = billingRepository.findByAppointmentId(request.getAppointmentId());
+                // Fetch generated bill ID (by opdId or by appointmentId fallback)
+                java.util.Optional<com.hms.entity.Billing> billOpt = billingRepository.findFirstByOpdIdOrderByIdDesc(opd.getId());
+                if (billOpt.isEmpty() && request.getAppointmentId() != null) {
+                    billOpt = billingRepository.findFirstByAppointmentIdOrderByIdDesc(request.getAppointmentId());
+                }
+                if (billOpt.isPresent()) {
+                    response.put("billId", billOpt.get().getId());
+                }
             }
-            if (billOpt.isPresent()) {
-                response.put("billId", billOpt.get().getId());
-            }
+            boolean hasPrescription = request.getPrescription() != null && !request.getPrescription().isEmpty();
+            boolean hasAdministered = (request.getAdministeredItems() != null && !request.getAdministeredItems().isEmpty())
+                    || (request.getHospitalInventoryItems() != null && !request.getHospitalInventoryItems().isEmpty());
+            response.put("hasPrescription", hasPrescription);
+            response.put("hasAdministered", hasAdministered);
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException | com.hms.exception.ResourceNotFoundException | com.hms.exception.UnauthorizedException | com.hms.exception.ConflictException e) {
+            throw e;
+        } catch (Exception e) {
+            logger.error("Error submitting consultation", e);
+            String message = e.getMessage() != null && !e.getMessage().isBlank() ? e.getMessage() : "Failed to submit consultation";
+            return ResponseEntity.status(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(com.hms.dto.ApiResponse.error(message));
         }
-        boolean hasPrescription = request.getPrescription() != null && !request.getPrescription().isEmpty();
-        boolean hasAdministered = (request.getAdministeredItems() != null && !request.getAdministeredItems().isEmpty())
-                || (request.getHospitalInventoryItems() != null && !request.getHospitalInventoryItems().isEmpty());
-        response.put("hasPrescription", hasPrescription);
-        response.put("hasAdministered", hasAdministered);
-        return ResponseEntity.ok(response);
     }
 
 
@@ -166,6 +188,49 @@ public class DoctorController {
         return ResponseEntity.ok(response);
     }
 
+    /**
+     * The same consultation details, addressed by OPD instead of by appointment.
+     *
+     * <p>Reception's prescription viewer could only reach a consultation through its appointment,
+     * so a walk-in visit — the normal path for a hospital without the APPOINTMENTS module, and
+     * already the majority path for one with it — had no prescription view at reception at all.
+     * The doctor's side never had this problem: it has read by OPD since
+     * {@code /prescription/opd/{opdId}/pdf}. This is that same reading, for the JSON viewer.
+     *
+     * <p>Deliberately not a new consultation architecture: it returns the identical
+     * {medicalRecord, prescriptions} shape as the appointment-keyed endpoint above and reads the
+     * same two repositories. Only the key differs. Both remain, because an appointment-origin
+     * consultation is still addressed by appointment everywhere it already was.
+     *
+     * <p>Ungated by module, like its sibling: a consultation is a clinical record, not an
+     * appointment, and it must stay readable whether or not the tenant sells appointments.
+     *
+     * <p>Tenant scope comes from the authenticated principal and is checked on the medical record,
+     * which carries hospital_id directly — the same check {@code downloadPrescriptionByOpd} makes.
+     * Another tenant's OPD is reported as not found, indistinguishable from one that never existed.
+     */
+    @GetMapping("/consultation/opd/{opdId}")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    public ResponseEntity<?> getConsultationDetailsByOpd(@PathVariable Long opdId) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+
+        com.hms.entity.MedicalRecord record = medicalRecordRepository.findByOpdId(opdId)
+                .orElseThrow(() -> new ResourceNotFoundException("Consultation record not found"));
+
+        if (hospitalId == null || !hospitalId.equals(record.getHospitalId())) {
+            throw new ResourceNotFoundException("Consultation record not found");
+        }
+
+        java.util.List<com.hms.entity.Prescription> prescriptions = prescriptionRepository
+                .findByMedicalRecordId(record.getId());
+
+        java.util.Map<String, Object> response = new java.util.HashMap<>();
+        response.put("medicalRecord", record);
+        response.put("prescriptions", prescriptions);
+
+        return ResponseEntity.ok(response);
+    }
+
     @Autowired
     private com.hms.service.PdfService pdfService;
     @Autowired
@@ -182,8 +247,13 @@ public class DoctorController {
     @Autowired
     private com.hms.repository.AppointmentRepository appointmentRepository;
 
+    // Same readership as /consultation/{appointmentId} above: the PDF is that consultation in
+    // another format, so it carries the same rule rather than a looser one.
     @GetMapping("/prescription/{appointmentId}/pdf")
-    public ResponseEntity<?> downloadPrescription(@PathVariable String appointmentId) {
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    public ResponseEntity<?> downloadPrescription(
+            @PathVariable String appointmentId,
+            @RequestParam(name = "lang", defaultValue = "en") String lang) {
         try {
             Long hospitalId = securityHelper.getCurrentHospitalId();
             logger.info("Downloading prescription for appointment: {} in hospital: {}", LogSanitizer.clean(appointmentId), hospitalId);
@@ -214,7 +284,7 @@ public class DoctorController {
                     .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
 
             java.io.ByteArrayInputStream pdf = pdfService.generatePrescriptionPdf(hospital, doctor, patient, record,
-                    prescriptions);
+                    prescriptions, lang);
 
             HttpHeaders headers = new HttpHeaders();
             headers.add("Content-Disposition", "inline; filename=prescription_" + appointmentId + ".pdf");
@@ -230,12 +300,20 @@ public class DoctorController {
         }
     }
 
+        // Same readership as /consultation/opd/{opdId} above.
         @GetMapping("/prescription/opd/{opdId}/pdf")
-        public ResponseEntity<?> downloadPrescriptionByOpd(@PathVariable Long opdId) {
+        @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+        public ResponseEntity<?> downloadPrescriptionByOpd(
+                @PathVariable Long opdId,
+                @RequestParam(name = "lang", defaultValue = "en") String lang) {
         try {
             Long hospitalId = securityHelper.getCurrentHospitalId();
 
-            com.hms.entity.Opd opd = opdRepository.findById(opdId)
+            // Scoped at the lookup. The OPD is loaded by raw id no longer: a foreign id simply is
+            // not found, which is the same 404 this already returned after the medical-record
+            // check below -- so the contract is unchanged and the guarantee moves earlier.
+            com.hms.entity.Opd opd = opdRepository
+                .findByIdAndHospitalIdWithPatientAndDoctor(opdId, hospitalId)
                 .orElseThrow(() -> new ResourceNotFoundException("OPD not found"));
 
             com.hms.entity.MedicalRecord record = medicalRecordRepository.findByOpdId(opd.getId())
@@ -260,7 +338,7 @@ public class DoctorController {
                 .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
 
             java.io.ByteArrayInputStream pdf = pdfService.generatePrescriptionPdf(hospital, doctor, patient, record,
-                prescriptions);
+                prescriptions, lang);
 
             HttpHeaders headers = new HttpHeaders();
             headers.add("Content-Disposition", "inline; filename=prescription_opd_" + opdId + ".pdf");

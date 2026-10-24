@@ -56,9 +56,6 @@ public class AppointmentService {
     private DoctorRepository doctorRepository;
 
     @Autowired
-    private com.hms.repository.HospitalRepository hospitalRepository;
-
-    @Autowired
     private SecurityContextHelper securityHelper;
 
     @Autowired
@@ -69,6 +66,12 @@ public class AppointmentService {
 
     @Autowired
     private com.hms.security.HospitalWebSocketHandler webSocketHandler;
+
+    @Autowired
+    private PatientRegistrar patientRegistrar;
+
+    @Autowired
+    private PatientDuplicateFinder patientDuplicateFinder;
 
 
     /**
@@ -82,11 +85,24 @@ public class AppointmentService {
      */
     @Transactional
     public Appointment createAppointment(Appointment appointment) {
+        return createAppointment(appointment, false);
+    }
+
+    /**
+     * @param acknowledgeDuplicatePhone reception has been shown the active patients already on
+     *                                  this number and has stated that the person being booked is
+     *                                  a different one. Without it, any match at all stops the
+     *                                  booking and asks — see the comment at the lookup below.
+     */
+    @Transactional
+    public Appointment createAppointment(Appointment appointment,
+            boolean acknowledgeDuplicatePhone) {
         // Get hospital_id from security context (multi-tenant isolation)
         Long hospitalId = securityHelper.getCurrentHospitalId();
 
-        // Enforce OPD Module Access (Real-time)
-        validateOpdAccess(hospitalId);
+        // AppointmentController enforces APPOINTMENTS. The entitlement model guarantees that
+        // APPOINTMENTS includes OPD, avoiding a duplicate service-side module check and its
+        // misleading 400 response for a plan authorization failure.
 
         if (hospitalId == null) {
             throw new UnauthorizedException("Hospital ID not found in context");
@@ -109,16 +125,27 @@ public class AppointmentService {
                 throw new IllegalArgumentException("Either patientId or patient details (name, phone) must be provided");
             }
 
-            // Check if patient already exists by phone
-            List<com.hms.entity.Patient> existingPatients = patientRepository
-                    .findByPhoneAndHospitalIdAndIsActiveTrue(patientPhone, hospitalId);
+            // Does this hospital already have an active patient on this number?
+            //
+            // This used to reuse existingPatients.get(0) — an arbitrary row out of however many
+            // matched. A parent and a child legitimately share one mobile, so "the first patient
+            // with this number" is not the same question as "the patient this appointment is
+            // for", and answering the wrong one attaches a child's appointment to the parent's
+            // clinical record. A match is now a question for reception, never an inference here:
+            // even a single match stops and asks, because one match is exactly the case where
+            // guessing looks safest and is not.
+            java.util.List<com.hms.dto.DuplicatePatientMatch> conflicts =
+                    patientDuplicateFinder.findActiveByPhone(hospitalId, patientPhone, null);
 
-            if (!existingPatients.isEmpty()) {
-                // Use existing patient (first one found if duplicates exist)
-                com.hms.entity.Patient existingPatient = existingPatients.get(0);
-                patientId = existingPatient.getId();
-                logger.info("Found existing patient with phone {}, using patient ID {}", LogSanitizer.clean(patientPhone), patientId);
-            } else {
+            if (!conflicts.isEmpty() && !acknowledgeDuplicatePhone) {
+                // Thrown before anything in this transaction has been written, so it rolls back
+                // clean. Catching a constraint violation after a write would instead leave a
+                // rollback-only transaction that can no longer record anything.
+                throw new com.hms.exception.DuplicatePhoneConflictException(
+                        PatientService.DUPLICATE_PHONE_MESSAGE, conflicts);
+            }
+
+            { // scope for the new patient; reached only with no match, or with an explicit ack
                 // Create new patient
                 com.hms.entity.Patient newPatient = new com.hms.entity.Patient();
                 newPatient.setName(patientName);
@@ -130,22 +157,55 @@ public class AppointmentService {
                 newPatient.setAddress("Walk-in"); // Default address for quick appointments
                 newPatient.setHospitalId(hospitalId);
                 newPatient.setIsActive(true);
+                if (!conflicts.isEmpty()) {
+                    // Value-bound: the acknowledgement records that THIS number was confirmed
+                    // shared, so changing the patient's phone later lets the exemption lapse.
+                    newPatient.setDuplicatePhoneAckFor(patientPhone);
+                    newPatient.setDuplicatePhoneAckAt(
+                            java.time.LocalDateTime.now(java.time.ZoneId.systemDefault()));
+                    newPatient.setDuplicatePhoneAckBy(securityHelper.getCurrentUserEmail());
+                }
 
-                // Log patient creation audit
+                // The same insert the registration endpoint uses, so a patient booked through an
+                // appointment gets the same PAT-number as one registered at the desk. This path
+                // used to call patientRepository.save directly and never assign one.
+                com.hms.entity.Patient savedPatient = patientRegistrar.persistNewPatient(newPatient);
+                patientId = savedPatient.getId();
+
+                // Audited after the insert, not before: the entity had no id or publicId yet, so
+                // the old ordering recorded every auto-created patient against a null subject.
                 try {
                     auditLogService.logAction(
                             "PATIENT_CREATED",
-                            "Patient " + newPatient.getName() + " was created during appointment booking.",
+                            "Patient " + savedPatient.getName() + " was created during appointment booking.",
                             securityHelper.getCurrentUserEmail(),
                             hospitalId,
                             "PATIENT",
-                            null, // ID not yet available pre-save? No, save first.
+                            savedPatient.getPublicId(),
                             "Auto-created");
                 } catch (Exception e) {
+                    logger.warn("Failed to create audit log for patient auto-creation", e);
                 }
-
-                com.hms.entity.Patient savedPatient = patientRepository.save(newPatient);
-                patientId = savedPatient.getId();
+                if (!conflicts.isEmpty()) {
+                    try {
+                        String existing = conflicts.stream()
+                                .map(cf -> cf.customId() != null ? cf.customId()
+                                        : String.valueOf(cf.id()))
+                                .collect(java.util.stream.Collectors.joining(", "));
+                        auditLogService.logAction(
+                                "PATIENT_DUPLICATE_PHONE_ACKNOWLEDGED",
+                                "Booked as a different person sharing phone "
+                                        + PatientDuplicateFinder.maskPhone(patientPhone)
+                                        + " with existing patient(s): " + existing,
+                                securityHelper.getCurrentUserEmail(),
+                                hospitalId,
+                                "PATIENT",
+                                savedPatient.getPublicId(),
+                                "Shared phone acknowledged by staff");
+                    } catch (Exception e) {
+                        logger.warn("Failed to audit duplicate-phone acknowledgement", e);
+                    }
+                }
                 logger.info("Created new patient {} with ID {} for hospital {}", LogSanitizer.clean(patientName), patientId, hospitalId);
             }
 
@@ -233,6 +293,55 @@ public class AppointmentService {
     }
 
     /**
+     * Move an appointment to a new date and/or time.
+     *
+     * <p>Rescheduling was simply absent: the update endpoint read only status and notes, so a
+     * request carrying a new time was accepted with 200 and the appointment stayed exactly where
+     * it was. Reception had no way to move a booking and no indication that the change had not
+     * happened.
+     *
+     * <p>The same slot rule that guards booking guards the move -- a reschedule that lands on
+     * another patient's slot is refused rather than double-booking the doctor. The appointment's
+     * own slot is excluded from that check so re-saving it unchanged is not a clash with itself.
+     */
+    private void reschedule(Appointment appointment, java.time.LocalDate newDate,
+            java.time.LocalTime newTime, Long hospitalId) {
+        if (newDate == null && newTime == null) {
+            return;
+        }
+        java.time.LocalDate date = newDate != null ? newDate : appointment.getAppointmentDate();
+        java.time.LocalTime time = newTime != null ? newTime : appointment.getAppointmentTime();
+        if (date.equals(appointment.getAppointmentDate()) && time.equals(appointment.getAppointmentTime())) {
+            return;
+        }
+
+        for (Appointment existing : appointmentRepository
+                .findByDoctorIdAndAppointmentDateAndIsActiveTrue(appointment.getDoctorId(), date)) {
+            if (existing.getId().equals(appointment.getId())) continue;
+            if (STATUS_CANCELLED.equals(existing.getStatus())) continue;
+            if (time.equals(existing.getAppointmentTime())) {
+                throw new IllegalArgumentException("Slot " + time + " is already booked.");
+            }
+        }
+
+        appointment.setAppointmentDate(date);
+        appointment.setAppointmentTime(time);
+
+        try {
+            auditLogService.logAction(
+                    "APPOINTMENT_RESCHEDULED",
+                    "Appointment moved to " + date + " " + time + ".",
+                    securityHelper.getCurrentUserEmail(),
+                    hospitalId,
+                    "APPOINTMENT",
+                    appointment.getPublicId(),
+                    null);
+        } catch (Exception e) {
+            logger.warn("Failed to create audit log for appointment reschedule", e);
+        }
+    }
+
+    /**
      * Helper method to populate transient name fields (Patient Name, Doctor Name)
      * Avoids N+1 problem by fetching in bulk
      */
@@ -317,7 +426,7 @@ public class AppointmentService {
                                 .searchAppointmentsByDateAfter(hospitalId, search, today, pageable);
                     } else {
                         page = appointmentRepository
-                                .findByHospitalIdAndAppointmentDateAfterAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
+                                .findByHospitalIdAndAppointmentDateGreaterThanEqualAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
                                         hospitalId, today, pageable);
                     }
                     break;
@@ -390,7 +499,7 @@ public class AppointmentService {
                     break;
                 case "upcoming":
                     appointments = appointmentRepository
-                            .findByDoctorIdAndAppointmentDateAfterAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
+                            .findByDoctorIdAndAppointmentDateGreaterThanEqualAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
                                     doctorId, today);
                     break;
                 case "history":
@@ -638,7 +747,8 @@ public class AppointmentService {
      * @param notes  New Notes
      * @return Updated Appointment
      */
-    public Appointment updateDetails(String publicId, String status, String notes) {
+    public Appointment updateDetails(String publicId, String status, String notes,
+            java.time.LocalDate newDate, java.time.LocalTime newTime) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null)
             throw new UnauthorizedException("Hospital ID not found");
@@ -669,6 +779,8 @@ public class AppointmentService {
         if (notes != null) {
             appointment.setNotes(notes);
         }
+
+        reschedule(appointment, newDate, newTime, hospitalId);
 
         Appointment saved = appointmentRepository.save(appointment);
         if (saved == null) {
@@ -795,7 +907,7 @@ public class AppointmentService {
                                 .searchAppointmentsByDoctorAndDateAfter(doctorId, hospitalId, search, today, pageable);
                     } else {
                         page = appointmentRepository
-                                .findByDoctorIdAndAppointmentDateAfterAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
+                                .findByDoctorIdAndAppointmentDateGreaterThanEqualAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
                                         doctorId, today, pageable);
                     }
                     break;
@@ -826,15 +938,4 @@ public class AppointmentService {
 
         return page;
     }
-
-    private void validateOpdAccess(Long hospitalId) {
-        if (hospitalId == null)
-            return;
-        com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
-                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
-        if (hospital.getModules() == null || !hospital.getModules().contains("OPD")) {
-            throw new IllegalArgumentException("OPD module is disabled for your hospital.");
-        }
-    }
 }
-

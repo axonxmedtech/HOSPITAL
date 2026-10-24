@@ -3,6 +3,7 @@ import EmptyState from '../../../components/EmptyState';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
 import nurseService from '../../../services/nurseService';
+import { describeShift, isOnShiftNow } from '../../../utils/nurseShift';
 
 /**
  * MyNursesView - the Nurse Incharge's roster (Nursing Mgmt).
@@ -68,15 +69,22 @@ const MyNursesView = ({ refreshKey }) => {
                 <td className="px-4 py-3 text-gray-700">{n.wardName || `Ward ${n.wardId}`}</td>
                 <td className="px-4 py-3 text-gray-600">{n.phone || '—'}</td>
                 <td className="px-4 py-3">
-                  {n.onShiftNow ? (
-                    <span className="px-2 py-1 rounded text-xs font-bold bg-green-50 text-green-700 border border-green-100">
-                      On shift
+                  {/* Same wording the admin's staff list uses. "Off" alone could not tell a nurse
+                      who is rostered but not on yet from one with no shift at all. */}
+                  <div className="leading-tight">
+                    <span
+                      className={
+                        n.shiftName || n.shiftStartTime ? 'text-gray-800 text-sm' : 'text-gray-400 text-sm'
+                      }
+                    >
+                      {describeShift(n)}
                     </span>
-                  ) : (
-                    <span className="px-2 py-1 rounded text-xs font-semibold bg-gray-100 text-gray-500">
-                      Off
-                    </span>
-                  )}
+                    {isOnShiftNow(n) && (
+                      <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-700">
+                        ON SHIFT
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-4 py-3">
                   {n.hasLogin ? (

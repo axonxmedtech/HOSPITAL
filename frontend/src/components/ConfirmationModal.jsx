@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { extractApiError } from '../utils/apiError';
 
 /**
  * ConfirmationModal - Reusable modal for confirming destructive/important actions
@@ -23,6 +24,7 @@ const ConfirmationModal = ({
 }) => {
   const [isLoading, setIsLoading] = React.useState(false);
   const [reason, setReason] = React.useState('');
+  const [submitError, setSubmitError] = React.useState('');
   const cancelBtnRef = useRef(null);
   const isProcessingRef = useRef(false);
 
@@ -31,6 +33,7 @@ const ConfirmationModal = ({
     if (isOpen) {
       isProcessingRef.current = false;
       setReason('');
+      setSubmitError('');
       // Move focus into the modal on open for keyboard accessibility (BUG-039)
       setTimeout(() => cancelBtnRef.current?.focus(), 50);
     }
@@ -54,12 +57,13 @@ const ConfirmationModal = ({
 
     isProcessingRef.current = true;
     setIsLoading(true);
+    setSubmitError('');
     try {
       await onConfirm(reason); // Pass reason to callback
       onCancel(); // Close on success
     } catch (error) {
       console.error('Confirmation action failed', error);
-      onCancel();
+      setSubmitError(extractApiError(error, 'The action could not be completed. Please try again.'));
     } finally {
       isProcessingRef.current = false;
       setIsLoading(false);
@@ -109,6 +113,11 @@ const ConfirmationModal = ({
           <p id="confirm-modal-desc" className="text-sm text-gray-500 mb-6">
             {message || 'Are you sure you want to proceed?'}
           </p>
+          {submitError && (
+            <p role="alert" className="mb-4 text-sm text-red-700">
+              {submitError}
+            </p>
+          )}
 
           {showReasonInput && (
             <div className="mb-6 text-left">

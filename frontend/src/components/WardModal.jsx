@@ -50,7 +50,6 @@ const WardModal = ({ open, initial, onClose, onSaved }) => {
           wardName,
           bedPrice: Number(bedPrice),
           floorNumber: floorNumber ? Number(floorNumber) : null,
-          // Bed count is editable on edit too — the backend adds/removes beds to match.
           totalBeds: totalBeds === '' ? null : Number(totalBeds),
         };
         await WardService.updateWard(initial.wardId, payload);

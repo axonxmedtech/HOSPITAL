@@ -32,6 +32,15 @@ regexes = [
   '''nobody@example\.com''',
   '''HMS Backend Running''',             # public health-check response string
   '''test-encryption-key-123''',         # obvious placeholder in a now-deleted test; still in git history (commit dd23ec8), which Gitleaks scans
+  # The synthetic JWT fixture in scripts/secret-scan.test.mjs, which exists so our own scanner
+  # can be tested against a JWT-shaped string. Matched as an EXACT literal, so this entry can
+  # never allow any other token. Its third segment decodes to the ASCII word
+  # "signature_placeholder" rather than an HMAC, so no key signed it and none can be exposed by
+  # it. Listed here rather than fixed with an inline `gitleaks:allow` comment because Gitleaks
+  # scans full history: the blob in commit c3ed2e0 would keep failing regardless of the
+  # working tree. Gitleaks 8.21.2 has no `targetRules`/`condition` (see note below), so an exact
+  # secret literal is the tightest available scope.
+  '''eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0MTIzNDUifQ.c2lnbmF0dXJlX3BsYWNlaG9sZGVy''',  # pragma: allowlist secret
 ]
 
 # Common example/placeholder tokens across docs and .env.example style files.
@@ -42,3 +51,10 @@ stopwords = [
   'your-secret-here',
   'todo',
 ]
+
+# NOTE on scope (Gitleaks 8.21.2): this version supports only the singular [allowlist] table.
+# The array form [[allowlists]] — which carries `targetRules` and `condition = "AND"` — is
+# SILENTLY IGNORED here, and within one [allowlist] the `paths`/`regexes`/`stopwords` conditions
+# are OR-ed, not AND-ed. So `paths` could not be used to narrow an entry: adding the fixture's
+# path would exempt that whole file from EVERY rule instead. An exact secret literal is therefore
+# the narrowest scope this version can express. Revisit if Gitleaks is upgraded.

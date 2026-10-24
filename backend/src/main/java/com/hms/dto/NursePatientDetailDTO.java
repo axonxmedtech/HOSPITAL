@@ -17,6 +17,9 @@ import java.util.List;
 public class NursePatientDetailDTO {
 
     // Demographics
+    // The numeric id, needed by anything scoped to the patient rather than to this admission --
+    // patient documents ask for it. The publicId stays the one shown to a person.
+    private Long patientId;
     private String patientPublicId;
     private String patientName;
     private Integer age;

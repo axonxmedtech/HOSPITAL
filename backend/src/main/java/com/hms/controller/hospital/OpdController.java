@@ -9,6 +9,7 @@ import com.hms.entity.Opd;
 import com.hms.entity.Hospital;
 import com.hms.entity.MedicalRecord;
 import com.hms.service.hospital.OpdService;
+import com.hms.security.RequireModule;
 import com.hms.security.SecurityContextHelper;
 import com.hms.repository.DoctorRepository;
 import com.hms.repository.HospitalRepository;
@@ -29,6 +30,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 @RestController
 @RequestMapping({"/hospital/opd", "/clinic/opd", "/pharmacy/opd"})
 public class OpdController {
+
+    @Autowired
+    private com.hms.service.hospital.OpdIdempotencyService opdIdempotencyService;
+
+    @Autowired
+    private com.hms.repository.OpdRepository opdIdempotencyOpdRepository;
 
     @Autowired
     private com.hms.service.PdfService pdfService;
@@ -70,16 +77,60 @@ public class OpdController {
         this.labOrderRepository = labOrderRepository;
     }
 
+    /**
+     * Register an OPD visit — once per logical submission.
+     *
+     * <p>Registering inserts the OPD, a queue entry and, under "bill before OPD", a PAID bill.
+     * None of that is repeatable, so a double-clicked button or a retried request charged the
+     * patient twice and queued them twice with nothing able to detect it afterwards.
+     *
+     * <p>The key is claimed here rather than inside OpdService on purpose. Idempotency is a fact
+     * about the REQUEST, not about the clinical work, and the claim needs its own transaction —
+     * a unique-key violation marks the surrounding transaction rollback-only, so claiming inside
+     * the service's transaction would poison the very work being protected. Doing it at this
+     * layer also keeps the service's own transaction boundary exactly as it was.
+     *
+     * <p>A caller that sends no key behaves exactly as before, so no existing client breaks.
+     */
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    @RequireModule("OPD")
     @PostMapping
     public ResponseEntity<Opd> createOpd(@Valid @RequestBody CreateOpdRequest req) {
-        Opd opd = opdService.createOpd(req);
-        return ResponseEntity.ok(opd);
+        String key = req.getIdempotencyKey() == null ? null : req.getIdempotencyKey().trim();
+        if (key == null || key.isEmpty()) {
+            return ResponseEntity.ok(opdService.createOpd(req));
+        }
+
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) {
+            throw new com.hms.exception.UnauthorizedException("Hospital ID not found in context");
+        }
+
+        com.hms.service.hospital.OpdIdempotencyService.Claim claim = opdIdempotencyService.claim(hospitalId, key);
+        if (claim.isReplay()) {
+            // The same submission arriving again: hand back what it already produced.
+            // Tenant-scoped, like every other read: the claim was matched on hospital_id, and the
+            // OPD it points at must belong to the same facility before it is handed back.
+            return ResponseEntity.ok(
+                    opdIdempotencyOpdRepository.findByIdAndHospitalIdWithPatientAndDoctor(claim.existingOpdId(), hospitalId)
+                            .orElseThrow(() -> new com.hms.exception.ResourceNotFoundException("OPD not found")));
+        }
+        try {
+            Opd created = opdService.createOpd(req);
+            opdIdempotencyService.complete(hospitalId, key, created.getId());
+            return ResponseEntity.ok(created);
+        } catch (RuntimeException failed) {
+            // Release the key so a corrected retry is not told forever that it is a duplicate.
+            opdIdempotencyService.release(hospitalId, key);
+            throw failed;
+        }
     }
 
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     @GetMapping("/{id}/pdf")
-    public ResponseEntity<byte[]> getOpdPdf(@PathVariable String id) {
+    public ResponseEntity<byte[]> getOpdPdf(
+            @PathVariable String id,
+            @RequestParam(name = "lang", defaultValue = "en") String lang) {
         Long opdId;
         try {
             if (id.startsWith("OPD-")) {
@@ -105,7 +156,7 @@ public class OpdController {
                 ? labOrderRepository.findByMedicalRecordId(medicalRecord.getId())
                 : java.util.List.of();
 
-        try (java.io.ByteArrayInputStream pdfStream = pdfService.generateCasePaperPdf(hospital, doctor, patient, opd, medicalRecord, labOrders)) {
+        try (java.io.ByteArrayInputStream pdfStream = pdfService.generateCasePaperPdf(hospital, doctor, patient, opd, medicalRecord, labOrders, lang)) {
             byte[] pdfBytes = pdfStream.readAllBytes();
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_PDF);
@@ -125,7 +176,9 @@ public class OpdController {
      */
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     @GetMapping("/{id}/documents/pdf")
-    public ResponseEntity<byte[]> getOpdDocumentsPdf(@PathVariable String id) {
+    public ResponseEntity<byte[]> getOpdDocumentsPdf(
+            @PathVariable String id,
+            @RequestParam(name = "lang", defaultValue = "en") String lang) {
         Long opdId;
         try {
             opdId = Long.parseLong(id.startsWith("OPD-") ? id.substring(4) : id);
@@ -150,13 +203,24 @@ public class OpdController {
         boolean incPrescription = printSettings == null || !Boolean.FALSE.equals(printSettings.getPrintPrescription());
         boolean incInClinic     = printSettings == null || !Boolean.FALSE.equals(printSettings.getPrintInClinic());
 
+        // Resolve consultation language: explicit param overrides, else fallback to medical record's stored language, then hospital setting
+        String effectiveLang = lang;
+        if ((effectiveLang == null || effectiveLang.isBlank() || "en".equalsIgnoreCase(effectiveLang))
+                && medicalRecord != null && medicalRecord.getConsultationLanguage() != null && !medicalRecord.getConsultationLanguage().isBlank()) {
+            effectiveLang = medicalRecord.getConsultationLanguage();
+        }
+        if ((effectiveLang == null || effectiveLang.isBlank() || "en".equalsIgnoreCase(effectiveLang))
+                && printSettings != null && printSettings.getDefaultConsultationLanguage() != null && !printSettings.getDefaultConsultationLanguage().isBlank()) {
+            effectiveLang = printSettings.getDefaultConsultationLanguage();
+        }
+
         java.util.List<byte[]> parts = new java.util.ArrayList<>();
         try {
             // 1. Case paper — with lab tests + follow-up.
             if (incCasePaper) {
                 java.util.List<com.hms.entity.LabOrder> labOrders = medicalRecord != null
                         ? labOrderRepository.findByMedicalRecordId(medicalRecord.getId()) : java.util.List.of();
-                parts.add(pdfService.generateCasePaperPdf(hospital, doctor, patient, opd, medicalRecord, labOrders)
+                parts.add(pdfService.generateCasePaperPdf(hospital, doctor, patient, opd, medicalRecord, labOrders, effectiveLang)
                         .readAllBytes());
             }
 
@@ -179,7 +243,7 @@ public class OpdController {
                                 .orElse(null);
                     }
                     parts.add(pdfService.generatePrescriptionPdf(hospital, rxDoctor, patient, medicalRecord,
-                            prescriptions).readAllBytes());
+                            prescriptions, effectiveLang).readAllBytes());
                 }
             }
 
@@ -221,6 +285,28 @@ public class OpdController {
         org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
         var result = opdService.getOpds(search, date, status, pageable);
         return ResponseEntity.ok(result);
+    }
+
+    /**
+     * Pending IPD requests -- doctor recommended admission, reception has not admitted yet.
+     * Reception acts on these, so the filtering belongs here and not in the browser: the
+     * dashboard previously paged 1000 OPDs and filtered client-side, which silently lost any
+     * request beyond that page.
+     */
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
+    @GetMapping("/ipd-requests/count")
+    public ResponseEntity<?> getPendingIpdRequestCount() {
+        return ResponseEntity.ok(java.util.Map.of("count", opdService.getPendingIpdRequestCount()));
+    }
+
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
+    @GetMapping("/ipd-requests")
+    public ResponseEntity<?> getPendingIpdRequests(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        org.springframework.data.domain.Pageable pageable =
+                org.springframework.data.domain.PageRequest.of(page, size);
+        return ResponseEntity.ok(opdService.getPendingIpdRequests(pageable));
     }
 
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
@@ -283,57 +369,12 @@ public class OpdController {
         return ResponseEntity.ok(queue);
     }
 
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    @GetMapping("/today-followups")
-    public ResponseEntity<java.util.List<?>> getTodayFollowUps() {
-        try {
-            Long hospitalId = securityHelper.getCurrentHospitalId();
-            if (hospitalId == null) {
-                return ResponseEntity.ok(java.util.List.of());
-            }
+    // GET /today-followups is gone. It triggered follow-up encounter creation from a read, and
+    // resolved each patient and doctor one row at a time. Outstanding follow-ups now come from
+    // FollowUpController, which reads in a single query and writes nothing. No caller existed in
+    // the frontend or backend at the time of removal.
 
-            // Trigger auto-queueing first so today's followups are created and queued
-            opdService.autoQueueTodaysFollowupsForHospital(hospitalId);
-
-            String email = securityHelper.getCurrentUserEmail();
-            java.util.Optional<com.hms.entity.Doctor> d = doctorRepository.findByEmailAndHospitalId(email, hospitalId);
-
-            java.util.List<com.hms.entity.MedicalRecord> followUps;
-            java.time.LocalDate today = java.time.LocalDate.now();
-            if (d.isPresent() && "DOCTOR".equals(securityHelper.getCurrentUserRole())) {
-                followUps = opdService.getFollowUpsForDoctorToday(hospitalId, d.get().getId(), today);
-            } else {
-                followUps = opdService.getFollowUpsForHospitalToday(hospitalId, today);
-            }
-
-            java.util.List<java.util.Map<String, Object>> response = new java.util.ArrayList<>();
-            for (com.hms.entity.MedicalRecord mr : followUps) {
-                java.util.Map<String, Object> map = new java.util.HashMap<>();
-                map.put("id", mr.getId());
-                map.put("followUpDate", mr.getFollowUpDate());
-                map.put("diagnosis", mr.getDiagnosis());
-
-                opdService.getPatientNameAndCustomIdAndPublicId(mr.getPatientId()).ifPresent(p -> {
-                    map.put("patientName", p.get("name"));
-                    map.put("patientCustomId", p.get("customId"));
-                    map.put("patientPublicId", p.get("publicId"));
-                });
-
-                opdService.getDoctorName(mr.getDoctorId()).ifPresent(name -> {
-                    map.put("doctorName", name);
-                });
-
-                response.add(map);
-            }
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            logger.error("Failed to fetch today's followups", e);
-            return ResponseEntity.ok(java.util.List.of());
-        }
-    }
-
-    @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
+@PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     @GetMapping("/report/pdf")
     public ResponseEntity<?> downloadOpdReportPdf(
             @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate date,

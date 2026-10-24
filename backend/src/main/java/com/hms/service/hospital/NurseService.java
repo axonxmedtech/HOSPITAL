@@ -185,6 +185,21 @@ public class NurseService {
             m.put("wardId", p.getWardId());
             m.put("nurseProfileId", p.getId());
             m.put("isIncharge", Boolean.TRUE.equals(p.getIsIncharge()));
+            // The admin's nurse list carried no shift information at all, while the incharge's
+            // roster showed a live one, so the two screens disagreed about the same nurse. Both
+            // now read the single resolver; a null here means genuinely nothing rostered today,
+            // which the UI states as "No shift assigned" rather than leaving blank.
+            try {
+                NurseShiftScheduleService.EffectiveShift shift =
+                        nurseShiftScheduleService.effectiveShiftToday(p.getId());
+                m.put("shiftName", shift == null ? null : shift.shiftName());
+                m.put("shiftStartTime", shift == null ? null : String.valueOf(shift.startTime()));
+                m.put("shiftEndTime", shift == null ? null : String.valueOf(shift.endTime()));
+                m.put("onShiftNow", shift != null && shift.onShiftNow());
+            } catch (Exception e) {
+                // Best-effort decoration: a roster problem must not blank the staff list.
+                logger.warn("Could not resolve today's shift for nurse {}: {}", p.getId(), e.getMessage());
+            }
             if (p.getWardId() != null) {
                 wardRepository.findById(p.getWardId())
                         .ifPresent(w -> m.put("wardName", w.getWardName()));
@@ -427,7 +442,11 @@ public class NurseService {
         if (!user.getHospitalId().equals(hospitalId)) {
             throw new UnauthorizedException("Access denied: User belongs to another hospital");
         }
-        if (!"NURSE".equals(user.getRole())) {
+        // A Nurse Incharge IS a nurse - a NurseProfile with is_incharge=true whose login carries
+        // the NURSE_INCHARGE role. Accepting only "NURSE" here meant an admin could not edit,
+        // rename, password-reset or remove an incharge at all: every one of those admin actions
+        // funnels through this method and answered "Target user is not a nurse".
+        if (!"NURSE".equals(user.getRole()) && !"NURSE_INCHARGE".equals(user.getRole())) {
             throw new UnauthorizedException("Target user is not a nurse");
         }
         return user;

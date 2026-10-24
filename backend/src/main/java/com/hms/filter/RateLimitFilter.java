@@ -131,11 +131,31 @@ public class RateLimitFilter extends OncePerRequestFilter {
                     logger.warn("Rate limiter could not buffer login body; falling back to IP-only", e);
                 }
             }
-            boolean ipOk = bucketFor("auth:ip:" + ip, authIpCapacity, authIpRefillMinutes).tryConsume(1);
-            boolean accountOk = account == null
-                    || bucketFor("auth:acct:" + account, authAccountCapacity, authAccountRefillMinutes).tryConsume(1);
+            Bucket ipBucket = bucketFor("auth:ip:" + ip, authIpCapacity, authIpRefillMinutes);
+            Bucket accountBucket = account == null ? null
+                    : bucketFor("auth:acct:" + account, authAccountCapacity, authAccountRefillMinutes);
+            boolean ipOk = ipBucket.tryConsume(1);
+            boolean accountOk = accountBucket == null || accountBucket.tryConsume(1);
             if (ipOk && accountOk) {
                 chain.doFilter(downstream, response);
+                // Refund on success: these buckets throttle BRUTE FORCE, and a successful
+                // authentication is not an attack. Charging it locked real users out -- the
+                // account bucket is 5 per 15 minutes, so a sixth legitimate sign-in inside that
+                // window (switching roles, re-login after token expiry, a second device) returned
+                // 429 and stayed locked for up to the whole window. Hospitals also NAT an entire
+                // site behind one address, so the per-IP bucket caught shift changes, where many
+                // different staff sign in successfully within a minute.
+                //
+                // Failed attempts still consume and are never refunded, so what this filter
+                // exists to stop is unchanged: password guessing is throttled exactly as before.
+                // Traffic from an already-authenticated session is bounded by the AUTHENTICATED
+                // tier below, not by these buckets.
+                if (isSuccessful(response)) {
+                    ipBucket.addTokens(1);
+                    if (accountBucket != null) {
+                        accountBucket.addTokens(1);
+                    }
+                }
             } else {
                 reject(response, "Too many login attempts. Please try again later.");
             }
@@ -158,6 +178,16 @@ public class RateLimitFilter extends OncePerRequestFilter {
         } else {
             reject(response, "Too many requests. Please slow down.");
         }
+    }
+
+    /**
+     * Did the login actually succeed? Only 2xx counts -- 401/403 (bad credentials, blocked or
+     * inactive account) and 5xx must keep their token consumed so repeated guessing stays
+     * throttled.
+     */
+    private boolean isSuccessful(HttpServletResponse response) {
+        int status = response.getStatus();
+        return status >= 200 && status < 300;
     }
 
     private void reject(HttpServletResponse response, String message) throws IOException {

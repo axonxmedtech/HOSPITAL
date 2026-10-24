@@ -19,11 +19,16 @@ import apiClient from './apiService';
 const platformService = {
   /**
    * Get all hospitals
+   *
+   * @param config extra axios config, e.g. `{ signal }` to make the request cancellable.
+   *   Callers already passed this; it was accepted as a 4th argument and silently dropped,
+   *   so aborting the controller cancelled nothing and a superseded response could still
+   *   land on top of a newer one.
    */
-  getHospitals: async (page = 0, size = 10, type = '') => {
+  getHospitals: async (page = 0, size = 10, type = '', config = {}) => {
     const params = { page, size };
     if (type) params.type = type;
-    const response = await apiClient.get('/platform/hospitals', { params });
+    const response = await apiClient.get('/platform/hospitals', { params, ...config });
     return response.data;
   },
 
@@ -86,9 +91,11 @@ const platformService = {
 
   /**
    * Get audit logs
+   *
+   * @param config extra axios config, e.g. `{ signal }` — see getHospitals.
    */
-  getAuditLogs: async () => {
-    const response = await apiClient.get('/platform/audit-logs');
+  getAuditLogs: async (config = {}) => {
+    const response = await apiClient.get('/platform/audit-logs', config);
     return response.data;
   },
 
@@ -195,6 +202,11 @@ const platformService = {
     return response.data;
   },
 
+  getPlanCapabilities: async (type) => {
+    const response = await apiClient.get('/platform/plans/capabilities', { params: { type } });
+    return response.data;
+  },
+
   createPlan: async (planData) => {
     const response = await apiClient.post('/platform/plans', planData);
     return response.data;
@@ -292,6 +304,32 @@ const platformService = {
     formData.append('file', file);
     const response = await apiClient.post('/platform/inventory-master/import-csv', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+
+  getStatements: async (hospitalType = 'HOSPITAL') => {
+    const response = await apiClient.get('/platform/statements', { params: { hospitalType } });
+    return response.data;
+  },
+
+  createStatement: async (data, hospitalType = 'HOSPITAL') => {
+    const response = await apiClient.post('/platform/statements', data, {
+      params: { hospitalType },
+    });
+    return response.data;
+  },
+
+  updateStatement: async (id, data, hospitalType = 'HOSPITAL') => {
+    const response = await apiClient.put(`/platform/statements/${id}`, data, {
+      params: { hospitalType },
+    });
+    return response.data;
+  },
+
+  deleteStatement: async (id, hospitalType = 'HOSPITAL') => {
+    const response = await apiClient.delete(`/platform/statements/${id}`, {
+      params: { hospitalType },
     });
     return response.data;
   },

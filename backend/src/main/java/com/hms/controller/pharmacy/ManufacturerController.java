@@ -1,5 +1,6 @@
 package com.hms.controller.pharmacy;
 
+import com.hms.security.RequireModule;
 import com.hms.dto.pharmacy.ManufacturerRequest;
 import com.hms.service.pharmacy.ManufacturerService;
 import jakarta.validation.Valid;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/pharmacy/manufacturers")
+@RequireModule("PHARMACY")
 public class ManufacturerController {
 
     @Autowired

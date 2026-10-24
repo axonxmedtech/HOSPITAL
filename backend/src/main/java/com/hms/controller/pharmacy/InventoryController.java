@@ -1,5 +1,6 @@
 package com.hms.controller.pharmacy;
 
+import com.hms.security.RequireModule;
 import com.hms.service.pharmacy.MedicineBatchService;
 import com.hms.service.pharmacy.InventoryTransactionService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,6 +14,7 @@ import java.math.BigDecimal;
 
 @RestController
 @RequestMapping("/pharmacy/inventory")
+@RequireModule("PHARMACY")
 public class InventoryController {
 
     @Autowired

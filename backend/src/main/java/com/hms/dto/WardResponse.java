@@ -11,4 +11,5 @@ public class WardResponse {
     private Integer totalBeds;
     private Integer floorNumber;
     private Long inchargeNurseId;
+    private Boolean staffed;
 }

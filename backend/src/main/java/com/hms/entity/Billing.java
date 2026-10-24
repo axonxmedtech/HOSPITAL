@@ -21,7 +21,9 @@ import java.time.LocalDateTime;
  * @version Phase-1
  */
 @Entity
-@Table(name = "billing")
+@Table(name = "billing", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_billing_hospital_custom_id", columnNames = {"hospital_id", "custom_id"})
+})
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -60,7 +62,7 @@ public class Billing {
         }
         if (this.customId == null) {
             // Generate simple random readable ID: BIL + 4 random digits
-            this.customId = "BIL" + (1000 + CUSTOM_ID_RANDOM.nextInt(9000));
+            this.customId = "BIL" + (100000 + CUSTOM_ID_RANDOM.nextInt(900000));
         }
     }
 

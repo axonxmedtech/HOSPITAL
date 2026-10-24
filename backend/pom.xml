@@ -137,6 +137,21 @@
             <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Legacy patient import (service/import_/WorkbookParser). poi-ooxml is read ONLY through
+             its streaming event API (XSSFReader + SAX) with POI's default zip-bomb guards; the
+             version is the one the reference implementation was built and reviewed against.
+             commons-csv is the RFC 4180 reader — quoted commas, multiline quoted fields and
+             malformed quoting are its job, not a String.split. -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.4.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-csv</artifactId>
+            <version>1.14.0</version>
+        </dependency>
         <!-- In-memory DB (MySQL compatibility mode) so the full Spring context can be
              booted in CI without a live MySQL — see ApplicationContextLoadTest. -->
         <dependency>
@@ -259,9 +274,15 @@
                 </execution>
             </executions>
             <configuration>
+                <dotGitDirectory>${project.basedir}/../.git</dotGitDirectory>
                 <failOnNoGitDirectory>false</failOnNoGitDirectory>
                 <failOnUnableToExtractRepoInfo>false</failOnUnableToExtractRepoInfo>
                 <generateGitPropertiesFile>true</generateGitPropertiesFile>
+                <!-- "full" names the 40-character id git.commit.id.full. The default ("flat") names
+                     it git.commit.id, which the include list below filtered out, so /actuator/info
+                     carried only the 7-character abbreviation. Deployment verification compares
+                     the running revision against the exact deployed SHA and needs the full id. -->
+                <commitIdGenerationMode>full</commitIdGenerationMode>
                 <includeOnlyProperties>
                     <property>^git.branch$</property>
                     <property>^git.build.time$</property>
@@ -307,6 +328,14 @@
         <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-failsafe-plugin</artifactId>
+            <configuration>
+                <environmentVariables>
+                    <DOCKER_API_VERSION>1.44</DOCKER_API_VERSION>
+                </environmentVariables>
+                <systemPropertyVariables>
+                    <api.version>1.44</api.version>
+                </systemPropertyVariables>
+            </configuration>
             <executions>
                 <execution>
                     <goals>

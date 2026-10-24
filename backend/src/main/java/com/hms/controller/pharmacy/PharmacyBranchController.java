@@ -1,5 +1,6 @@
 package com.hms.controller.pharmacy;
 
+import com.hms.security.RequireModule;
 import com.hms.service.pharmacy.PharmacyBranchService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -15,6 +16,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/pharmacy/branches")
 @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
+@RequireModule("PHARMACY")
 public class PharmacyBranchController {
 
     @Autowired

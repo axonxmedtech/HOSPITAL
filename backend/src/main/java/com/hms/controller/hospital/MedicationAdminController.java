@@ -35,7 +35,7 @@ public class MedicationAdminController {
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('NURSE')")
+    @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE')")
     public ResponseEntity<?> record(@Valid @RequestBody MedicationAdminRequest req) {
         return ResponseEntity.ok(medicationService.record(req));
     }

@@ -65,6 +65,16 @@ public class PdfService {
         return clinicalPdfService.generatePrescriptionPdf(hospital, doctor, patient, medicalRecord, prescriptions);
     }
 
+    public ByteArrayInputStream generatePrescriptionPdf(
+            Hospital hospital,
+            Doctor doctor,
+            Patient patient,
+            MedicalRecord medicalRecord,
+            List<Prescription> prescriptions,
+            String lang) {
+        return clinicalPdfService.generatePrescriptionPdf(hospital, doctor, patient, medicalRecord, prescriptions, lang);
+    }
+
     public ByteArrayInputStream generateBillingReceiptPdf(Hospital hospital, Patient patient, Billing billing) {
         return billingPdfService.generateBillingReceiptPdf(hospital, patient, billing);
     }
@@ -116,6 +126,17 @@ public class PdfService {
             MedicalRecord medicalRecord,
             List<com.hms.entity.LabOrder> labOrders) {
         return clinicalPdfService.generateCasePaperPdf(hospital, doctor, patient, opd, medicalRecord, labOrders);
+    }
+
+    public ByteArrayInputStream generateCasePaperPdf(
+            Hospital hospital,
+            Doctor doctor,
+            Patient patient,
+            Opd opd,
+            MedicalRecord medicalRecord,
+            List<com.hms.entity.LabOrder> labOrders,
+            String lang) {
+        return clinicalPdfService.generateCasePaperPdf(hospital, doctor, patient, opd, medicalRecord, labOrders, lang);
     }
 
     public ByteArrayInputStream generatePatientsReportPdf(

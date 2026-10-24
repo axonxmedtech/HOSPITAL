@@ -3,6 +3,7 @@ package com.hms.controller.pharmacy;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import java.net.URI;
 
+import com.hms.security.RequireModule;
 import com.hms.dto.pharmacy.SupplierRequest;
 import com.hms.service.pharmacy.SupplierService;
 import jakarta.validation.Valid;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/pharmacy/suppliers")
+@RequireModule("PHARMACY")
 public class SupplierController {
 
     @Autowired

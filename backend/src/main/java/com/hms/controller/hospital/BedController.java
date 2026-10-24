@@ -1,11 +1,9 @@
 package com.hms.controller.hospital;
 
 import com.hms.dto.BedResponse;
-import com.hms.dto.UpdateBedStatusRequest;
 import com.hms.repository.BedRepository;
 import com.hms.security.NurseInchargeGuard;
 import com.hms.service.hospital.BedStatusService;
-import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
@@ -29,11 +27,6 @@ public class BedController {
 
     public BedController(BedService bedService) {
         this.bedService = bedService;
-    }
-
-    @PutMapping("/{bedId}")
-    public ResponseEntity<BedResponse> updateStatus(@PathVariable("bedId") Long bedId, @Valid @RequestBody UpdateBedStatusRequest req) {
-        return ResponseEntity.ok(bedService.updateStatus(bedId, req.getStatus()));
     }
 
     // Nursing Mgmt: only Available beds may be selected for admission

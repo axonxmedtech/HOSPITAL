@@ -8,6 +8,7 @@ import ConsultationModal from '../../components/ConsultationModal';
 import DataTable from '../../components/DataTable';
 import DateSelect from '../../components/DateSelect';
 import EmptyState from '../../components/EmptyState';
+import FollowUpPanel from '../../components/FollowUpPanel';
 import HospitalInventoryTab from '../../components/HospitalInventoryTab';
 import LowStockBanner from '../../components/LowStockBanner';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
@@ -33,8 +34,12 @@ import apiClient from '../../services/apiService';
 import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
 import otService from '../../services/otService';
-import { extractApiError } from '../../utils/apiError';
+import { safeLoadMessage, extractApiError } from '../../utils/apiError';
+import { canManageBilling } from '../../utils/billingAccess';
+import { createOptionalModuleFetcher } from '../../utils/optionalModule';
 import BillingTable from './BillingTable';
+import IcuBedBoard from './icu/IcuBedBoard';
+import IcuDashboard from './icu/IcuDashboard';
 import OtBoard from './ot/OtBoard';
 
 /**
@@ -54,6 +59,9 @@ const DoctorDashboard = () => {
   const hasIPD = modules.includes('IPD');
   const hasAppointments = modules.includes('APPOINTMENTS');
   const hasOT = modules.includes('OT');
+  // Gates the tab only. Who may see which ICU row is decided server-side by IcuBoardService
+  // (ICU-1 D6) — this never re-implements that rule.
+  const hasICU = modules.includes('ICU');
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get('tab') || 'overview';
   const viewFilter = searchParams.get('appointmentFilter') || 'today';
@@ -74,6 +82,20 @@ const DoctorDashboard = () => {
   const [todaysFollowUps, setTodaysFollowUps] = useState([]);
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(false);
+  // A failed load is its own state. Blanking the list on failure told the doctor "no patients
+  // waiting", which is indistinguishable from a quiet clinic and is the worst possible way for
+  // this screen to fail. Previously loaded rows are kept so a transient blip does not wipe the
+  // board the doctor is reading.
+  const [loadError, setLoadError] = useState(null);
+
+  /**
+   * A message safe to show a clinician.
+   *
+   * extractApiError falls back to err.message, which for a network or runtime failure is a raw
+   * technical string — a Java exception line reached this banner in testing. The server's own
+   * structured message is meaningful to a user; anything else is not, so it is replaced rather
+   * than displayed.
+   */
   // Scoped loading indicator for just the Appointments card/table, so switching
   // the Today/Upcoming/History filter doesn't blow away the whole dashboard's
   // full-page skeleton (that's reserved for actual tab switches).
@@ -411,47 +433,72 @@ const DoctorDashboard = () => {
     });
   }, [appointments, totalAppointments]);
 
+  /**
+   * Appointment reads that must never take the dashboard down — see utils/optionalModule.
+   */
+  const fetchAppointmentData = createOptionalModuleFetcher(hasAppointments);
+
   const loadData = async (showSpinner = true) => {
     if (showSpinner) setLoading(true);
+    // Cleared up front so a successful retry removes the banner without extra bookkeeping.
+    setLoadError(null);
     try {
-      if (activeTab === 'appointments') {
+      if (activeTab === 'appointments' && hasAppointments) {
         setAppointmentsLoading(true);
         try {
           const localPage = page - 1;
-          const data = await hospitalService.getMyAppointments(
-            viewFilter,
-            searchTerm,
-            localPage,
-            ITEMS_PER_PAGE
-          );
-          // Handle both array and paginated response
-          const appointmentsArray = Array.isArray(data) ? data : data.content || [];
-          setAppointments(appointmentsArray);
-          setTotalElements(data.totalElements || 0);
-          setTotalAppointments(data.totalElements || 0);
-          setTotalPages(data.totalPages || 1);
+          try {
+            const data = await fetchAppointmentData(
+              () =>
+                hospitalService.getMyAppointments(
+                  viewFilter,
+                  searchTerm,
+                  localPage,
+                  ITEMS_PER_PAGE
+                ),
+              { content: [], totalElements: 0, totalPages: 1 }
+            );
+            // Handle both array and paginated response
+            const appointmentsArray = Array.isArray(data) ? data : data.content || [];
+            setAppointments(appointmentsArray);
+            setTotalElements(data.totalElements || 0);
+            setTotalAppointments(data.totalElements || 0);
+            setTotalPages(data.totalPages || 1);
+          } catch (err) {
+            console.error('Failed to load appointments', err);
+            toastError('Failed to load appointments');
+          }
         } finally {
           setAppointmentsLoading(false);
         }
       } else if (activeTab === 'overview') {
         setAppointmentsLoading(true);
         try {
-          const data = await hospitalService.getMyAppointments(viewFilter, searchTerm, 0, 100);
-          const appointmentsArray = Array.isArray(data) ? data : data.content || [];
-          setAppointments(appointmentsArray);
-          setTotalAppointments(data.totalElements || appointmentsArray.length);
+          // The appointment request is optional; report a failure without aborting the queue,
+          // follow-up, and OPD data that the walk-in workflow needs.
+          try {
+            const data = await fetchAppointmentData(
+              () => hospitalService.getMyAppointments(viewFilter, searchTerm, 0, 100),
+              { content: [], totalElements: 0 }
+            );
+            const appointmentsArray = Array.isArray(data) ? data : data.content || [];
+            setAppointments(appointmentsArray);
+            setTotalAppointments(data.totalElements || appointmentsArray.length);
+          } catch (err) {
+            console.error('Failed to load overview appointments', err);
+            toastError('Failed to load appointments');
+          }
 
-          const followUpsData = await hospitalService.getTodaysFollowUps();
+          // The old endpoint inferred this from the caller's role; it is now stated.
+          const followUpsData = await hospitalService.getTodaysFollowUps({ mine: true });
           setTodaysFollowUps(followUpsData || []);
 
-          // If Solo Mode is active, fetch patients for Overview's patient list as well
-          if (user?.receptionMode === 'SOLO') {
+          // If Solo Mode or Both Mode is active, fetch patients for Overview's patient list as well
+          if (user?.receptionMode === 'SOLO' || user?.receptionMode === 'BOTH') {
             const patData = await hospitalService.getPatients('', 0, 100);
             const patientsArray = Array.isArray(patData) ? patData : patData.content || [];
             setPatients(patientsArray);
           }
-        } catch (err) {
-          console.error('Failed to load overview appointments and followups', err);
         } finally {
           setAppointmentsLoading(false);
         }
@@ -501,8 +548,7 @@ const DoctorDashboard = () => {
             setNextPatient(null);
           }
         } catch (err) {
-          console.error('Failed to load doctor queue', err);
-          setQueueEntries([]);
+          setLoadError(safeLoadMessage(err, 'Could not load your patient queue.'));
         }
       }
 
@@ -526,16 +572,19 @@ const DoctorDashboard = () => {
             statusParam
           );
           let opdsArray = Array.isArray(opdsData) ? opdsData : opdsData.content || [];
-          // In regular mode for Live view, we only show QUEUED anyway, but let's keep the local safety fallback
-          if (user?.receptionMode !== 'SOLO' && opdTabView === 'Live') {
+          // A doctor who manages reception (SOLO or BOTH) sees the whole live list; otherwise the
+          // front desk owns the queue and the doctor only sees what is waiting for them.
+          if (
+            !(user?.receptionMode === 'SOLO' || user?.receptionMode === 'BOTH') &&
+            opdTabView === 'Live'
+          ) {
             opdsArray = opdsArray.filter((o) => o.status === 'QUEUED');
           }
           setOpds(opdsArray);
           setTotalElements(opdsData.totalElements || opdsArray.length);
           setTotalPages(opdsData.totalPages || 1);
         } catch (err) {
-          console.error('Failed to load OPDs', err);
-          setOpds([]);
+          setLoadError(safeLoadMessage(err, 'Could not load the OPD list.'));
         }
       }
 
@@ -579,8 +628,7 @@ const DoctorDashboard = () => {
           setTotalElements(arr.length);
           setTotalPages(1);
         } catch (err) {
-          console.error('Failed to load IPD admissions for doctor', err);
-          setOpds([]);
+          setLoadError(safeLoadMessage(err, 'Could not load your admitted patients.'));
         }
       }
     } catch (err) {
@@ -830,7 +878,10 @@ const DoctorDashboard = () => {
   };
 
   const isSolo = user?.receptionMode === 'SOLO';
-  const hasBilling = user?.billingHandler === 'DOCTOR' || user?.billingHandler === 'BOTH';
+  // SOLO and BOTH both put the front desk in the doctor's hands; billing is a separate axis.
+  const canDoctorManageReception = user?.receptionMode === 'SOLO' || user?.receptionMode === 'BOTH';
+  // Same rule as the backend, including the BILLING module (see utils/billingAccess).
+  const hasBilling = canManageBilling(user);
   const hasInClinic = user?.inClinic !== false;
   const hasMedicalInventory = modules.includes('MEDICAL_INVENTORY');
   const hasHospitalInventory = modules.includes('HOSPITAL_INVENTORY');
@@ -842,13 +893,16 @@ const DoctorDashboard = () => {
     { id: 'patients', label: 'Patients', icon: null },
     ...(hasAppointments ? [{ id: 'appointments', label: 'Appointments', icon: null }] : []),
     { id: 'opd', label: 'OPD', icon: null },
+    { id: 'follow-ups', label: 'Follow-ups', icon: null },
     ...(hasIPD ? [{ id: 'ipd', label: 'IPD', icon: null }] : []),
-    ...(isSolo || hasBilling ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
+    ...(hasBilling ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
     ...(hasOT ? [{ id: 'ot', label: 'Operation Theatre', icon: null }] : []),
-    ...(isSolo && hasInClinic && hasMedicalInventory
+    ...(hasICU ? [{ id: 'icu-dashboard', label: 'ICU Dashboard', icon: null }] : []),
+    ...(hasICU ? [{ id: 'icu-beds', label: 'ICU Bed Board', icon: null }] : []),
+    ...(canDoctorManageReception && hasInClinic && hasMedicalInventory
       ? [{ id: 'inventory', label: 'Medicine Inventory', icon: null }]
       : []),
-    ...(isSolo && hasHospitalInventory
+    ...(canDoctorManageReception && hasHospitalInventory
       ? [{ id: 'hospital-inventory', label: `${tenantWord} Inventory`, icon: null }]
       : []),
   ];
@@ -1081,12 +1135,38 @@ const DoctorDashboard = () => {
 
         {/* Main Content Area */}
         <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-8">
+          {/* A failed load says so. It must never be shown as an empty clinic: "no patients
+              waiting" and "we could not reach the server" call for opposite responses from a
+              doctor, and only one of them is true. */}
+          {loadError && (
+            <div
+              role="alert"
+              className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-4 flex items-start justify-between gap-4"
+            >
+              <div>
+                <p className="text-sm font-semibold text-red-800">
+                  Couldn&apos;t load your patients
+                </p>
+                <p className="mt-1 text-sm text-red-700">{loadError}</p>
+                <p className="mt-1 text-xs text-red-600">
+                  Anything shown below may be out of date.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => loadData()}
+                className="shrink-0 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+              >
+                Retry
+              </button>
+            </div>
+          )}
           {/* Overview Tab */}
           {activeTab === 'overview' && !loading && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold text-gray-900">Overview</h2>
-                {user?.receptionMode === 'SOLO' && (
+                {canDoctorManageReception && (
                   <div className="flex items-center gap-3">
                     <button
                       onClick={() => setIsAddPatientModalOpen(true)}
@@ -1140,14 +1220,18 @@ const DoctorDashboard = () => {
                     </div>
                   </div>
                 </div>
-                <div className="bg-white rounded-lg border border-gray-200 p-6">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="text-gray-600 text-sm font-medium">Today&apos;s Appointments</p>
-                      <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.today}</h3>
+                {hasAppointments && (
+                  <div className="bg-white rounded-lg border border-gray-200 p-6">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="text-gray-600 text-sm font-medium">
+                          Today&apos;s Appointments
+                        </p>
+                        <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.today}</h3>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
                 <div className="bg-white rounded-lg border border-gray-200 p-6">
                   <div className="flex justify-between items-center">
                     <div>
@@ -1166,169 +1250,142 @@ const DoctorDashboard = () => {
                 </div>
               </div>
 
-              {/* Side-by-Side Lists: Appointments and Queue */}
+              {/* Side-by-Side Lists: the left panel follows the module, the Queue is always
+                  present. Two columns in BOTH module states, deliberately: collapsing to one
+                  stacked a fixed 650px panel above the Queue and pushed the OPD due list and
+                  its Consult button below the fold for a walk-in-only tenant. */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
-                {/* Left Div: Appointments */}
-                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col h-[650px] overflow-hidden">
-                  <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-gradient-to-r from-gray-50/50 to-white">
-                    <div>
-                      <h3 className="text-lg font-bold text-gray-955">Appointments</h3>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        Manage scheduled clinical slots
-                      </p>
+                {hasAppointments && (
+                  <div className="bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col h-[650px] overflow-hidden">
+                    <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-gradient-to-r from-gray-50/50 to-white">
+                      <div>
+                        <h3 className="text-lg font-bold text-gray-955">Appointments</h3>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Manage scheduled clinical slots
+                        </p>
+                      </div>
+                      {canDoctorManageReception && (
+                        <button
+                          onClick={() => setIsAddModalOpen(true)}
+                          className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white text-xs font-semibold rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer animate-fade-in"
+                        >
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 4v16m8-8H4"
+                            />
+                          </svg>
+                          Add Appointment
+                        </button>
+                      )}
                     </div>
-                    {user?.receptionMode === 'SOLO' && (
-                      <button
-                        onClick={() => setIsAddModalOpen(true)}
-                        className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white text-xs font-semibold rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer animate-fade-in"
-                      >
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M12 4v16m8-8H4"
-                          />
-                        </svg>
-                        Add Appointment
-                      </button>
-                    )}
-                  </div>
 
-                  {/* Appointment Controls */}
-                  <div className="px-6 py-3 bg-gray-50/30 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="relative flex-1 max-w-xs">
-                      <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    {/* Appointment Controls */}
+                    <div className="px-6 py-3 bg-gray-50/30 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="relative flex-1 max-w-xs">
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                            />
+                          </svg>
+                        </span>
+                        <input
+                          type="text"
+                          placeholder="Search appointments..."
+                          value={searchInput}
+                          onChange={(e) => setSearchInput(e.target.value)}
+                          className="w-full pl-9 pr-4 py-1.5 text-xs bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 transition-all"
+                        />
+                      </div>
+                      <div className="flex bg-gray-100 rounded-xl p-1 border border-gray-200">
+                        {['today', 'upcoming', 'history'].map((view) => (
+                          <button
+                            key={view}
+                            onClick={() => setViewFilter(view)}
+                            className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                              viewFilter === view
+                                ? 'bg-white text-gray-900 shadow-sm border border-gray-100'
+                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                            }`}
+                          >
+                            {view.charAt(0).toUpperCase() + view.slice(1)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Scrollable Container */}
+                    <div className="flex-1 overflow-auto p-6 space-y-6">
+                      <div>
+                        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                          <span className="w-1.5 h-3 bg-gray-950 rounded-full"></span>
+                          Today&apos;s Appointments
+                        </h4>
+                        {appointmentsLoading ? (
+                          <SkeletonTable rows={4} cols={5} />
+                        ) : appointments.length > 0 ? (
+                          <DoctorAppointmentsTable
+                            appointments={appointments}
+                            onStatusUpdate={handleStatusUpdate}
+                            onEdit={handleEditClick}
+                            onConsult={handleConsultClick}
+                            onPrint={handlePrintPrescription}
+                            onAuditHistory={(item) => handleAppointmentHistory(item)}
+                            onAdmitToIpd={(appt) =>
+                              setConsultationModal({ isOpen: true, appointment: appt })
+                            }
+                            hasIPD={hasIPD}
+                            startIndex={0}
+                            pagination={null}
                           />
-                        </svg>
-                      </span>
-                      <input
-                        type="text"
-                        placeholder="Search appointments..."
-                        value={searchInput}
-                        onChange={(e) => setSearchInput(e.target.value)}
-                        className="w-full pl-9 pr-4 py-1.5 text-xs bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 transition-all"
+                        ) : (
+                          <EmptyState
+                            icon={null}
+                            title="No Appointments"
+                            message="No appointments scheduled for today."
+                          />
+                        )}
+                      </div>
+
+                      <DoctorFollowUpsContent
+                        followUps={todaysFollowUps}
+                        className="border-t border-gray-100 pt-6"
                       />
                     </div>
-                    <div className="flex bg-gray-100 rounded-xl p-1 border border-gray-200">
-                      {['today', 'upcoming', 'history'].map((view) => (
-                        <button
-                          key={view}
-                          onClick={() => setViewFilter(view)}
-                          className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                            viewFilter === view
-                              ? 'bg-white text-gray-900 shadow-sm border border-gray-100'
-                              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
-                          }`}
-                        >
-                          {view.charAt(0).toUpperCase() + view.slice(1)}
-                        </button>
-                      ))}
+                  </div>
+                )}
+
+                {!hasAppointments && (
+                  <div className="bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col h-[650px] overflow-hidden">
+                    <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-gray-50/50 to-white">
+                      <div>
+                        <h3 className="text-lg font-bold text-gray-955">Follow-Ups</h3>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Return visits and ongoing clinical work for today
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex-1 overflow-auto p-6 space-y-6">
+                      <DoctorFollowUpsContent followUps={todaysFollowUps} />
                     </div>
                   </div>
-
-                  {/* Scrollable Container */}
-                  <div className="flex-1 overflow-auto p-6 space-y-6">
-                    {/* Appointments Section */}
-                    <div>
-                      <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                        <span className="w-1.5 h-3 bg-gray-950 rounded-full"></span>
-                        Today&apos;s Appointments
-                      </h4>
-                      {appointmentsLoading ? (
-                        <SkeletonTable rows={4} cols={5} />
-                      ) : appointments.length > 0 ? (
-                        <DoctorAppointmentsTable
-                          appointments={appointments}
-                          onStatusUpdate={handleStatusUpdate}
-                          onEdit={handleEditClick}
-                          onConsult={handleConsultClick}
-                          onPrint={handlePrintPrescription}
-                          onAuditHistory={(item) => handleAppointmentHistory(item)}
-                          onAdmitToIpd={(appt) =>
-                            setConsultationModal({ isOpen: true, appointment: appt })
-                          }
-                          hasIPD={hasIPD}
-                          startIndex={0}
-                          pagination={null}
-                        />
-                      ) : (
-                        <EmptyState
-                          icon={null}
-                          title="No Appointments"
-                          message="No appointments scheduled for today."
-                        />
-                      )}
-                    </div>
-
-                    {/* Follow-ups Section */}
-                    <div className="border-t border-gray-100 pt-6">
-                      <h4 className="text-xs font-bold text-indigo-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-                        <span className="w-1.5 h-3 bg-indigo-600 rounded-full"></span>
-                        Today&apos;s Follow-Ups
-                      </h4>
-                      {todaysFollowUps && todaysFollowUps.length > 0 ? (
-                        <div className="overflow-x-auto border border-gray-100 rounded-xl">
-                          <table className="w-full text-sm text-left">
-                            <thead>
-                              <tr className="bg-gray-50 border-b border-gray-100">
-                                <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">
-                                  Patient ID
-                                </th>
-                                <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">
-                                  Patient Name
-                                </th>
-                                <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">
-                                  Diagnosis / Reason
-                                </th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-50">
-                              {todaysFollowUps.map((record) => (
-                                <tr
-                                  key={record.id}
-                                  className="hover:bg-gray-50/40 transition-colors"
-                                >
-                                  <td className="px-4 py-3.5 text-xs font-bold text-indigo-600">
-                                    {record.patientCustomId || record.patientPublicId || '-'}
-                                  </td>
-                                  <td className="px-4 py-3.5 text-sm font-semibold text-gray-900">
-                                    {record.patientName || '-'}
-                                  </td>
-                                  <td className="px-4 py-3.5 text-sm text-gray-500 italic">
-                                    {record.diagnosis || 'Follow-up'}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : (
-                        <div className="text-center py-8 border border-dashed border-gray-200 rounded-xl">
-                          <p className="text-sm text-gray-400 font-medium">
-                            No follow-ups scheduled for today.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                )}
 
                 {/* Right Div: Queue */}
                 <div className="bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col h-[650px] overflow-hidden">
@@ -1337,7 +1394,7 @@ const DoctorDashboard = () => {
                       <h3 className="text-lg font-bold text-gray-955">Queue</h3>
                       <p className="text-xs text-gray-500 mt-0.5">Real-time OPD patient workflow</p>
                     </div>
-                    {user?.receptionMode === 'SOLO' && (
+                    {canDoctorManageReception && (
                       <button
                         onClick={() => setIsOpdModalOpen(true)}
                         className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer animate-fade-in"
@@ -1469,8 +1526,10 @@ const DoctorDashboard = () => {
                 searchValue={searchInput}
                 searchPlaceholder={`Search ${activeTab}...`}
                 onAdd={
-                  user?.receptionMode === 'SOLO' &&
-                  (activeTab === 'patients' || activeTab === 'opd' || activeTab === 'appointments')
+                  canDoctorManageReception &&
+                  (activeTab === 'patients' ||
+                    activeTab === 'opd' ||
+                    (activeTab === 'appointments' && hasAppointments))
                     ? () => {
                         if (activeTab === 'patients') setIsAddPatientModalOpen(true);
                         if (activeTab === 'opd') setIsOpdModalOpen(true);
@@ -1486,7 +1545,7 @@ const DoctorDashboard = () => {
                       : 'Add Appointment'
                 }
                 filter={
-                  activeTab === 'appointments' ? (
+                  activeTab === 'appointments' && hasAppointments ? (
                     <div className="flex items-center gap-4">
                       {/* View Filter Buttons */}
                       <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
@@ -1653,6 +1712,7 @@ const DoctorDashboard = () => {
           {!loading && activeTab !== 'overview' && (
             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
               {activeTab === 'appointments' &&
+                hasAppointments &&
                 (appointmentsLoading ? (
                   <SkeletonTable rows={6} cols={5} />
                 ) : appointments.length > 0 ? (
@@ -1677,6 +1737,9 @@ const DoctorDashboard = () => {
                     message="No appointments found for the selected filter."
                   />
                 ))}
+
+              {/* eslint-disable-next-line jsx-a11y/aria-role -- `role` is FollowUpPanel's own prop, not an ARIA role */}
+              {activeTab === 'follow-ups' && <FollowUpPanel role="DOCTOR" mine />}
 
               {activeTab === 'opd' &&
                 (opds.length > 0 ? (
@@ -1724,7 +1787,6 @@ const DoctorDashboard = () => {
                           <th className="px-4 py-2">Bed</th>
                           <th className="px-4 py-2">Admitted</th>
                           <th className="px-4 py-2">Status</th>
-                          <th className="px-4 py-2">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1745,11 +1807,26 @@ const DoctorDashboard = () => {
                             row.admissionDatetime ||
                             row.ipd?.admissionDatetime;
                           const status = row.status || row.ipd?.status || 'ADMITTED';
+                          const theId =
+                            row.ipdId || row.id || row.ipd?.id || row.ipd?.ipdId || null;
                           return (
                             <tr key={row.ipdId || row.id || ipdNumber || idx} className="border-t">
                               <td className="px-4 py-3">{(page - 1) * ITEMS_PER_PAGE + idx + 1}</td>
                               <td className="px-4 py-3">{ipdNumber || row.id}</td>
-                              <td className="px-4 py-3">{patientName}</td>
+                              <td className="px-4 py-3">
+                                {theId ? (
+                                  <button
+                                    type="button"
+                                    className="font-medium text-blue-600 hover:text-blue-800 hover:underline text-left cursor-pointer"
+                                    onClick={() => navigate(`/ipd/${theId}`)}
+                                    title="Open IPD case"
+                                  >
+                                    {patientName}
+                                  </button>
+                                ) : (
+                                  <span>{patientName}</span>
+                                )}
+                              </td>
                               <td className="px-4 py-3">{doctorName}</td>
                               <td className="px-4 py-3">{wardName}</td>
                               <td className="px-4 py-3">{bedNumber}</td>
@@ -1771,24 +1848,6 @@ const DoctorDashboard = () => {
                                     <span className="text-[10px] text-gray-500">{status}</span>
                                   )}
                                 </div>
-                              </td>
-                              <td className="px-4 py-3">
-                                {(() => {
-                                  const theId =
-                                    row.ipdId || row.id || row.ipd?.id || row.ipd?.ipdId || null;
-                                  return (
-                                    <button
-                                      className={`px-3 py-1 rounded ${theId ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
-                                      onClick={() => {
-                                        if (theId) navigate(`/ipd/${theId}`);
-                                      }}
-                                      disabled={!theId}
-                                      title={theId ? 'Open IPD case' : 'IPD id not available'}
-                                    >
-                                      Open Case
-                                    </button>
-                                  );
-                                })()}
                               </td>
                             </tr>
                           );
@@ -1868,6 +1927,11 @@ const DoctorDashboard = () => {
                 ) : (
                   <OtBoard rows={otRows} mode="doctor" />
                 ))}
+
+              {activeTab === 'icu-dashboard' && (
+                <IcuDashboard onOpenBedBoard={() => setActiveTab('icu-beds')} />
+              )}
+              {activeTab === 'icu-beds' && <IcuBedBoard />}
             </div>
           )}
         </main>
@@ -1948,7 +2012,10 @@ const DoctorDashboard = () => {
                 //   2. bill (always)
                 //   3. prescription — only when medicines were prescribed
                 //   4. in-clinic medicines slip — only when items were administered
-                const printed = await printPdf(`/hospital/opd/${opdId}/documents/pdf`);
+                const printLang = res?.printLanguage || 'en';
+                const printed = await printPdf(
+                  `/hospital/opd/${opdId}/documents/pdf?lang=${encodeURIComponent(printLang)}`
+                );
 
                 if (!printed) {
                   toastError(
@@ -1972,7 +2039,7 @@ const DoctorDashboard = () => {
           onClose={() => setViewPrescriptionModal({ isOpen: false, patient: null })}
         />
 
-        {isAddModalOpen && (
+        {isAddModalOpen && hasAppointments && (
           <AppointmentModal
             isOpen={isAddModalOpen}
             onClose={() => setIsAddModalOpen(false)}
@@ -2768,6 +2835,53 @@ const DoctorDashboard = () => {
 
 export default DoctorDashboard;
 
+const DoctorFollowUpsContent = ({ followUps, className = '' }) => (
+  <div className={className}>
+    <h4 className="text-xs font-bold text-indigo-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+      <span className="w-1.5 h-3 bg-indigo-600 rounded-full"></span>
+      Today&apos;s Follow-Ups
+    </h4>
+    {followUps && followUps.length > 0 ? (
+      <div className="overflow-x-auto border border-gray-100 rounded-xl">
+        <table className="w-full text-sm text-left">
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-100">
+              <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">
+                Patient ID
+              </th>
+              <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">
+                Patient Name
+              </th>
+              <th className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider">
+                Diagnosis / Reason
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {followUps.map((record) => (
+              <tr key={record.id} className="hover:bg-gray-50/40 transition-colors">
+                <td className="px-4 py-3.5 text-xs font-bold text-indigo-600">
+                  {record.patientCustomId || record.patientPublicId || '-'}
+                </td>
+                <td className="px-4 py-3.5 text-sm font-semibold text-gray-900">
+                  {record.patientName || '-'}
+                </td>
+                <td className="px-4 py-3.5 text-sm text-gray-500 italic">
+                  {record.diagnosis || 'Follow-up'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    ) : (
+      <div className="text-center py-8 border border-dashed border-gray-200 rounded-xl">
+        <p className="text-sm text-gray-400 font-medium">No follow-ups scheduled for today.</p>
+      </div>
+    )}
+  </div>
+);
+
 // Doctor Appointments Table
 const DoctorAppointmentsTable = ({
   appointments,
@@ -3206,8 +3320,12 @@ const DoctorOpdTable = ({
             onClick: () => onViewPrescription(opd),
           });
 
-          // Solo Doctor Mode + IPD module enabled: can admit patient to IPD
-          if (user?.receptionMode === 'SOLO' && hasIPD && onAdmitIpd) {
+          // Solo or Both Reception Mode + IPD module enabled: can admit patient to IPD
+          if (
+            (user?.receptionMode === 'SOLO' || user?.receptionMode === 'BOTH') &&
+            hasIPD &&
+            onAdmitIpd
+          ) {
             actions.push({
               label: 'Admit to IPD',
               icon: (

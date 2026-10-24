@@ -102,6 +102,25 @@ jobs:
         with:
           fetch-depth: 0
 
+      # The repository's own scanner over every tracked file. Gitleaks scans history with its own
+      # ruleset; this gate covers the current tree using rules tuned to the shapes that have
+      # actually leaked here (command-line passwords, raw signing keys). Fails closed.
+      #
+      # actions/setup-node directly, NOT ./.github/actions/setup-node: that composite runs `npm ci`
+      # in frontend/, and this scanner has no dependencies. Wiring it through the composite would
+      # make a frontend lockfile problem stop the secret gate from ever running.
+      # Pin to SHA in production: https://github.com/actions/setup-node/releases
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Secret scanner self-test
+        run: node --test scripts/secret-scan.test.mjs
+
+      - name: Secret scan (repository scanner, all tracked files)
+        run: node scripts/secret-scan.mjs --all
+
       - name: Install Gitleaks
         run: |
           curl -sSfL \
@@ -179,8 +198,85 @@ jobs:
           node-version: ${{ inputs.node-version }}
           working-directory: frontend
 
-      - name: Generate audit JSON report
-        run: npm audit --json > npm-audit-report.json 2>&1 || true
+      - name: Enforce high-severity gate (allowlist react-router — no fixed release; SPA, not RSC)
+        run: |
+          set +e
+          npm audit --json > npm-audit-report.json 2> npm-audit-report.stderr
+          audit_status=$?
+          set -e
+          AUDIT_EXIT_STATUS="$audit_status" node <<'NODE'
+            const fs = require("fs");
+            const status = Number(process.env.AUDIT_EXIT_STATUS);
+            const stderr = fs.readFileSync("npm-audit-report.stderr", "utf8").trim();
+
+            function unverified(detail) {
+              console.error("npm audit service failed; dependency security status could not be verified");
+              console.error(detail);
+              console.error("npm audit exit status: " + status);
+              if (stderr) console.error("npm audit stderr:\n" + stderr);
+              process.exit(1);
+            }
+
+            let a;
+            try {
+              a = JSON.parse(fs.readFileSync("npm-audit-report.json", "utf8"));
+            } catch (error) {
+              unverified("npm audit report is invalid: " + error.message);
+            }
+
+            if (!a || typeof a !== "object" || !a.vulnerabilities || typeof a.vulnerabilities !== "object" ||
+                !a.metadata || !a.metadata.vulnerabilities || typeof a.metadata.vulnerabilities !== "object") {
+              unverified("npm audit report is not a usable vulnerability report.");
+            }
+
+            // Allowlisted: no fixed release published and not exploitable here.
+            //  react-router / react-router-dom -> GHSA-qwww-vcr4-c8h2 (RSC-mode CSRF); this is a
+            //  Vite SPA using the data router, RSC mode is not used. review-by 2026-02-15.
+            const ALLOW = new Set(["react-router", "react-router-dom"]);
+
+            // Allowlisted by ADVISORY, not by package: every other advisory on these packages still
+            // blocks. npm reports one advisory under each package that depends on the vulnerable
+            // one, so a package is blocked if any high/critical advisory it reaches is not listed.
+            //  GHSA-vfj7-8cjw-p6xm -> braces <=3.0.3 stack-exhaustion DoS on deeply nested patterns.
+            //  No fixed release exists (3.0.3 is the latest). Reached only through tailwindcss 3's
+            //  build-time file watcher (chokidar / micromatch / fast-glob); nothing ships to users
+            //  (npm ls braces --omit=dev is empty). Remove when braces ships a fix or tailwindcss is
+            //  upgraded to v4. review-by 2027-01-15.
+            const ALLOW_ADVISORIES = new Set(["GHSA-vfj7-8cjw-p6xm"]);
+            const isHigh = (sev) => sev === "high" || sev === "critical";
+
+            // The high/critical advisory ids a package reaches, following "via" package names.
+            const advisoriesOf = (name, seen = new Set()) => {
+              const ids = new Set();
+              const v = a.vulnerabilities[name];
+              if (!v || seen.has(name)) return ids;
+              seen.add(name);
+              for (const via of v.via || []) {
+                if (typeof via === "string") {
+                  for (const id of advisoriesOf(via, seen)) ids.add(id);
+                } else if (via && isHigh(via.severity)) {
+                  // An advisory without a recognisable id is treated as unknown, so it blocks.
+                  ids.add(String(via.url || "").split("/").pop() || "UNKNOWN");
+                }
+              }
+              return ids;
+            };
+
+            let blocking = 0;
+            for (const [name, v] of Object.entries(a.vulnerabilities || {})) {
+              if (!isHigh(v.severity) || ALLOW.has(name)) continue;
+              const ids = [...advisoriesOf(name)];
+              const unlisted = ids.filter((id) => !ALLOW_ADVISORIES.has(id));
+              // Fail closed: a high/critical finding with no traceable advisory still blocks.
+              if (ids.length === 0 || unlisted.length > 0) {
+                console.error("BLOCK " + name + " (" + v.severity + ")" + (unlisted.length ? " " + unlisted.join(", ") : ""));
+                blocking++;
+              }
+            }
+            if (blocking) { console.error(blocking + " non-allowlisted high/critical vuln(s)."); process.exit(1); }
+            if (status !== 0) console.log("npm audit exit status " + status + "; evaluated valid report using policy.");
+            console.log("npm audit gate OK (allowlisted: " + [...ALLOW, ...ALLOW_ADVISORIES].join(", ") + ")");
+          NODE
 
       - name: npm audit summary
         if: always()
@@ -188,39 +284,20 @@ jobs:
           {
             echo "## Dependency Audit (npm — frontend)"
             echo ""
-            if command -v jq >/dev/null 2>&1 && [ -f npm-audit-report.json ]; then
+            if command -v jq >/dev/null 2>&1 && [ -f npm-audit-report.json ] && \
+              jq -e '(.vulnerabilities | type == "object") and (.metadata.vulnerabilities | type == "object")' npm-audit-report.json >/dev/null 2>&1; then
               echo "| Severity | Count |"
               echo "| --- | --- |"
               for sev in critical high moderate low; do
-                n=$(jq -r ".metadata.vulnerabilities.$sev // 0" npm-audit-report.json 2>/dev/null || echo 0)
+                n=$(jq -r ".metadata.vulnerabilities.$sev // 0" npm-audit-report.json)
                 echo "| ${sev^} | $n |"
               done
               echo ""
               echo "Gate: build fails on **high** or above. Policy: docs/security/DEPENDENCY_POLICY.md."
             else
-              echo "Audit report unavailable."
+              echo "Audit report unavailable or invalid; the gate fails closed."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Enforce high-severity gate (allowlist react-router — no fixed release; SPA, not RSC)
-        run: |
-          npm audit --json > npm-audit-gate.json 2>&1 || true
-          node -e '
-            const a = require("./npm-audit-gate.json");
-            // Allowlisted: no fixed release published and not exploitable here.
-            //  react-router / react-router-dom -> GHSA-qwww-vcr4-c8h2 (RSC-mode CSRF); this is a
-            //  Vite SPA using the data router, RSC mode is not used. review-by 2026-02-15.
-            const ALLOW = new Set(["react-router", "react-router-dom"]);
-            let blocking = 0;
-            for (const [name, v] of Object.entries(a.vulnerabilities || {})) {
-              if ((v.severity === "high" || v.severity === "critical") && !ALLOW.has(name)) {
-                console.error("BLOCK " + name + " (" + v.severity + ")");
-                blocking++;
-              }
-            }
-            if (blocking) { console.error(blocking + " non-allowlisted high/critical vuln(s)."); process.exit(1); }
-            console.log("npm audit gate OK (allowlisted: " + [...ALLOW].join(", ") + ")");
-          '
 
       - name: Upload npm audit report
         if: always()
@@ -228,7 +305,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: npm-audit-report-${{ github.sha }}
-          path: frontend/npm-audit-report.json
+          path: |
+            frontend/npm-audit-report.json
+            frontend/npm-audit-report.stderr
           retention-days: 30
           if-no-files-found: warn
 

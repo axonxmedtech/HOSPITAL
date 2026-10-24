@@ -4,6 +4,8 @@ import com.hms.dto.CreateSurgeryRequest;
 import com.hms.dto.ScheduleSurgeryRequest;
 import com.hms.dto.SurgeryView;
 import com.hms.entity.*;
+import com.hms.exception.ConflictException;
+import com.hms.exception.ResourceNotFoundException;
 import com.hms.exception.UnauthorizedException;
 import com.hms.repository.*;
 import com.hms.security.SecurityContextHelper;
@@ -56,6 +58,7 @@ public class SurgeryService {
     @Autowired private com.hms.repository.OtRoomRepository otRoomRepository;
     @Autowired private com.hms.service.hospital.ot.OtPolicyService otPolicyService;
     @Autowired private com.hms.service.hospital.ot.SurgeryExecutionService surgeryExecutionService;
+    @Autowired private com.hms.service.hospital.ot.PreOpSafetyService preOpSafetyService;
     @Autowired private com.hms.repository.OtRoomOccupancyRepository occupancyRepository;
 
     // ---------- Doctor: create request ----------
@@ -120,7 +123,7 @@ public class SurgeryService {
     @Transactional
     public Surgery approve(String publicId) {
         Long hospitalId = requireHospitalId();
-        Surgery s = requireSurgery(publicId, hospitalId);
+        Surgery s = requireSurgeryForUpdate(publicId, hospitalId);
         Surgery saved = stateMachine.transition(s, com.hms.entity.SurgeryStatus.APPROVED, null, null, null);
         audit("SURGERY_APPROVED", "Surgery approved", hospitalId, saved.getIpdAdmissionId());
         return saved;
@@ -131,7 +134,8 @@ public class SurgeryService {
     @Transactional
     public Surgery schedule(String publicId, ScheduleSurgeryRequest req) {
         Long hospitalId = requireHospitalId();
-        Surgery s = requireSurgery(publicId, hospitalId);
+        Surgery s = requireSurgeryForUpdate(publicId, hospitalId);
+        assertExpectedVersion(s, req == null ? null : req.getExpectedVersion());
         com.hms.entity.SurgeryStatus current = com.hms.entity.SurgeryStatus.of(s.getStatus());
         boolean isReschedule = current == com.hms.entity.SurgeryStatus.SCHEDULED;
         if (current != com.hms.entity.SurgeryStatus.REQUESTED
@@ -245,7 +249,8 @@ public class SurgeryService {
     @Transactional
     public Surgery start(String publicId) {
         Long hospitalId = requireHospitalId();
-        Surgery s = requireSurgery(publicId, hospitalId);
+        Surgery s = requireSurgeryForUpdate(publicId, hospitalId);
+        preOpSafetyService.assertStartAllowed(s, hospitalId);
         // WHO checklist gate. With WHO_CHECKLIST_MODE=BLOCKING a case cannot start without a
         // signed Time-Out -- enforced HERE, server-side, not by hiding a button. Emergencies
         // resolve to ADVISORY through the priority scope, so this never blocks a crash case.
@@ -257,15 +262,13 @@ public class SurgeryService {
         // A theatre modelled as an OtRoom has no ward and therefore no bed to occupy. The
         // legacy ward-backed OTs still do, and their bed state must keep working.
         if (s.getOtWardId() != null) {
-            Bed bed = bedRepository.findByWardIdAndHospitalId(s.getOtWardId(), hospitalId).stream()
-                    .filter(b -> "available".equalsIgnoreCase(b.getStatus()))
-                    .findFirst()
-                    .orElseThrow(() -> new IllegalArgumentException("OT theatre is busy or has no available bed"));
+            Bed bed = acquireOtBed(s.getOtWardId(), hospitalId);
             bedStatusService.change(bed.getBedId(), com.hms.entity.BedStatus.OCCUPIED, "Surgery started");
             bed.setCurrentIpdAdmissionId(s.getIpdAdmissionId());
             bedRepository.save(bed);
             s.setOtBedId(bed.getBedId());
         }
+        acquireOtRoom(s, hospitalId);
         markRoom(s, com.hms.entity.OtRoom.OCCUPIED, s.getId());
         s.setStartedAt(LocalDateTime.now());
         Surgery saved = stateMachine.transition(s, com.hms.entity.SurgeryStatus.IN_PROGRESS, null, null, null);
@@ -276,11 +279,11 @@ public class SurgeryService {
     @Transactional
     public Surgery complete(String publicId) {
         Long hospitalId = requireHospitalId();
-        Surgery s = requireSurgery(publicId, hospitalId);
-        freeOtBed(s, "Surgery completed");
-        // The theatre is released the moment the procedure ends, and goes to cleaning --
-        // never held until the patient reaches a ward.
-        markRoom(s, com.hms.entity.OtRoom.CLEANING, null);
+        Surgery s = requireSurgeryForUpdate(publicId, hospitalId);
+        if (!Surgery.IN_PROGRESS.equals(s.getStatus())) {
+            throw new IllegalArgumentException("Only an in-progress surgery can be completed");
+        }
+        releaseResourcesForCompletion(s, hospitalId);
         s.setCompletedAt(LocalDateTime.now());
         // The theatre is released the moment the procedure ends -- not when the patient
         // finally reaches a ward. Recovery is a milestone, never a case state.
@@ -297,14 +300,12 @@ public class SurgeryService {
     @Transactional
     public Surgery cancel(String publicId, String reasonCode, String reasonText) {
         Long hospitalId = requireHospitalId();
-        Surgery s = requireSurgery(publicId, hospitalId);
+        Surgery s = requireSurgeryForUpdate(publicId, hospitalId);
         if (com.hms.entity.SurgeryStatus.of(s.getStatus()).isTerminal()) {
             throw new IllegalArgumentException("Surgery is already closed");
         }
-        if (Surgery.IN_PROGRESS.equals(s.getStatus())) {
-            freeOtBed(s, "Surgery cancelled");
-            markRoom(s, com.hms.entity.OtRoom.CLEANING, null);
-        }
+        // Do not release resources before the state machine rejects an illegal IN_PROGRESS ->
+        // CANCELLED transition. The state-machine error contract remains unchanged.
         String code = resolveCancellationReason(hospitalId, s, reasonCode);
         Surgery saved = stateMachine.transition(s, com.hms.entity.SurgeryStatus.CANCELLED, code, reasonText, null);
         audit("SURGERY_CANCELLED", "Surgery cancelled (" + code + ")", hospitalId, saved.getIpdAdmissionId());
@@ -318,7 +319,7 @@ public class SurgeryService {
     @Transactional
     public Surgery postpone(String publicId, String reasonCode, String reasonText) {
         Long hospitalId = requireHospitalId();
-        Surgery s = requireSurgery(publicId, hospitalId);
+        Surgery s = requireSurgeryForUpdate(publicId, hospitalId);
         String code = resolveCancellationReason(hospitalId, s, reasonCode);
         Surgery postponed = stateMachine.transition(s, com.hms.entity.SurgeryStatus.POSTPONED, code, reasonText, null);
         postponed.setScheduledAt(null);
@@ -337,7 +338,7 @@ public class SurgeryService {
     @Transactional
     public Surgery close(String publicId) {
         Long hospitalId = requireHospitalId();
-        Surgery s = requireSurgery(publicId, hospitalId);
+        Surgery s = requireSurgeryForUpdate(publicId, hospitalId);
         Surgery saved = stateMachine.transition(s, com.hms.entity.SurgeryStatus.CLOSED, null, null, null);
         audit("SURGERY_CLOSED", "Surgery closed", hospitalId, saved.getIpdAdmissionId());
         return saved;
@@ -430,6 +431,17 @@ public class SurgeryService {
 
     // Nursing Mgmt Phase C2: the theatre bed is marked for cleaning (not
     // immediately available) so the next surgery cannot start until it is cleaned.
+    private Bed acquireOtBed(Long otWardId, Long hospitalId) {
+        List<Long> candidateIds = bedRepository.findAvailableBedIdsInWard(otWardId, hospitalId);
+        for (Long candidateId : candidateIds) {
+            Bed locked = bedRepository.findByBedIdAndHospitalIdForUpdate(candidateId, hospitalId).orElse(null);
+            if (locked != null && "available".equalsIgnoreCase(locked.getStatus())) {
+                return locked;
+            }
+        }
+        throw new ConflictException("OT theatre bed is busy or has no available bed");
+    }
+
     private void freeOtBed(Surgery s, String remark) {
         if (s.getOtBedId() == null) return;
         try {
@@ -437,6 +449,45 @@ public class SurgeryService {
         } catch (Exception e) {
             logger.warn("Failed to mark OT bed for cleaning: {}", e.getMessage());
         }
+    }
+
+    /**
+     * Completion is all-or-nothing: unlike cancellation's legacy best-effort cleanup, every
+     * resource mutation below is required before the surgery may become COMPLETED.
+     */
+    private void releaseResourcesForCompletion(Surgery surgery, Long hospitalId) {
+        releaseOtBedForCompletion(surgery, hospitalId);
+        releaseOtRoomForCompletion(surgery, hospitalId);
+    }
+
+    private void releaseOtBedForCompletion(Surgery surgery, Long hospitalId) {
+        if (surgery.getOtBedId() == null) return;
+        Bed bed = bedRepository.findByBedIdAndHospitalIdForUpdate(surgery.getOtBedId(), hospitalId)
+                .orElseThrow(() -> new IllegalStateException("Assigned OT bed is no longer available"));
+        if (!com.hms.entity.BedStatus.OCCUPIED.equalsIgnoreCase(bed.getStatus())) {
+            throw new IllegalStateException("Assigned OT bed is not occupied by the surgery");
+        }
+        bedStatusService.changeLocked(bed, com.hms.entity.BedStatus.CLEANING, "Surgery completed");
+    }
+
+    private void releaseOtRoomForCompletion(Surgery surgery, Long hospitalId) {
+        if (surgery.getOtRoomId() == null) return;
+        // Keep e435b8b's global OT resource order: bed first, then theatre, then occupancy.
+        com.hms.entity.OtRoom room = otSchedulingService.lockRoom(surgery.getOtRoomId());
+        if (!hospitalId.equals(room.getHospitalId())) {
+            throw new IllegalStateException("Assigned theatre belongs to another hospital");
+        }
+        if (!com.hms.entity.OtRoom.OCCUPIED.equals(room.getStatus())
+                || !Objects.equals(surgery.getId(), room.getCurrentSurgeryId())) {
+            throw new IllegalStateException("Assigned theatre is not occupied by the surgery");
+        }
+        room.setStatus(com.hms.entity.OtRoom.CLEANING);
+        room.setCurrentSurgeryId(null);
+        otRoomRepository.save(room);
+        occupancyRepository.findOpenBySurgeryIdForUpdate(surgery.getId()).ifPresent(occupancy -> {
+            occupancy.setOccupiedTo(LocalDateTime.now());
+            occupancyRepository.save(occupancy);
+        });
     }
 
     /**
@@ -452,6 +503,20 @@ public class SurgeryService {
             throw new IllegalArgumentException("A cancellation reason is required");
         }
         return "OTHER";
+    }
+
+    private void acquireOtRoom(Surgery s, Long hospitalId) {
+        if (s.getOtRoomId() == null) return;
+
+        com.hms.entity.OtRoom room = otSchedulingService.lockRoom(s.getOtRoomId());
+        if (!hospitalId.equals(room.getHospitalId())) {
+            throw new UnauthorizedException("Access denied: theatre belongs to another hospital");
+        }
+        Long holder = room.getCurrentSurgeryId();
+        if (com.hms.entity.OtRoom.OCCUPIED.equals(room.getStatus())
+                && holder != null && !holder.equals(s.getId())) {
+            throw new ConflictException("That theatre is already in use by another case");
+        }
     }
 
     /** Room state is best-effort: a failed status flip must never fail the clinical action. */
@@ -577,6 +642,22 @@ public class SurgeryService {
             throw new UnauthorizedException("Access denied: surgery belongs to another hospital");
         }
         return s;
+    }
+
+    /** Lifecycle commands must serialize on the tenant-scoped aggregate before taking OT resources. */
+    private Surgery requireSurgeryForUpdate(String publicId, Long hospitalId) {
+        return surgeryRepository.findByPublicIdAndHospitalIdForUpdate(publicId, hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Surgery not found"));
+    }
+
+    private void assertExpectedVersion(Surgery surgery, Long expectedVersion) {
+        if (expectedVersion == null) {
+            throw new IllegalArgumentException("Surgery version is required");
+        }
+        long currentVersion = surgery.getLifecycleVersion() == null ? 0L : surgery.getLifecycleVersion();
+        if (expectedVersion.longValue() != currentVersion) {
+            throw new ConflictException("Surgery was modified by another request. Refresh and retry.");
+        }
     }
 
     private IpdAdmission requireAdmission(Long ipdAdmissionId, Long hospitalId) {

@@ -44,14 +44,14 @@ Branch: **`test`** (never push, never touch `main` — see Rules).
   - **No test runner configured** — there are no frontend unit tests. Verify
     frontend via tsc + vite build + live Playwright checks.
 - **Database**: MySQL 8, database **`hospital_management_ot`**.
-  - Creds (from `backend/.env`): user `root`, password `Kartik123@`, host
+  - Creds (from `backend/.env`): user `root`, password `<REDACTED_DB_PASSWORD>`, host
     `localhost:3306`.
-  - CLI: `mysql -u root -pKartik123@ -D hospital_management_ot -e "..."`
+  - CLI: `mysql -u root -p<REDACTED_DB_PASSWORD> -D hospital_management_ot -e "..."`
     (it prints a password-on-CLI warning to stderr — harmless; pipe through
     `grep -v Warning` if it's noisy).
 - **`backend/.env`** holds `SPRING_DATASOURCE_*`, `JWT_SECRET`, `FRONTEND_URL`,
   Redis host/port. **`JWT_SECRET`** (needed to craft test tokens):
-  `MwntKXW5stMORKfVPi8U7me51CQNsWFnKGGFlsPMtEBGdT1Yvik2adyaPXdmYVkpDS+n5QMq3+/MoStED1zogw==`
+  `<REDACTED_JWT_SECRET>`
 - **Redis**: optional locally. `RedisConfig implements CachingConfigurer` and
   overrides `errorHandler()` to log-and-swallow cache errors, so the app runs
   fine whether Redis is up or down. Do not "fix" a Redis-down warning.
@@ -346,7 +346,7 @@ then `taskkill //PID <pid> //F`.
 ```bash
 node -e "
 const crypto=require('crypto');
-const S='MwntKXW5stMORKfVPi8U7me51CQNsWFnKGGFlsPMtEBGdT1Yvik2adyaPXdmYVkpDS+n5QMq3+/MoStED1zogw==';
+const S='<REDACTED_JWT_SECRET>';
 const b=x=>Buffer.from(x).toString('base64').replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 const h={alg:'HS256',typ:'JWT'},n=Math.floor(Date.now()/1000);
 const p={userId:1,role:'HOSPITAL_ADMIN',hospitalId:2,modules:['OPD','HOSPITAL_INVENTORY','BILLING'],sub:'admin@example.com',iat:n,exp:n+3600};

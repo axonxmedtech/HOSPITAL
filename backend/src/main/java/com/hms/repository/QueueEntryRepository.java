@@ -33,4 +33,6 @@ public interface QueueEntryRepository extends JpaRepository<QueueEntry, Long> {
         @Modifying
         @Transactional
         void deleteByOpdId(Long opdId);
+
+        long countByOpdId(Long opdId);
 }

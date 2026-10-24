@@ -34,6 +34,15 @@ public class ClinicalPdfService {
     @Autowired
     private com.hms.service.hospital.VitalSettingsService vitalSettingsService;
 
+    @Autowired(required = false)
+    private com.hms.repository.ConsultationNotePresetRepository presetRepository;
+
+    @Autowired(required = false)
+    private com.hms.repository.ConsultationStatementRepository statementRepository;
+
+    @Autowired(required = false)
+    private com.hms.repository.HospitalSettingRepository hospitalSettingRepository;
+
     private static final com.fasterxml.jackson.databind.ObjectMapper VITALS_JSON =
             new com.fasterxml.jackson.databind.ObjectMapper();
 
@@ -96,6 +105,18 @@ public class ClinicalPdfService {
             Patient patient,
             MedicalRecord medicalRecord,
             List<Prescription> prescriptions) {
+        String lang = (medicalRecord != null && medicalRecord.getConsultationLanguage() != null)
+                ? medicalRecord.getConsultationLanguage() : "en";
+        return generatePrescriptionPdf(hospital, doctor, patient, medicalRecord, prescriptions, lang);
+    }
+
+    public ByteArrayInputStream generatePrescriptionPdf(
+            Hospital hospital,
+            Doctor doctor,
+            Patient patient,
+            MedicalRecord medicalRecord,
+            List<Prescription> prescriptions,
+            String lang) {
 
         Document document = new Document(PageSize.A4, 36, 36, 36, 180);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -105,11 +126,33 @@ public class ClinicalPdfService {
             helper.addPageBorder(writer);
             document.open();
 
+            // Resolve language: if lang is default/en and medicalRecord has explicit consultation language, use it
+            String effectiveLang = lang;
+            if ((effectiveLang == null || effectiveLang.isBlank() || "en".equalsIgnoreCase(effectiveLang))
+                    && medicalRecord != null && medicalRecord.getConsultationLanguage() != null && !medicalRecord.getConsultationLanguage().isBlank()) {
+                effectiveLang = medicalRecord.getConsultationLanguage();
+            }
+            if ((effectiveLang == null || effectiveLang.isBlank() || "en".equalsIgnoreCase(effectiveLang))
+                    && hospital != null && hospital.getId() != null && hospitalSettingRepository != null) {
+                try {
+                    effectiveLang = hospitalSettingRepository.findByHospital_Id(hospital.getId())
+                            .map(HospitalSetting::getDefaultConsultationLanguage)
+                            .orElse(effectiveLang);
+                } catch (Exception ignored) {
+                }
+            }
+
             // Resolve case number from associated OPD
             String customNo = "-";
             if (medicalRecord != null && medicalRecord.getOpdId() != null) {
                 try {
-                    com.hms.entity.Opd opd = opdRepository.findById(medicalRecord.getOpdId()).orElse(null);
+                    // Scoped by the record's own hospital rather than the security context: this
+                    // is a rendering service with no principal of its own, and the record being
+                    // printed is the authority on which tenant the document belongs to.
+                    com.hms.entity.Opd opd = opdRepository
+                            .findByIdAndHospitalIdWithPatientAndDoctor(
+                                    medicalRecord.getOpdId(), medicalRecord.getHospitalId())
+                            .orElse(null);
                     if (opd != null) {
                         customNo = opd.getCaseId();
                     }
@@ -149,7 +192,23 @@ public class ClinicalPdfService {
                     helper.addTableCell(rxTable, p.getDosage(), false);
                     helper.addTableCell(rxTable, p.getFrequency(), false);
                     helper.addTableCell(rxTable, p.getDuration(), false);
-                    helper.addTableCell(rxTable, p.getInstructions(), false);
+
+                    String foodTimingLabel = PatientInstructionFormatter.getFoodTimingLabel(p.getFoodTiming(), effectiveLang);
+                    String rawInstruction = (p.getInstructions() != null && !p.getInstructions().trim().isEmpty())
+                            ? p.getInstructions().trim()
+                            : "";
+                    String instructionText = translateInstruction(rawInstruction, PatientInstructionFormatter.normalizeMode(effectiveLang));
+                    String cellContent;
+                    if (foodTimingLabel != null && !foodTimingLabel.isBlank()) {
+                        if (!instructionText.isEmpty()) {
+                            cellContent = foodTimingLabel + " · " + instructionText;
+                        } else {
+                            cellContent = foodTimingLabel;
+                        }
+                    } else {
+                        cellContent = instructionText;
+                    }
+                    helper.addTableCell(rxTable, cellContent, false, PdfLayoutHelper.UNICODE_NORMAL_FONT);
                 }
             } else {
                 PdfPCell cell = new PdfPCell(new Phrase("No medications prescribed.", PdfLayoutHelper.NORMAL_FONT));
@@ -159,7 +218,25 @@ public class ClinicalPdfService {
             }
             document.add(rxTable);
 
-            // 3. Follow Up Section
+            // 3. Doctor Advice Section (if present)
+            if (medicalRecord != null && medicalRecord.getTreatmentNotes() != null && !medicalRecord.getTreatmentNotes().trim().isEmpty()) {
+                document.add(new Paragraph("\n"));
+                String adviceTitle = switch (PatientInstructionFormatter.normalizeMode(effectiveLang)) {
+                    case PatientInstructionFormatter.MODE_EN_MR -> "DOCTOR ADVICE / सल्ला:";
+                    case PatientInstructionFormatter.MODE_EN_HI -> "DOCTOR ADVICE / सलाह:";
+                    default -> "DOCTOR ADVICE:";
+                };
+                Paragraph advHead = new Paragraph(adviceTitle, PdfLayoutHelper.UNICODE_NAVY_BOLD_FONT);
+                advHead.setSpacingBefore(6f);
+                advHead.setSpacingAfter(3f);
+                document.add(advHead);
+                String formattedAdvice = formatAdviceNotes(
+                        medicalRecord.getTreatmentNotes().trim(), effectiveLang, hospital != null ? hospital.getId() : null);
+                Paragraph advBody = new Paragraph(formattedAdvice, PdfLayoutHelper.UNICODE_NORMAL_FONT);
+                document.add(advBody);
+            }
+
+            // 4. Follow Up Section
             if (medicalRecord != null && medicalRecord.getFollowUpDate() != null) {
                 document.add(new Paragraph("\n"));
                 Paragraph flw = new Paragraph("Follow Up Date: ", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, Font.BOLD, PdfLayoutHelper.NAVY_BLUE));
@@ -167,7 +244,7 @@ public class ClinicalPdfService {
                 document.add(flw);
             }
 
-            // 4. Fixed Signature Footer
+            // 5. Fixed Signature Footer
             helper.addPremiumFooter(writer, hospital, patient, customNo, "Prescription Authorized Signature");
 
             document.close();
@@ -273,9 +350,38 @@ public class ClinicalPdfService {
             Opd opd,
             MedicalRecord medicalRecord,
             java.util.List<com.hms.entity.LabOrder> labOrders) {
+        String lang = (medicalRecord != null && medicalRecord.getConsultationLanguage() != null)
+                ? medicalRecord.getConsultationLanguage() : "en";
+        return generateCasePaperPdf(hospital, doctor, patient, opd, medicalRecord, labOrders, lang);
+    }
+
+    public ByteArrayInputStream generateCasePaperPdf(
+            Hospital hospital,
+            Doctor doctor,
+            Patient patient,
+            Opd opd,
+            MedicalRecord medicalRecord,
+            java.util.List<com.hms.entity.LabOrder> labOrders,
+            String lang) {
 
         Document document = new Document(PageSize.A4, 36, 36, 36, 180);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+        // Resolve language: if lang is default/en and medicalRecord has explicit consultation language, use it
+        String effectiveLang = lang;
+        if ((effectiveLang == null || effectiveLang.isBlank() || "en".equalsIgnoreCase(effectiveLang))
+                && medicalRecord != null && medicalRecord.getConsultationLanguage() != null && !medicalRecord.getConsultationLanguage().isBlank()) {
+            effectiveLang = medicalRecord.getConsultationLanguage();
+        }
+        if ((effectiveLang == null || effectiveLang.isBlank() || "en".equalsIgnoreCase(effectiveLang))
+                && hospital != null && hospital.getId() != null && hospitalSettingRepository != null) {
+            try {
+                effectiveLang = hospitalSettingRepository.findByHospital_Id(hospital.getId())
+                        .map(HospitalSetting::getDefaultConsultationLanguage)
+                        .orElse(effectiveLang);
+            } catch (Exception ignored) {
+            }
+        }
 
         try {
             PdfWriter writer = PdfWriter.getInstance(document, out);
@@ -339,7 +445,7 @@ public class ClinicalPdfService {
                 cell.setBorder(Rectangle.NO_BORDER);
                 Paragraph problemTitle = new Paragraph("CHIEF COMPLAINT / REASON FOR VISIT:", PdfLayoutHelper.SMALL_BOLD_FONT);
                 problemTitle.setSpacingBefore(5f);
-                Paragraph problemVal = new Paragraph(opd.getProblem(), PdfLayoutHelper.NORMAL_FONT);
+                Paragraph problemVal = new Paragraph(opd.getProblem(), PdfLayoutHelper.UNICODE_NORMAL_FONT);
                 problemVal.setSpacingAfter(10f);
                 cell.addElement(problemTitle);
                 cell.addElement(problemVal);
@@ -353,7 +459,7 @@ public class ClinicalPdfService {
                     cell.setBorder(Rectangle.NO_BORDER);
                     Paragraph symTitle = new Paragraph("SYMPTOMS / CHIEF COMPLAINTS:", PdfLayoutHelper.SMALL_BOLD_FONT);
                     symTitle.setSpacingBefore(5f);
-                    Paragraph symVal = new Paragraph(medicalRecord.getSymptoms(), PdfLayoutHelper.NORMAL_FONT);
+                    Paragraph symVal = new Paragraph(medicalRecord.getSymptoms(), PdfLayoutHelper.UNICODE_NORMAL_FONT);
                     symVal.setSpacingAfter(10f);
                     cell.addElement(symTitle);
                     cell.addElement(symVal);
@@ -366,7 +472,7 @@ public class ClinicalPdfService {
                     cell.setBorder(Rectangle.NO_BORDER);
                     Paragraph diagTitle = new Paragraph("DIAGNOSIS / CLINICAL IMPRESSION:", PdfLayoutHelper.SMALL_BOLD_FONT);
                     diagTitle.setSpacingBefore(5f);
-                    Paragraph diagVal = new Paragraph(medicalRecord.getDiagnosis(), FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, Font.BOLD, PdfLayoutHelper.NAVY_BLUE));
+                    Paragraph diagVal = new Paragraph(medicalRecord.getDiagnosis(), PdfLayoutHelper.UNICODE_NORMAL_FONT);
                     diagVal.setSpacingAfter(10f);
                     cell.addElement(diagTitle);
                     cell.addElement(diagVal);
@@ -377,9 +483,16 @@ public class ClinicalPdfService {
                     hasClinicalInfo = true;
                     PdfPCell cell = new PdfPCell();
                     cell.setBorder(Rectangle.NO_BORDER);
-                    Paragraph notesTitle = new Paragraph("TREATMENT & CLINICAL NOTES:", PdfLayoutHelper.SMALL_BOLD_FONT);
+                    String notesHeader = switch (PatientInstructionFormatter.normalizeMode(effectiveLang)) {
+                        case PatientInstructionFormatter.MODE_EN_MR -> "TREATMENT & CLINICAL NOTES / सल्ला:";
+                        case PatientInstructionFormatter.MODE_EN_HI -> "TREATMENT & CLINICAL NOTES / सलाह:";
+                        default -> "TREATMENT & CLINICAL NOTES:";
+                    };
+                    Paragraph notesTitle = new Paragraph(notesHeader, PdfLayoutHelper.UNICODE_BOLD_FONT);
                     notesTitle.setSpacingBefore(5f);
-                    Paragraph notesVal = new Paragraph(medicalRecord.getTreatmentNotes(), PdfLayoutHelper.NORMAL_FONT);
+                    String formattedNotes = formatAdviceNotes(
+                            medicalRecord.getTreatmentNotes(), effectiveLang, hospital != null ? hospital.getId() : null);
+                    Paragraph notesVal = new Paragraph(formattedNotes, PdfLayoutHelper.UNICODE_NORMAL_FONT);
                     notesVal.setSpacingAfter(10f);
                     cell.addElement(notesTitle);
                     cell.addElement(notesVal);
@@ -427,5 +540,101 @@ public class ClinicalPdfService {
         }
 
         return new ByteArrayInputStream(out.toByteArray());
+    }
+
+    /**
+     * Formats clinical treatment notes bilingually when EN_MR or EN_HI is active.
+     * Looks up phrases in hospital note presets first, then in platform master statements.
+     */
+    public String formatAdviceNotes(String rawNotes, String lang, Long hospitalId) {
+        if (rawNotes == null || rawNotes.isBlank()) {
+            return rawNotes;
+        }
+        String mode = PatientInstructionFormatter.normalizeMode(lang);
+        if (PatientInstructionFormatter.MODE_EN.equals(mode)) {
+            return rawNotes;
+        }
+
+        List<ConsultationNotePreset> presets = java.util.Collections.emptyList();
+        if (hospitalId != null && presetRepository != null) {
+            try {
+                presets = presetRepository.findByHospitalIdAndFieldTypeAndIsActiveTrue(
+                        hospitalId, ConsultationNotePreset.FIELD_TYPE_TREATMENT_NOTES);
+            } catch (Exception ignored) {
+            }
+        }
+
+        String[] lines = rawNotes.split("\\r?\\n");
+        StringBuilder sb = new StringBuilder();
+
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i];
+            String trimmed = line.trim();
+            if (trimmed.isEmpty()) {
+                if (i > 0) sb.append("\n");
+                continue;
+            }
+
+            // If line already contains bilingual separator with non-ASCII Devanagari characters, keep as-is
+            if (trimmed.contains(" / ") && trimmed.chars().anyMatch(c -> c > 127)) {
+                if (sb.length() > 0) sb.append("\n");
+                sb.append(trimmed);
+                continue;
+            }
+
+            String translation = null;
+            // 1. Match from hospital's consultation note presets
+            for (ConsultationNotePreset p : presets) {
+                if (p.getText() != null && p.getText().trim().equalsIgnoreCase(trimmed)) {
+                    if (PatientInstructionFormatter.MODE_EN_MR.equals(mode) && p.getMarathiText() != null && !p.getMarathiText().isBlank()) {
+                        translation = p.getMarathiText().trim();
+                        break;
+                    } else if (PatientInstructionFormatter.MODE_EN_HI.equals(mode) && p.getHindiText() != null && !p.getHindiText().isBlank()) {
+                        translation = p.getHindiText().trim();
+                        break;
+                    }
+                }
+            }
+
+            // 2. Match from platform master consultation statements
+            if (translation == null && statementRepository != null) {
+                try {
+                    var stmtOpt = statementRepository.findMatchingActiveStatements(trimmed).stream().findFirst();
+                    if (stmtOpt.isPresent()) {
+                        var stmt = stmtOpt.get();
+                        if (PatientInstructionFormatter.MODE_EN_MR.equals(mode) && stmt.getMarathiText() != null && !stmt.getMarathiText().isBlank()) {
+                            translation = stmt.getMarathiText().trim();
+                        } else if (PatientInstructionFormatter.MODE_EN_HI.equals(mode) && stmt.getHindiText() != null && !stmt.getHindiText().isBlank()) {
+                            translation = stmt.getHindiText().trim();
+                        }
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+
+            String formattedLine = PatientInstructionFormatter.formatBilingual(trimmed, translation, mode);
+            if (sb.length() > 0) sb.append("\n");
+            sb.append(formattedLine);
+        }
+
+        return sb.toString();
+    }
+
+    private String translateInstruction(String text, String mode) {
+        if (text == null || text.isBlank() || statementRepository == null) return text;
+        if (PatientInstructionFormatter.MODE_EN.equals(mode)) return text;
+        if (text.contains(" / ") && text.chars().anyMatch(c -> c > 127)) return text;
+
+        try {
+            var stmtOpt = statementRepository.findMatchingActiveStatements(text.trim()).stream().findFirst();
+            if (stmtOpt.isPresent()) {
+                var stmt = stmtOpt.get();
+                String translation = PatientInstructionFormatter.MODE_EN_MR.equals(mode)
+                        ? stmt.getMarathiText() : stmt.getHindiText();
+                return PatientInstructionFormatter.formatBilingual(text.trim(), translation, mode);
+            }
+        } catch (Exception ignored) {
+        }
+        return text;
     }
 }

@@ -33,6 +33,9 @@ public class PharmacySaleService {
     private SecurityContextHelper securityHelper;
 
     @Autowired
+    private com.hms.repository.pharmacy.PharmacySaleItemRepository saleItemRepository;
+
+    @Autowired
     private com.hms.repository.PrescriptionRepository prescriptionRepository;
 
     @Autowired private com.hms.service.RealtimeNotifier notifier;
@@ -225,7 +228,6 @@ public class PharmacySaleService {
         for (java.util.Map<String, Object> item : returnItems) {
             Long batchId = Long.valueOf(item.get("medicineBatchId").toString());
             BigDecimal qtyToReturn = new BigDecimal(item.get("quantityToReturn").toString());
-            boolean restock = (boolean) item.get("restock");
 
             if (qtyToReturn.compareTo(BigDecimal.ZERO) <= 0) {
                 throw new IllegalArgumentException("Return quantity must be positive");
@@ -237,12 +239,25 @@ public class PharmacySaleService {
                     .findFirst()
                     .orElseThrow(() -> new RuntimeException("Medicine batch was not part of original invoice"));
 
-            if (soldItem.getQuantity().compareTo(qtyToReturn) < 0) {
-                throw new IllegalArgumentException("Cannot return more quantity than originally purchased for batch " + batchId);
+            // The bound is what is STILL returnable, not what was originally sold. Checked and
+            // taken in one statement: a read-then-write would let two returns submitted together
+            // each see the same remaining quantity and both refund it.
+            if (saleItemRepository.claimReturn(soldItem.getId(), qtyToReturn) != 1) {
+                java.math.BigDecimal already = soldItem.getReturnedQuantity() == null
+                        ? java.math.BigDecimal.ZERO : soldItem.getReturnedQuantity();
+                java.math.BigDecimal remaining = soldItem.getQuantity().subtract(already);
+                throw new IllegalArgumentException(
+                        "Cannot return " + qtyToReturn + " for batch " + batchId
+                                + ": only " + remaining.max(java.math.BigDecimal.ZERO)
+                                + " of the " + soldItem.getQuantity() + " sold remain returnable.");
             }
 
             // Expiry safety check: Reject returns if the medicine batch has expired
-            MedicineBatch batchToCheck = batchRepository.findById(batchId)
+            // Tenant- and branch-scoped. This was an unscoped findById, which let a caller name
+            // another facility's batch id; with the restock branch gone it is the only batch
+            // lookup left on this path, so it has to be the safe one.
+            MedicineBatch batchToCheck = batchRepository
+                    .findByIdAndHospitalIdForUpdate(batchId, hospitalId, securityHelper.getCurrentBranchId())
                     .orElseThrow(() -> new ResourceNotFoundException("Batch not found or unauthorized"));
             if (batchToCheck.getExpiryDate() != null && batchToCheck.getExpiryDate().isBefore(java.time.LocalDate.now())) {
                 throw new IllegalArgumentException("Cannot return medicine '" + 
@@ -254,45 +269,31 @@ public class PharmacySaleService {
             BigDecimal refundValue = soldItem.getUnitPrice().multiply(qtyToReturn);
             refundTotal = refundTotal.add(refundValue);
 
-            if (restock) {
-                // Return stock back to inventory batch with Pessimistic Lock
-                MedicineBatch batch = batchRepository.findByIdAndHospitalIdForUpdate(batchId, hospitalId, securityHelper.getCurrentBranchId())
-                        .orElseThrow(() -> new ResourceNotFoundException("Batch not found or unauthorized"));
-
-                BigDecimal qtyBefore = batch.getCurrentQuantity();
-                batch.setCurrentQuantity(qtyBefore.add(qtyToReturn));
-                batchRepository.save(batch);
-
-                // Record Restock Transaction
-                InventoryTransaction tx = new InventoryTransaction();
-                tx.setHospitalId(hospitalId);
-                tx.setBranchId(securityHelper.getCurrentBranchId());
-                tx.setMedicineBatchId(batch.getId());
-                tx.setTransactionType("RETURN");
-                tx.setQuantity(qtyToReturn); // Positive because stock enters inventory
-                tx.setQuantityBefore(qtyBefore);
-                tx.setQuantityAfter(batch.getCurrentQuantity());
-                tx.setReferenceType("PHARMACY_SALE");
-                tx.setReferenceId(sale.getId());
-                tx.setRemarks("Patient return restock for Bill #" + sale.getBillNumber());
-                tx.setCreatedBy(userId);
-                transactionRepository.save(tx);
-            } else {
-                // Record Return without restock (Disposal / Waste)
-                InventoryTransaction tx = new InventoryTransaction();
-                tx.setHospitalId(hospitalId);
-                tx.setBranchId(securityHelper.getCurrentBranchId());
-                tx.setMedicineBatchId(batchId);
-                tx.setTransactionType("RETURN");
-                tx.setQuantity(BigDecimal.ZERO);
-                tx.setQuantityBefore(soldItem.getQuantity());
-                tx.setQuantityAfter(soldItem.getQuantity());
-                tx.setReferenceType("PHARMACY_SALE");
-                tx.setReferenceId(sale.getId());
-                tx.setRemarks("Patient return disposal for Bill #" + sale.getBillNumber());
-                tx.setCreatedBy(userId);
-                transactionRepository.save(tx);
-            }
+            // Medicine that has been in a patient's possession does not go back on the shelf.
+            //
+            // This used to be the caller's choice: a `restock` flag in the request body decided
+            // whether the quantity was added straight back to the saleable batch. Nothing
+            // verified how the medicine had been stored, or whether it was still the medicine
+            // that left, and a client that sent `true` put it back into the pool the next
+            // patient is dispensed from. There is no quarantine model yet, so the honest
+            // behaviour is to refund the money and leave saleable stock alone.
+            //
+            // The ledger row says exactly that: quantity zero, balance unchanged. It records
+            // that a return happened without asserting that stock increased.
+            InventoryTransaction tx = new InventoryTransaction();
+            tx.setHospitalId(hospitalId);
+            tx.setBranchId(securityHelper.getCurrentBranchId());
+            tx.setMedicineBatchId(batchId);
+            tx.setTransactionType("RETURN");
+            tx.setQuantity(BigDecimal.ZERO);
+            tx.setQuantityBefore(batchToCheck.getCurrentQuantity());
+            tx.setQuantityAfter(batchToCheck.getCurrentQuantity());
+            tx.setReferenceType("PHARMACY_SALE");
+            tx.setReferenceId(sale.getId());
+            tx.setRemarks("Patient return for Bill #" + sale.getBillNumber()
+                    + " - refunded, not returned to saleable stock");
+            tx.setCreatedBy(userId);
+            transactionRepository.save(tx);
         }
 
         java.util.Map<String, Object> result = new java.util.HashMap<>();

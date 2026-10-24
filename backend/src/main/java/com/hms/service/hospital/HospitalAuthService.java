@@ -1,5 +1,7 @@
 package com.hms.service.hospital;
 
+import com.hms.exception.ForbiddenException;
+
 import com.hms.dto.LoginRequest;
 import com.hms.dto.LoginResponse;
 import com.hms.dto.ProfileUpdateRequest;
@@ -232,7 +234,7 @@ public class HospitalAuthService {
         // Verify user is a hospital user (not Super Admin)
         if ("SUPER_ADMIN".equals(user.getRole())) {
             logger.warn("Login failed - Super Admin tried to login via hospital endpoint: {}", LogSanitizer.clean(request.getEmail()));
-            throw new UnauthorizedException("Access denied. Please use platform login.");
+            throw new ForbiddenException("Access denied. Please use platform login.");
         }
 
         // Verify user has a hospital_id
@@ -289,14 +291,14 @@ public class HospitalAuthService {
         // Restrict receptionist login if Solo Doctor mode is active
         if ("RECEPTIONIST".equals(user.getRole()) && "SOLO".equals(settings.getReceptionMode())) {
             logger.warn("Login failed - Receptionist login restricted under Solo Doctor mode: {}", LogSanitizer.clean(request.getEmail()));
-            throw new UnauthorizedException("Solo Doctor Mode is active. Receptionist login is restricted.");
+            throw new ForbiddenException("Solo Doctor Mode is active. Receptionist login is restricted.");
         }
 
         // Staff-nurse login requires Separate Nurse Login to be ON. A Nurse Incharge
         // (NURSE_INCHARGE) can always log in; a staff NURSE only when the setting is on.
         if ("NURSE".equals(user.getRole()) && !Boolean.TRUE.equals(settings.getSeparateNurseLogin())) {
             logger.warn("Login failed - staff nurse login disabled (Separate Nurse Login off): {}", LogSanitizer.clean(request.getEmail()));
-            throw new UnauthorizedException("Nurse login is disabled for this hospital. Please contact your Nurse Incharge or administrator.");
+            throw new ForbiddenException("Nurse login is disabled for this hospital. Please contact your Nurse Incharge or administrator.");
         }
 
         // Verify user account is active (handle null as active for backward compatibility)
@@ -323,7 +325,10 @@ public class HospitalAuthService {
                 user.getBranchId(), // Multi Pharmacy branch login scoping
                 // Tenant type gates hospital-only modules and controllers server-side.
                 tenantType.name(),
-                permissions);
+                permissions,
+                // Stamps the session generation current at login; a later password reset or role
+                // change bumps the row and this token stops matching.
+                user.getTokenVersion());
 
         // Create response
         LoginResponse response = new LoginResponse();
@@ -385,6 +390,13 @@ public class HospitalAuthService {
             throw new UnauthorizedException("Invalid hospital user account");
         }
 
+        // The tenant was re-checked here but the account was not, so a deactivated user kept a
+        // valid profile — and the SETTINGS_UPDATED broadcast that bounces a blocked tenant's
+        // clients had no equivalent for a deactivated person. Same check and same message as login.
+        if (user.getIsActive() != null && !user.getIsActive()) {
+            throw new UnauthorizedException("User account is inactive. Please contact administrator.");
+        }
+
         Hospital hospital = hospitalRepository.findById(user.getHospitalId())
                 .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
 
@@ -404,7 +416,7 @@ public class HospitalAuthService {
 
         // Restrict receptionist profile access if Solo Doctor mode is active
         if ("RECEPTIONIST".equals(user.getRole()) && "SOLO".equals(settings.getReceptionMode())) {
-            throw new UnauthorizedException("Solo Doctor Mode is active. Receptionist access is restricted.");
+            throw new ForbiddenException("Solo Doctor Mode is active. Receptionist access is restricted.");
         }
 
         response.setHospitalId(user.getHospitalId());
@@ -600,7 +612,13 @@ public class HospitalAuthService {
         User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
         if (user.getHospitalId() == null) throw new UnauthorizedException("Invalid hospital user account");
         if (!"HOSPITAL_ADMIN".equals(user.getRole())) {
-            throw new UnauthorizedException("Access denied: requires HOSPITAL_ADMIN role");
+            throw new ForbiddenException("Access denied: requires HOSPITAL_ADMIN role");
+        }
+        // Fees are charged as entered, so a negative one would credit the patient or be silently
+        // replaced by a default at billing time. Refuse it here, where the admin can correct it.
+        if ((fees.getConsultationFee() != null && fees.getConsultationFee().signum() < 0)
+                || (fees.getCasePaperFee() != null && fees.getCasePaperFee().signum() < 0)) {
+            throw new IllegalArgumentException("Fees cannot be negative");
         }
         Hospital hospital = hospitalRepository.findById(user.getHospitalId()).orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
         hospital.setConsultationFee(fees.getConsultationFee());
@@ -643,6 +661,7 @@ public class HospitalAuthService {
         dto.setPrintPrescription(s.getPrintPrescription() == null ? Boolean.TRUE : s.getPrintPrescription());
         dto.setPrintInClinic(s.getPrintInClinic() == null ? Boolean.TRUE : s.getPrintInClinic());
         dto.setBillPaymentTiming(s.getBillPaymentTiming() == null ? "LAST" : s.getBillPaymentTiming());
+        dto.setDefaultConsultationLanguage(s.getDefaultConsultationLanguage() == null ? "EN" : s.getDefaultConsultationLanguage());
         return dto;
     }
 
@@ -655,7 +674,7 @@ public class HospitalAuthService {
         User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
         if (user.getHospitalId() == null) throw new UnauthorizedException("Invalid hospital user account");
         if (!"HOSPITAL_ADMIN".equals(user.getRole())) {
-            throw new UnauthorizedException("Access denied: requires HOSPITAL_ADMIN role");
+            throw new ForbiddenException("Access denied: requires HOSPITAL_ADMIN role");
         }
         Hospital hospital = hospitalRepository.findById(user.getHospitalId())
                 .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
@@ -678,6 +697,9 @@ public class HospitalAuthService {
             }
             settings.setBillPaymentTiming(t);
         }
+        if (dto.getDefaultConsultationLanguage() != null && !dto.getDefaultConsultationLanguage().isBlank()) {
+            settings.setDefaultConsultationLanguage(com.hms.service.pdf.PatientInstructionFormatter.normalizeMode(dto.getDefaultConsultationLanguage()));
+        }
         hospitalSettingRepository.save(settings);
 
         try {
@@ -698,7 +720,7 @@ public class HospitalAuthService {
         User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
         if (user.getHospitalId() == null) throw new UnauthorizedException("Invalid hospital user account");
         if (!"HOSPITAL_ADMIN".equals(user.getRole())) {
-            throw new UnauthorizedException("Access denied: requires HOSPITAL_ADMIN role");
+            throw new ForbiddenException("Access denied: requires HOSPITAL_ADMIN role");
         }
 
         Hospital hospital = hospitalRepository.findById(user.getHospitalId())
@@ -734,7 +756,7 @@ public class HospitalAuthService {
         User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
         if (user.getHospitalId() == null) throw new UnauthorizedException("Invalid hospital user account");
         if (!"HOSPITAL_ADMIN".equals(user.getRole())) {
-            throw new UnauthorizedException("Access denied: requires HOSPITAL_ADMIN role");
+            throw new ForbiddenException("Access denied: requires HOSPITAL_ADMIN role");
         }
 
         Hospital hospital = hospitalRepository.findById(user.getHospitalId())
@@ -772,7 +794,7 @@ public class HospitalAuthService {
         User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
         if (user.getHospitalId() == null) throw new UnauthorizedException("Invalid hospital user account");
         if (!"HOSPITAL_ADMIN".equals(user.getRole())) {
-            throw new UnauthorizedException("Access denied: requires HOSPITAL_ADMIN role");
+            throw new ForbiddenException("Access denied: requires HOSPITAL_ADMIN role");
         }
 
         Hospital hospital = hospitalRepository.findById(user.getHospitalId())
@@ -808,7 +830,7 @@ public class HospitalAuthService {
         User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
         if (user.getHospitalId() == null) throw new UnauthorizedException("Invalid hospital user account");
         if (!"HOSPITAL_ADMIN".equals(user.getRole())) {
-            throw new UnauthorizedException("Access denied: requires HOSPITAL_ADMIN role");
+            throw new ForbiddenException("Access denied: requires HOSPITAL_ADMIN role");
         }
 
         // Normalize: trim whitespace and uppercase to be tolerant of minor client variations
@@ -816,8 +838,8 @@ public class HospitalAuthService {
         String billingHandler = dto.getBillingHandler() == null ? null : dto.getBillingHandler().trim().toUpperCase();
 
         // Guard: validate normalized values against allowed domains
-        if (!"HAS_RECEPTIONIST".equals(receptionMode) && !"SOLO".equals(receptionMode)) {
-            throw new IllegalArgumentException("receptionMode must be HAS_RECEPTIONIST or SOLO");
+        if (!"HAS_RECEPTIONIST".equals(receptionMode) && !"SOLO".equals(receptionMode) && !"BOTH".equals(receptionMode)) {
+            throw new IllegalArgumentException("receptionMode must be HAS_RECEPTIONIST, SOLO, or BOTH");
         }
         if (!"RECEPTIONIST".equals(billingHandler) && !"DOCTOR".equals(billingHandler) && !"BOTH".equals(billingHandler)) {
             throw new IllegalArgumentException("billingHandler must be RECEPTIONIST, DOCTOR, or BOTH");

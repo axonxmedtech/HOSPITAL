@@ -4,6 +4,7 @@ import authService from '../services/authService';
 import hospitalService from '../services/hospitalService';
 import vitalsService from '../services/vitalsService';
 import { extractApiError } from '../utils/apiError';
+import { describeFoodTiming, FOOD_TIMING_OPTIONS } from '../utils/foodTiming';
 import CharCountInput from './CharCountInput';
 import DateSelect from './DateSelect';
 import FrequencyInput, { isFrequencyValid } from './FrequencyInput';
@@ -154,8 +155,8 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
   };
 
   const [appliedCharges, setAppliedCharges] = useState([]);
-  const [availableCustomFees, setAvailableCustomFees] = useState([]);
-  const [standardFees, setStandardFees] = useState({ consultationFee: 0, casePaperFee: 0 });
+  const [_availableCustomFees, setAvailableCustomFees] = useState([]);
+  const [_standardFees, setStandardFees] = useState({ consultationFee: 0, casePaperFee: 0 });
 
   useEffect(() => {
     if (isOpen) {
@@ -422,8 +423,15 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
     dosage: '',
     frequency: '',
     duration: '',
+    foodTiming: '',
     instructions: '',
   });
+  const [printLanguage, setPrintLanguage] = useState('EN');
+  const [consultationStatements, setConsultationStatements] = useState([]);
+  // Text typed into the catalogue field that has not been resolved to a medicine. Typing alone
+  // names nothing, so this is the difference between an empty field and a doctor who believes
+  // they have prescribed something.
+  const [unresolvedMedicineText, setUnresolvedMedicineText] = useState('');
 
   const LAB_OPTIONS = [
     'CBC',
@@ -464,8 +472,29 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
         dosage: '',
         frequency: '',
         duration: '',
+        foodTiming: '',
         instructions: '',
       });
+      setPrintLanguage('EN');
+      if (typeof hospitalService?.getHospitalOperationsSettings === 'function') {
+        hospitalService
+          .getHospitalOperationsSettings()
+          .then((s) => {
+            if (s?.defaultConsultationLanguage) {
+              setPrintLanguage(s.defaultConsultationLanguage);
+            }
+          })
+          .catch(() => {});
+      }
+      if (typeof hospitalService?.getConsultationStatements === 'function') {
+        hospitalService
+          .getConsultationStatements()
+          .then((stmts) => {
+            setConsultationStatements(Array.isArray(stmts) ? stmts : []);
+          })
+          .catch(() => {});
+      }
+      setUnresolvedMedicineText('');
       setSearchQuery('');
       setHospitalInvSearch('');
       setActiveTab('clinical');
@@ -475,7 +504,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
       setHospitalInvDropdown(false);
       setShowSuggestions(false);
     }
-  }, [isOpen, patient?.id, patient?.publicId, appointment?.id, appointment?.patientId, opd?.id]);
+  }, [isOpen, patient?.id, patient?.publicId, appointment?.id, appointment?.patientId, opd]);
 
   const { success, error: toastError } = useToast();
 
@@ -502,7 +531,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
       }
     };
     fetchPatientDetails();
-  }, [isOpen, appointment?.patientId, patient?.publicId, patient?.id, opd?.id]);
+  }, [isOpen, appointment?.patientId, patient?.publicId, patient?.id, opd]);
 
   if (!isOpen || (!appointment && !patient)) return null;
 
@@ -551,8 +580,10 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
       dosage: '',
       frequency: '',
       duration: '',
+      foodTiming: '',
       instructions: '',
     });
+    setUnresolvedMedicineText('');
     setEditingMedicineIndex(null);
   };
 
@@ -567,6 +598,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
       dosage: '',
       frequency: '',
       duration: '',
+      foodTiming: '',
       instructions: '',
     });
     setEditingMedicineIndex(null);
@@ -677,6 +709,14 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
 
   const handleSubmit = async () => {
     if (submitting) return;
+    // Typed but never picked: the catalogue field holds no medicine, so submitting here would
+    // quietly record a consultation with no prescription the doctor believes they wrote.
+    if (unresolvedMedicineText.trim() && !newMedicine.medicineName) {
+      toastError(
+        'Select the medicine from the suggestions, or clear the field, before submitting.'
+      );
+      return;
+    }
     // Warning if user typed a medicine but didn't click Add
     if (newMedicine.medicineName) {
       toastError("Please click '+ Add Medicine' or clear the medicine fields before submitting.");
@@ -692,6 +732,12 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
     // Prepare payload; include selected lab tests if any
     const payload = { ...formData };
     if (!payload.labRequired) payload.labTests = [];
+    if (!payload.followUpRequired || !payload.followUpDate) {
+      payload.followUpDate = null;
+    }
+    if (!payload.followUpInstructions?.trim()) {
+      payload.followUpInstructions = null;
+    }
     payload.administeredItems = administeredList.map((item) => ({
       medicineId: item.medicineId,
       medicineName: item.medicineName,
@@ -710,6 +756,12 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
       serviceId: item.serviceId,
       quantity: item.qty,
     }));
+    payload.consultationLanguage =
+      printLanguage?.toUpperCase() === 'MR' || printLanguage?.toUpperCase() === 'EN_MR'
+        ? 'EN_MR'
+        : printLanguage?.toUpperCase() === 'HI' || printLanguage?.toUpperCase() === 'EN_HI'
+          ? 'EN_HI'
+          : 'EN';
 
     console.log('Submitting Consultation Data:', JSON.stringify(payload, null, 2));
 
@@ -717,7 +769,11 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
     try {
       const res = await hospitalService.submitConsultation(payload);
       success('Consultation submitted successfully');
-      onSuccess(res);
+      const responseWithLang =
+        typeof res === 'object' && res !== null
+          ? { ...res, printLanguage }
+          : { message: res, printLanguage };
+      onSuccess(responseWithLang);
       onClose();
     } catch (err) {
       console.error('Consultation failed', err);
@@ -734,6 +790,12 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
 
   const handleAdmitToIpdClick = async () => {
     if (submitting) return;
+    if (unresolvedMedicineText.trim() && !newMedicine.medicineName) {
+      toastError(
+        'Select the medicine from the suggestions, or clear the field, before submitting.'
+      );
+      return;
+    }
     // Warning if user typed a medicine but didn't click Add
     if (newMedicine.medicineName) {
       toastError("Please click '+ Add Medicine' or clear the medicine fields before submitting.");
@@ -1727,6 +1789,9 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                               <div className="font-semibold text-gray-800">{med.medicineName}</div>
                               <div className="text-xs text-gray-500 mt-1">
                                 {med.dosage} • {med.frequency} • {med.duration}
+                                {med.foodTiming &&
+                                  med.foodTiming !== 'NOT_SPECIFIED' &&
+                                  ` • ${describeFoodTiming(med.foodTiming)}`}
                                 {med.instructions && ` • ${med.instructions}`}
                               </div>
                             </div>
@@ -1770,10 +1835,12 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                       <div className="col-span-2">
                         <MedicineAutocomplete
                           value={newMedicine.medicineName}
+                          onUnresolvedTextChange={setUnresolvedMedicineText}
                           onChange={(name) =>
                             setNewMedicine((prev) => ({ ...prev, medicineName: name }))
                           }
                           onSelect={(med) => {
+                            setUnresolvedMedicineText('');
                             setNewMedicine((prev) => ({
                               ...prev,
                               medicineName: med.name,
@@ -1784,6 +1851,11 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                             }));
                           }}
                         />
+                        {unresolvedMedicineText.trim() && !newMedicine.medicineName && (
+                          <p role="alert" className="mt-1 text-xs font-semibold text-amber-700">
+                            Select a medicine from the suggestions — typing alone does not add it.
+                          </p>
+                        )}
                       </div>
                       <input
                         type="text"
@@ -1808,15 +1880,58 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                         }
                         className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500"
                       />
+                      <select
+                        aria-label="Food Timing"
+                        value={newMedicine.foodTiming || ''}
+                        onChange={(e) =>
+                          setNewMedicine({ ...newMedicine, foodTiming: e.target.value })
+                        }
+                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 bg-white"
+                      >
+                        <option value="">Food Timing (optional)</option>
+                        {FOOD_TIMING_OPTIONS.map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
                       <input
                         type="text"
-                        placeholder="Instructions (e.g., After food)"
+                        placeholder="Instructions (e.g., With warm water)"
                         value={newMedicine.instructions}
                         onChange={(e) =>
                           setNewMedicine({ ...newMedicine, instructions: e.target.value })
                         }
-                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500"
+                        className="col-span-2 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500"
                       />
+                      {consultationStatements.some(
+                        (s) => s.category === 'MEDICINE_INSTRUCTION'
+                      ) && (
+                        <div className="col-span-2 flex flex-wrap items-center gap-1.5 -mt-1">
+                          <span className="text-[11px] text-gray-500 font-medium">Quick:</span>
+                          {consultationStatements
+                            .filter((s) => s.category === 'MEDICINE_INSTRUCTION')
+                            .slice(0, 5)
+                            .map((s) => (
+                              <button
+                                key={s.id}
+                                type="button"
+                                onClick={() =>
+                                  setNewMedicine((prev) => ({
+                                    ...prev,
+                                    instructions: prev.instructions
+                                      ? `${prev.instructions}, ${s.englishText}`
+                                      : s.englishText,
+                                  }))
+                                }
+                                className="px-2 py-0.5 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded transition border border-gray-200"
+                                title={`${s.marathiText} / ${s.hindiText}`}
+                              >
+                                + {s.englishText}
+                              </button>
+                            ))}
+                        </div>
+                      )}
                     </div>
                     <div className="mt-3 flex gap-2">
                       <button
@@ -1843,55 +1958,57 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
             </div>
 
             {/* Footer Actions */}
-            <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end space-x-3">
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={submitting}
-                className={`px-6 py-2.5 border border-gray-300 text-gray-700 rounded-lg transition font-semibold ${submitting ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}`}
-              >
-                Cancel
-              </button>
-              {(opd || appointment) && hasIPD && (
+            <div className="p-6 border-t border-gray-200 bg-gray-50 flex flex-wrap items-center justify-end gap-3">
+              <div className="flex items-center space-x-3">
                 <button
                   type="button"
-                  onClick={handleAdmitToIpdClick}
+                  onClick={onClose}
                   disabled={submitting}
-                  className={`px-6 py-2.5 bg-blue-600 text-white rounded-lg transition font-semibold shadow-md ${submitting ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-700'}`}
+                  className={`px-6 py-2.5 border border-gray-300 text-gray-700 rounded-lg transition font-semibold ${submitting ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}`}
                 >
-                  Admit to IPD
+                  Cancel
                 </button>
-              )}
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={submitting}
-                className={`px-6 py-2.5 text-white rounded-lg transition font-semibold shadow-md flex items-center gap-2 ${submitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
-              >
-                {submitting && (
-                  <svg
-                    className="animate-spin h-4 w-4 text-white"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
+                {(opd || appointment) && hasIPD && (
+                  <button
+                    type="button"
+                    onClick={handleAdmitToIpdClick}
+                    disabled={submitting}
+                    className={`px-6 py-2.5 bg-blue-600 text-white rounded-lg transition font-semibold shadow-md ${submitting ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-700'}`}
                   >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
+                    Admit to IPD
+                  </button>
                 )}
-                {submitting ? 'Submitting...' : 'Complete Consultation'}
-              </button>
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={submitting}
+                  className={`px-6 py-2.5 text-white rounded-lg transition font-semibold shadow-md flex items-center gap-2 ${submitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
+                >
+                  {submitting && (
+                    <svg
+                      className="animate-spin h-4 w-4 text-white"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                  )}
+                  {submitting ? 'Submitting...' : 'Complete Consultation'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

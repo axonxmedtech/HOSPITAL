@@ -5,6 +5,7 @@ import com.hms.security.HospitalWebSocketHandshakeInterceptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
@@ -29,6 +30,8 @@ public class WebSocketConfig implements WebSocketConfigurer {
     @Value("${cors.allowed.origins}")
     private String allowedOrigins;
 
+    @Autowired private Environment environment;
+
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         // Build tight CORS origin mapping matching standard HTTP configurations
@@ -36,12 +39,18 @@ public class WebSocketConfig implements WebSocketConfigurer {
                 .map(String::trim)
                 .collect(Collectors.toList());
 
-        // Always allow standard dev and default ports for compatibility
-        if (!origins.contains("http://localhost:5173")) origins.add("http://localhost:5173");
-        if (!origins.contains("http://localhost:3000")) origins.add("http://localhost:3000");
+        if (!isProduction()) {
+            if (!origins.contains("http://localhost:5173")) origins.add("http://localhost:5173");
+            if (!origins.contains("http://localhost:3000")) origins.add("http://localhost:3000");
+        }
 
         registry.addHandler(hospitalWebSocketHandler, "/ws/hospital/{hospitalId}")
                 .addInterceptors(hospitalWebSocketHandshakeInterceptor)
                 .setAllowedOrigins(origins.toArray(new String[0]));
+    }
+
+    private boolean isProduction() {
+        return Arrays.stream(environment.getActiveProfiles())
+                .anyMatch(p -> "prod".equalsIgnoreCase(p) || "production".equalsIgnoreCase(p));
     }
 }

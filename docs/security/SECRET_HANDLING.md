@@ -20,18 +20,19 @@ tooling backs it up so a mistake is caught, not shipped.
 
 ## What we scan, and where
 
-| Control | What it catches | When |
-|---|---|---|
-| **Gitleaks** (pre-commit) | Secrets about to be committed | local `git commit` |
-| **Gitleaks** (CI, `_security.yml`) | Secrets anywhere in history (`fetch-depth: 0`) — **blocking** | every push/PR |
-| **Trivy secret scanner** | Additional secret patterns in the working tree | supply-chain job (observe) |
-| **GitHub Secret Scanning** | Known provider token formats, push protection | GitHub (manual enable) |
+| Control                            | What it catches                                               | When                       |
+| ---------------------------------- | ------------------------------------------------------------- | -------------------------- |
+| **Gitleaks** (pre-commit)          | Secrets about to be committed                                 | local `git commit`         |
+| **Gitleaks** (CI, `_security.yml`) | Secrets anywhere in history (`fetch-depth: 0`) — **blocking** | every push/PR              |
+| **Trivy secret scanner**           | Additional secret patterns in the working tree                | supply-chain job (observe) |
+| **GitHub Secret Scanning**         | Known provider token formats, push protection                 | GitHub (manual enable)     |
 
 Gitleaks is configured by [`.gitleaks.toml`](../../.gitleaks.toml): the full default ruleset
 (cloud keys, tokens, private keys, JWTs, DB URLs) plus a **tight allowlist** of obvious
 test/CI placeholders. Every allowlist entry is a documented hole — keep it minimal.
 
 ### Kinds of secrets these prevent from leaking
+
 API keys · JWT signing secrets (`JWT_SECRET`) · database passwords · SSH private keys ·
 TLS/certificates · OAuth / provider tokens · webhook URLs with embedded tokens.
 
@@ -39,13 +40,14 @@ TLS/certificates · OAuth / provider tokens · webhook URLs with embedded tokens
 
 ## Where secrets actually live
 
-| Secret | Storage | Consumed by |
-|---|---|---|
-| `JWT_SECRET` | server `.env` / deploy env | backend runtime |
-| `SPRING_DATASOURCE_PASSWORD` | server `.env` / deploy env | backend runtime |
-| `SONAR_TOKEN`, `NVD_API_KEY` | GitHub **Secrets** | CI |
-| `SSH_PRIVATE_KEY`, `SSH_USERNAME`, Slack webhook | GitHub **Secrets** | deploy (later phase) |
-| API base URLs, Sonar org/keys, versions | GitHub **Variables** | CI (non-sensitive) |
+| Secret                                  | Storage                                                                                           | Consumed by              |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------ |
+| `JWT_SECRET`                            | server `.env` / deploy env                                                                        | backend runtime          |
+| `SPRING_DATASOURCE_PASSWORD`            | server `.env` / deploy env                                                                        | backend runtime          |
+| `SONAR_TOKEN`, `NVD_API_KEY`            | GitHub **Secrets**                                                                                | CI                       |
+| `DEPLOY_SSH_KEY`, `DEPLOY_SSH_USER`     | GitHub **environment** secrets (Staging, Production, Production Backups) — never repository-level | deploy, rollback, backup |
+| Slack webhook                           | GitHub **Secrets**                                                                                | deploy notification      |
+| API base URLs, Sonar org/keys, versions | GitHub **Variables**                                                                              | CI (non-sensitive)       |
 
 CI test runs use **obvious placeholders** (e.g. `JWT_SECRET: ci-test-secret-not-used-in-real-environment`)
 — never a real key. These are allowlisted in `.gitleaks.toml`.

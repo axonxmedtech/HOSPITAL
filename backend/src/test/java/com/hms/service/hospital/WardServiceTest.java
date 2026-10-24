@@ -1,8 +1,10 @@
 package com.hms.service.hospital;
 
 import com.hms.dto.CreateWardRequest;
+import com.hms.dto.UpdateWardRequest;
 import com.hms.dto.WardResponse;
 import com.hms.entity.Bed;
+import com.hms.entity.BedStatus;
 import com.hms.entity.Ward;
 import com.hms.repository.BedRepository;
 import com.hms.repository.NurseProfileRepository;
@@ -23,6 +25,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -42,6 +45,15 @@ class WardServiceTest {
     @Mock HospitalWebSocketHandler webSocketHandler;
     @Mock NurseProfileRepository nurseProfileRepository;
     @Mock AuditLogService auditLogService;
+    @Mock com.hms.repository.IcuWardRepository icuWardRepository;
+
+    @org.junit.jupiter.api.BeforeEach
+    void wireBaseWrites() {
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "wardWrites",
+                new WardWriteService(wardRepository, bedRepository, securityHelper,
+                        webSocketHandler, nurseProfileRepository, auditLogService));
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "icuWardRepository", icuWardRepository);
+    }
     @InjectMocks WardService service;
 
     private CreateWardRequest req(String name, Integer totalBeds) {
@@ -112,6 +124,24 @@ class WardServiceTest {
     }
 
     @Test
+    void getWardsForAdmission_includesAvailableWardWithoutNurseIncharge() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        Ward ward = savedWard(3L, "General", 1);
+        ward.setInchargeNurseId(null);
+        Bed available = new Bed();
+        available.setStatus("available");
+        when(wardRepository.findByHospitalId(7L)).thenReturn(List.of(ward));
+        when(bedRepository.findByWardIdAndHospitalId(3L, 7L)).thenReturn(List.of(available));
+
+        List<WardResponse> wards = service.getWardsForAdmission();
+
+        assertThat(wards).extracting(WardResponse::getWardId).containsExactly(3L);
+        verify(wardRepository).findByHospitalId(7L);
+        verify(bedRepository).findByWardIdAndHospitalId(3L, 7L);
+        verify(wardRepository, never()).findGeneralWardsByHospitalId(any());
+    }
+
+    @Test
     void createWard_rejectsCountAboveMax_andCreatesNoBeds() {
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
         when(wardRepository.save(any())).thenReturn(savedWard(3L, "ICU", 2001));
@@ -133,4 +163,65 @@ class WardServiceTest {
 
         verify(bedRepository, never()).save(any());
     }
+
+    // ── General Wards Isolation & Operations ──────────────────────────────────
+
+    @Test
+    void getAllWards_returnsOnlyGeneralWards() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        Ward w1 = savedWard(1L, "General-A", 10);
+        Ward w2 = savedWard(2L, "General-B", 5);
+        when(wardRepository.findGeneralWardsByHospitalId(7L)).thenReturn(List.of(w1, w2));
+
+        List<WardResponse> responses = service.getAllWards();
+
+        assertThat(responses).hasSize(2);
+        assertThat(responses.get(0).getWardName()).isEqualTo("General-A");
+        assertThat(responses.get(1).getWardName()).isEqualTo("General-B");
+        verify(wardRepository).findGeneralWardsByHospitalId(7L);
+    }
+
+    @Test
+    void createWard_createsGeneralWardSuccessfully() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(wardRepository.save(any())).thenAnswer(i -> {
+            Ward w = i.getArgument(0);
+            w.setWardId(3L);
+            return w;
+        });
+        when(bedRepository.findByWardIdAndHospitalId(3L, 7L)).thenReturn(List.of());
+        when(bedRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        WardResponse resp = service.createWard(req("General-A", 2));
+
+        assertThat(resp.getWardName()).isEqualTo("General-A");
+        assertThat(resp.getTotalBeds()).isEqualTo(2);
+    }
+
+    @Test
+    void updateWard_updatesGeneralWardSuccessfully() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        Ward existing = savedWard(3L, "Ward-3", 2);
+        when(wardRepository.findByWardIdAndHospitalIdForUpdate(3L, 7L)).thenReturn(java.util.Optional.of(existing));
+        when(wardRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        UpdateWardRequest r = new UpdateWardRequest();
+        r.setWardName("Ward-3-Renamed");
+
+        WardResponse resp = service.updateWard(3L, r);
+
+        assertThat(resp.getWardName()).isEqualTo("Ward-3-Renamed");
+    }
+    @Test
+    void admissionWardWithOnlyCleaningOrOccupiedBedsIsExcluded() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        Ward ward = savedWard(3L, "General", 2);
+        Bed cleaning = new Bed();cleaning.setStatus("cleaning");
+        Bed occupied = new Bed();occupied.setStatus("occupied");
+        when(wardRepository.findByHospitalId(7L)).thenReturn(List.of(ward));
+        when(bedRepository.findByWardIdAndHospitalId(3L,7L)).thenReturn(List.of(cleaning,occupied));
+        assertThat(service.getWardsForAdmission()).isEmpty();
+        verify(bedRepository).findByWardIdAndHospitalId(3L,7L);
+    }
+
 }

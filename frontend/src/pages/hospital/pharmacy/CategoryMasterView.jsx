@@ -3,6 +3,7 @@ import DataTable from '../../../components/DataTable';
 import { useToast } from '../../../context/ToastContext';
 import categoriesApi from '../../../services/pharmacy/categoriesApi';
 import CategoryForm from './CategoryForm';
+import { extractApiError } from '../../../utils/apiError';
 
 /**
  * CategoryMasterView – parent view for managing medicine categories.
@@ -91,8 +92,7 @@ const CategoryMasterView = () => {
       fetchCategories();
     } catch (err) {
       console.error('Save category error:', err);
-      const message = err?.response?.data?.message || 'Failed to save category';
-      toast.error(message);
+      toast.error(extractApiError(err, 'Failed to save category'));
     } finally {
       setIsSubmitting(false);
     }

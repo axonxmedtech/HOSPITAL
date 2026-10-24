@@ -1,5 +1,6 @@
 package com.hms.controller.pharmacy;
 
+import com.hms.security.RequireModule;
 import com.hms.dto.pharmacy.CategoryRequest;
 import com.hms.service.pharmacy.MedicineCategoryService;
 import jakarta.validation.Valid;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/pharmacy/categories")
+@RequireModule("PHARMACY")
 public class MedicineCategoryController {
 
     @Autowired

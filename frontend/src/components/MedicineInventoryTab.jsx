@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from '../context/ToastContext';
 import hospitalService from '../services/hospitalService';
+import { extractApiError } from '../utils/apiError';
 import ConfirmationModal from './ConfirmationModal';
 import DateSelect from './DateSelect';
 import FrequencyInput from './FrequencyInput';
@@ -31,6 +32,7 @@ const MedicineInventoryTab = ({ hidePrescribingColumns = false }) => {
   const [inventoryList, setInventoryList] = useState([]);
   const [purchaseList, setPurchaseList] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
   // Modal states
   const [stockModal, setStockModal] = useState({ isOpen: false, isEdit: false, data: null });
@@ -106,27 +108,24 @@ const MedicineInventoryTab = ({ hidePrescribingColumns = false }) => {
   }, [stockMedicineQuery, suggestions, searchingCatalog]);
 
   // Fetch active stock inventory
+  // Errors are deliberately NOT caught here. They used to be, and swallowing them left the
+  // list at whatever it already held -- [] on first load -- so a server that could not be
+  // reached rendered as a pharmacy stocking nothing at all. A read failure and an empty
+  // inventory are different facts and a nurse or pharmacist must be able to tell them apart.
   const fetchInventory = async () => {
-    try {
-      const res = await hospitalService.getInventoryMedicines();
-      setInventoryList(res || []);
-    } catch (err) {
-      console.error(err);
-    }
+    const res = await hospitalService.getInventoryMedicines();
+    setInventoryList(res || []);
   };
 
   // Fetch purchases history
   const fetchPurchases = async () => {
-    try {
-      const res = await hospitalService.getMedicinePurchases();
-      setPurchaseList(res || []);
-    } catch (err) {
-      console.error(err);
-    }
+    const res = await hospitalService.getMedicinePurchases();
+    setPurchaseList(res || []);
   };
 
   const loadData = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       if (subTab === 'inventory') {
         await fetchInventory();
@@ -134,7 +133,9 @@ const MedicineInventoryTab = ({ hidePrescribingColumns = false }) => {
         await fetchPurchases();
       }
     } catch (err) {
-      toastError('Failed to load medicine inventory data.');
+      // ERROR is its own state, alongside loading / empty / loaded.
+      setLoadError(extractApiError(err, 'Failed to load medicine inventory data.'));
+      toastError(extractApiError(err, 'Failed to load medicine inventory data.'));
     } finally {
       setLoading(false);
     }
@@ -237,7 +238,22 @@ const MedicineInventoryTab = ({ hidePrescribingColumns = false }) => {
       </div>
 
       {/* Main Tables */}
-      {loading && inventoryList.length === 0 && purchaseList.length === 0 ? (
+      {loadError ? (
+        <div
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 px-4 py-5 text-center"
+        >
+          <p className="text-sm font-semibold text-red-800">Couldn&apos;t load medicines</p>
+          <p className="mt-1 text-sm text-red-700">{loadError}</p>
+          <button
+            type="button"
+            onClick={loadData}
+            className="mt-3 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+          >
+            Retry
+          </button>
+        </div>
+      ) : loading && inventoryList.length === 0 && purchaseList.length === 0 ? (
         <div className="space-y-3">
           <div className="h-10 bg-slate-100 rounded-lg animate-pulse" />
           <div className="h-10 bg-slate-100 rounded-lg animate-pulse" />

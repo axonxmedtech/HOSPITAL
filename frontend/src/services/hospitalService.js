@@ -16,6 +16,25 @@ import apiClient from './apiService';
  */
 
 const hospitalService = {
+  // ========== Dashboard APIs ==========
+
+  /**
+   * Hospital Admin operational overview.
+   *
+   * The range is sent as an enum name and never as dates. The business day is the hospital's,
+   * not the browser's: a client that computed "today" would answer in its own timezone and be a
+   * day out between midnight and 05:30 IST. The server owns the boundaries.
+   *
+   * The response omits any block the tenant's plan does not include, which is what the UI reads
+   * to decide what to render — an absent block is not the same fact as a zero.
+   *
+   * @param {'TODAY'|'LAST_7_DAYS'|'LAST_30_DAYS'} range
+   */
+  getDashboardOverview: async (range = 'TODAY') => {
+    const response = await apiClient.get(`/hospital/dashboard/overview?range=${range}`);
+    return response.data;
+  },
+
   // ========== Patient APIs ==========
 
   getPatients: async (search, page = 0, size = 10, date = '', view = '') => {
@@ -29,17 +48,26 @@ const hospitalService = {
 
   /**
    * Add a new patient
+   *
+   * `acknowledgeDuplicatePhone` travels as a query parameter rather than a body field because
+   * the body is the patient record itself: a field there would be settable by anything that can
+   * post a patient, turning the shared-phone confirmation into an opt-out. Pass it only after a
+   * human has seen the conflicting patients and chosen "Register Different Patient".
    */
-  addPatient: async (patientData) => {
-    const response = await apiClient.post('/hospital/patients', patientData);
+  addPatient: async (patientData, { acknowledgeDuplicatePhone = false } = {}) => {
+    const response = await apiClient.post('/hospital/patients', patientData, {
+      params: acknowledgeDuplicatePhone ? { acknowledgeDuplicatePhone: true } : undefined,
+    });
     return response.data;
   },
 
   /**
    * Update existing patient
    */
-  updatePatient: async (id, patientData) => {
-    const response = await apiClient.put(`/hospital/patients/${id}`, patientData);
+  updatePatient: async (id, patientData, { acknowledgeDuplicatePhone = false } = {}) => {
+    const response = await apiClient.put(`/hospital/patients/${id}`, patientData, {
+      params: acknowledgeDuplicatePhone ? { acknowledgeDuplicatePhone: true } : undefined,
+    });
     return response.data;
   },
 
@@ -137,6 +165,22 @@ const hospitalService = {
   deleteDoctor: async (id, reason) => {
     const query = reason ? `?reason=${encodeURIComponent(reason)}` : '';
     const response = await apiClient.delete(`/hospital/doctors/${id}${query}`);
+    return response.data;
+  },
+
+  /**
+   * Get deleted doctors for current hospital
+   */
+  getDeletedDoctors: async () => {
+    const response = await apiClient.get('/hospital/doctors/deleted');
+    return response.data;
+  },
+
+  /**
+   * Restore doctor
+   */
+  restoreDoctor: async (id) => {
+    const response = await apiClient.post(`/hospital/doctors/${id}/restore`);
     return response.data;
   },
 
@@ -477,10 +521,43 @@ const hospitalService = {
   },
 
   /**
-   * Dispense medicine for a prescription
+   * Dispense medicine against a prescription — the event that takes stock off the shelf.
+   *
+   * `quantity` is required and is what the pharmacist actually handed over. The server used to
+   * decide this itself and always removed exactly one unit, so a five-day course left the shelf
+   * and the system recorded a single unit; there is no rule that turns a free-text dosage into a
+   * unit count, so the caller states it.
+   *
+   * `medicineId` is required only for an order written as free text, which carries no inventory
+   * link of its own — the pharmacist names the medicine being handed over rather than the server
+   * guessing from the prescription's text.
+   *
+   * `idempotencyKey` should stay the same across retries of one act of dispensing, so a resent
+   * request posts stock once.
    */
-  dispenseMedicine: async (prescriptionId) => {
-    const response = await apiClient.post(`/hospital/pharmacy/dispense/${prescriptionId}`);
+  /**
+   * The facility's own medicines with usable stock, for reconciling a free-text order.
+   *
+   * Tenant-scoped on the server. Returns candidates, never a single automatic answer — two rows
+   * can share a name and choosing between them is the dispensing user's call.
+   */
+  getDispensableMedicines: async (query = '') => {
+    const response = await apiClient.get(
+      `/hospital/pharmacy/dispense/medicines${query ? `?query=${encodeURIComponent(query)}` : ''}`
+    );
+    return response.data;
+  },
+
+  dispenseMedicine: async (
+    prescriptionId,
+    { quantity, medicineId, idempotencyKey, remarks } = {}
+  ) => {
+    const response = await apiClient.post(`/hospital/pharmacy/dispense/${prescriptionId}`, {
+      quantity,
+      medicineId,
+      idempotencyKey,
+      remarks,
+    });
     return response.data;
   },
 
@@ -529,6 +606,18 @@ const hospitalService = {
   /**
    * Get Consultation Details (Prescription)
    */
+  /**
+   * Consultation details for a walk-in OPD case, the counterpart of getConsultationDetails.
+   *
+   * Reception could previously reach a consultation only through its appointment, so a walk-in
+   * visit had no per-case prescription view at all. Same {medicalRecord, prescriptions} shape,
+   * same backend repositories — only the key differs.
+   */
+  getConsultationDetailsByOpd: async (opdId) => {
+    const response = await apiClient.get(`/hospital/doctors/consultation/opd/${opdId}`);
+    return response.data;
+  },
+
   getConsultationDetails: async (appointmentId) => {
     const response = await apiClient.get(`/hospital/doctors/consultation/${appointmentId}`);
     return response.data;
@@ -537,9 +626,11 @@ const hospitalService = {
   /**
    * Download Prescription PDF
    */
-  downloadPrescription: async (appointmentId) => {
+  downloadPrescription: async (appointmentId, lang) => {
+    const params = lang ? { lang } : {};
     return apiClient
       .get(`/hospital/doctors/prescription/${appointmentId}/pdf`, {
+        params,
         responseType: 'blob',
         timeout: 60000,
       })
@@ -553,6 +644,11 @@ const hospitalService = {
     if (status) url += `&status=${encodeURIComponent(status)}`;
     const response = await apiClient.get(url);
     return response.data; // Returns Page object with { content: [...], totalElements: ..., totalPages: ... }
+  },
+
+  createBill: async (billData) => {
+    const response = await apiClient.post('/hospital/billing', billData);
+    return response.data;
   },
 
   updateBillStatus: async (id, status, paymentMethod, paymentReference) => {
@@ -587,8 +683,10 @@ const hospitalService = {
   /**
    * Create a new appointment
    */
-  createAppointment: async (appointmentData) => {
-    const response = await apiClient.post('/hospital/appointments', appointmentData);
+  createAppointment: async (appointmentData, { acknowledgeDuplicatePhone = false } = {}) => {
+    const response = await apiClient.post('/hospital/appointments', appointmentData, {
+      params: acknowledgeDuplicatePhone ? { acknowledgeDuplicatePhone: true } : undefined,
+    });
     return response.data;
   },
 
@@ -619,6 +717,18 @@ const hospitalService = {
   /**
    * Get paginated OPD / cases (Receptionist view)
    */
+  // Pending IPD requests are counted by the server. The dashboard used to page 1000 OPDs and
+  // filter them in the browser, which lost every request past that page.
+  getPendingIpdRequestCount: async () => {
+    const response = await apiClient.get('/hospital/opd/ipd-requests/count');
+    return response.data?.count ?? 0;
+  },
+
+  getPendingIpdRequests: async (page = 0, size = 10) => {
+    const response = await apiClient.get(`/hospital/opd/ipd-requests?page=${page}&size=${size}`);
+    return response.data;
+  },
+
   getOpds: async (search = '', page = 0, size = 10, date = '', status = '') => {
     let url = `/hospital/opd?page=${page}&size=${size}`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
@@ -628,16 +738,20 @@ const hospitalService = {
     return response.data;
   },
 
-  downloadCasePaper: async (opdId) => {
+  downloadCasePaper: async (opdId, lang) => {
+    const params = lang ? { lang } : {};
     const response = await apiClient.get(`/hospital/opd/${opdId}/pdf`, {
+      params,
       responseType: 'blob',
       timeout: 60000,
     });
     return response.data;
   },
 
-  downloadPrescriptionByOpd: async (opdId) => {
+  downloadPrescriptionByOpd: async (opdId, lang) => {
+    const params = lang ? { lang } : {};
     const response = await apiClient.get(`/hospital/doctors/prescription/opd/${opdId}/pdf`, {
+      params,
       responseType: 'blob',
       timeout: 60000,
     });
@@ -703,8 +817,11 @@ const hospitalService = {
     const response = await apiClient.put(`/hospital/ipd/prescriptions/${prescriptionId}/stop`);
     return response.data;
   },
-  changeBed: async (ipdId, newBedId) => {
-    const response = await apiClient.put(`/hospital/ipd/${ipdId}/change-bed?newBedId=${newBedId}`);
+  changeBed: async (ipdId, newBedId, newWardId) => {
+    const wardQuery = newWardId == null ? '' : `&newWardId=${encodeURIComponent(newWardId)}`;
+    const response = await apiClient.put(
+      `/hospital/ipd/${ipdId}/change-bed?newBedId=${newBedId}${wardQuery}`
+    );
     return response.data;
   },
 
@@ -717,10 +834,62 @@ const hospitalService = {
   },
 
   /**
-   * Get today's follow-up patients list based on role
+   * Outstanding follow-ups.
+   *
+   * Reads /hospital/follow-ups, which only reads. The endpoint this replaced created an OPD and
+   * a queue entry for every due follow-up as a side effect of the GET, so simply opening a
+   * dashboard booked patients in who had not arrived.
+   *
+   * @param {{ timing?: 'DUE_TODAY'|'OVERDUE'|'UPCOMING', mine?: boolean, overdueDays?: number }} [options]
    */
-  getTodaysFollowUps: async () => {
-    const response = await apiClient.get('/hospital/opd/today-followups');
+  getFollowUps: async (options = {}) => {
+    const params = new URLSearchParams();
+    if (options.timing) params.set('timing', options.timing);
+    if (options.mine) params.set('mine', 'true');
+    if (options.overdueDays != null) params.set('overdueDays', String(options.overdueDays));
+    const query = params.toString();
+    const response = await apiClient.get(`/hospital/follow-ups${query ? `?${query}` : ''}`);
+    return response.data;
+  },
+
+  /** Today's follow-ups only — the dashboard overview strip. */
+  getTodaysFollowUps: async (options = {}) =>
+    hospitalService.getFollowUps({ ...options, timing: 'DUE_TODAY' }),
+
+  /**
+   * The patient turned up: creates the follow-up OPD, queues them and bills as usual.
+   * Deliberately not optimistic — callers re-fetch rather than guess the new state.
+   */
+  arriveFollowUp: async (medicalRecordId, problem) => {
+    const response = await apiClient.post(`/hospital/follow-ups/${medicalRecordId}/arrive`, {
+      problem: problem || null,
+    });
+    return response.data;
+  },
+
+  /** Moves the follow-up. It stays outstanding; only the date changes. */
+  rescheduleFollowUp: async (medicalRecordId, { newFollowUpDate, instructions, reason }) => {
+    const response = await apiClient.post(`/hospital/follow-ups/${medicalRecordId}/reschedule`, {
+      newFollowUpDate,
+      instructions: instructions || null,
+      reason: reason || null,
+    });
+    return response.data;
+  },
+
+  /** Closes the follow-up without creating a visit. Doctor/admin only, server-enforced. */
+  completeFollowUp: async (medicalRecordId, reason) => {
+    const response = await apiClient.post(`/hospital/follow-ups/${medicalRecordId}/complete`, {
+      reason: reason || null,
+    });
+    return response.data;
+  },
+
+  /** Calls the follow-up off. The reason is required by the server. */
+  cancelFollowUp: async (medicalRecordId, reason) => {
+    const response = await apiClient.post(`/hospital/follow-ups/${medicalRecordId}/cancel`, {
+      reason,
+    });
     return response.data;
   },
 
@@ -1186,6 +1355,37 @@ const hospitalService = {
       responseType: 'blob',
       timeout: 60000,
     });
+    return response.data;
+  },
+
+  getConsultationStatements: async (category = '', query = '') => {
+    const params = {};
+    if (category) params.category = category;
+    if (query) params.query = query;
+    const response = await apiClient.get('/hospital/consultation-statements', { params });
+    return response.data;
+  },
+
+  // ICU Cleaning Task APIs
+  getIcuCleaningTasks: async (status = '') => {
+    let url = '/hospital/icu/cleaning';
+    if (status) url += `?status=${encodeURIComponent(status)}`;
+    const response = await apiClient.get(url);
+    return response.data;
+  },
+
+  createIcuCleaningTask: async (taskData) => {
+    const response = await apiClient.post('/hospital/icu/cleaning', taskData);
+    return response.data;
+  },
+
+  updateIcuCleaningTaskStatus: async (taskId, status) => {
+    const response = await apiClient.put(`/hospital/icu/cleaning/${taskId}/status`, { status });
+    return response.data;
+  },
+
+  deleteIcuCleaningTask: async (taskId) => {
+    const response = await apiClient.delete(`/hospital/icu/cleaning/${taskId}`);
     return response.data;
   },
 };

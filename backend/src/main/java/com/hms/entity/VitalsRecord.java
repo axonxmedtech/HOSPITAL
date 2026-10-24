@@ -78,6 +78,47 @@ public class VitalsRecord {
     @Column(name = "remarks", length = 500)
     private String remarks;
 
+    // ── ICU Phase 4 (ICU-4 §12.1). All nullable: a ward reading leaves them empty and every
+    // pre-existing row is unaffected, so no backfill is needed and IPD behaviour is unchanged.
+
+    /** Mean arterial pressure. STORED, not derived: an arterial-line MAP is a measured value
+     *  that differs from one computed off a cuff, and deriving it would discard that. */
+    @Column(name = "map_mmhg")
+    private Integer mapMmhg;
+
+    /** Central venous pressure. */
+    @Column(name = "cvp_cmh2o")
+    private Integer cvpCmh2o;
+
+    /** Urine output for the interval, in millilitres. */
+    @Column(name = "urine_output_ml")
+    private Integer urineOutputMl;
+
+    /** Glasgow Coma Scale components, stored alongside the total exactly as
+     *  RecoveryObservation stores Aldrete's. The total is arithmetic (E+V+M), never a judgement. */
+    @Column(name = "gcs_eye")
+    private Integer gcsEye;
+
+    @Column(name = "gcs_verbal")
+    private Integer gcsVerbal;
+
+    @Column(name = "gcs_motor")
+    private Integer gcsMotor;
+
+    @Column(name = "gcs_total")
+    private Integer gcsTotal;
+
+    /**
+     * The observation this row corrects, when it is a correction.
+     *
+     * <p>An observation recorded during an ICU stay is never edited in place: a correction
+     * writes a NEW row pointing here, and the original stays readable and unmodified. In
+     * critical care the earlier value is itself evidence — a falling SpO2 across three readings
+     * IS the finding — so overwriting it destroys the thing the chart exists to show.
+     */
+    @Column(name = "supersedes_vitals_id")
+    private Long supersedesVitalsId;
+
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
 

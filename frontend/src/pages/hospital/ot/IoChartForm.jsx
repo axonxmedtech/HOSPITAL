@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
+import icuService from '../../../services/icuService';
 import nurseService from '../../../services/nurseService';
 import { backdropProps } from '../../../utils/modalA11y';
 import { printHtml } from '../../../utils/printHtml';
@@ -15,6 +16,7 @@ const IoChartForm = ({ admissionId, onClose }) => {
   const { error: toastError } = useToast();
   const user = authService.getCurrentUser();
   const [rows, setRows] = useState([]);
+  const [ioEntries, setIoEntries] = useState([]);
   const [f, setF] = useState({});
   const [loading, setLoading] = useState(true);
 
@@ -23,11 +25,14 @@ const IoChartForm = ({ admissionId, onClose }) => {
     Promise.all([
       nurseService.getVitals(admissionId).catch(() => []),
       nurseService.getAdmissionForm(admissionId).catch(() => ({})),
+      // ICU-5: the I/O columns come from icu_io_entry, never from the vitals urine field (D-2).
+      icuService.getIoEntries(admissionId).catch(() => []),
     ])
-      .then(([v, adm]) => {
+      .then(([v, adm, io]) => {
         if (!active) return;
         setRows(Array.isArray(v) ? v : []);
         setF(adm || {});
+        setIoEntries(Array.isArray(io) ? io : []);
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -39,13 +44,18 @@ const IoChartForm = ({ admissionId, onClose }) => {
 
   const print = () => {
     printHtml(
-      buildIoChartHtml(rows, f, {
-        name: f.hospitalName || user?.hospitalName,
-        address: f.hospitalAddress || user?.hospitalAddress,
-        logo: f.hospitalLogoUrl || user?.logoUrl,
-        customId: f.hospitalCustomId,
-        nurse: user?.name,
-      })
+      buildIoChartHtml(
+        rows,
+        f,
+        {
+          name: f.hospitalName || user?.hospitalName,
+          address: f.hospitalAddress || user?.hospitalAddress,
+          logo: f.hospitalLogoUrl || user?.logoUrl,
+          customId: f.hospitalCustomId,
+          nurse: user?.name,
+        },
+        ioEntries
+      )
     );
   };
 

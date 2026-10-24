@@ -33,6 +33,16 @@ public class MedicinePurchase {
     @Column(name = "expiry_date")
     private LocalDate expiryDate;
 
+    /**
+     * The supplier's batch/lot number for this delivery, when the invoice carries one.
+     *
+     * <p>Optional, and never invented: stock that arrives without one is filed under a lot named
+     * after its expiry instead. What matters for safety is that two deliveries with different
+     * expiries stay apart, and expiry alone is enough for that.
+     */
+    @Column(name = "batch_number", length = 100)
+    private String batchNumber;
+
     @Column(name = "min_stock_level")
     private Integer minStockLevel = 10;
 

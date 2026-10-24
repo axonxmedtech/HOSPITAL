@@ -4,6 +4,23 @@ const ToastContext = createContext();
 
 export const useToast = () => useContext(ToastContext);
 
+// API handlers do not all return the same error shape. Keep an unexpected body
+// from becoming a React child and masking the original business error.
+export const toToastMessage = (message) => {
+  if (typeof message === 'string' && message.trim()) return message;
+  if (message && typeof message === 'object') {
+    if (typeof message.error === 'string' && message.error.trim()) return message.error;
+    if (typeof message.message === 'string' && message.message.trim()) return message.message;
+    if (message.errors && typeof message.errors === 'object') {
+      const errors = Object.values(message.errors).filter(
+        (value) => typeof value === 'string' && value.trim()
+      );
+      if (errors.length) return errors.join(', ');
+    }
+  }
+  return 'Something went wrong. Please try again.';
+};
+
 export const ToastProvider = ({ children }) => {
   const [toasts, setToasts] = useState([]);
 
@@ -17,7 +34,7 @@ export const ToastProvider = ({ children }) => {
   const addToast = useCallback(
     (message, type = 'info') => {
       const id = Date.now() + Math.random();
-      setToasts((prev) => [...prev, { id, message, type }]);
+      setToasts((prev) => [...prev, { id, message: toToastMessage(message), type }]);
       // Auto-remove after 3 seconds
       setTimeout(() => removeToast(id), 3000);
     },

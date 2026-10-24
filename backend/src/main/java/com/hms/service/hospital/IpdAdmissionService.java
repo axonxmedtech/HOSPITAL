@@ -12,6 +12,7 @@ import com.hms.security.SecurityContextHelper;
 
 import com.hms.exception.ResourceNotFoundException;
 import com.hms.exception.UnauthorizedException;
+import com.hms.exception.ConflictException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -95,6 +96,9 @@ public class IpdAdmissionService {
     private com.hms.repository.IpdBedHistoryRepository ipdBedHistoryRepository;
 
     @Autowired
+    private com.hms.repository.IcuWardRepository icuWardRepository;
+
+    @Autowired
     private SecurityContextHelper securityHelper;
 
     @Autowired
@@ -112,56 +116,74 @@ public class IpdAdmissionService {
     @Autowired
     private com.hms.security.HospitalWebSocketHandler webSocketHandler;
 
+    @Autowired
+    private com.hms.repository.IcuCleaningTaskRepository icuCleaningTaskRepository;
+
     // Nursing Mgmt Phase C2: all bed status writes go through the audited service.
     @Autowired
     private BedStatusService bedStatusService;
 
-    @Transactional
     /**
-     * Whether this hospital's plan includes NURSING — read from the hospital row, not from the
-     * caller's JWT. The token's module claim is frozen at login, so a plan change would not reach
-     * an already-signed-in user until they logged back in (see ModuleAccessAspect).
+     * ICU Phase 3. MANDATORY propagation — it joins the transaction opened here and never starts
+     * one, so an ICU stay can never commit apart from the bed movement that caused it.
      */
-    private boolean hasNursingModule() {
-        Long hospitalId = securityHelper.getCurrentHospitalId();
-        if (hospitalId == null) return false;
-        com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId).orElse(null);
-        java.util.List<String> modules = hospital != null ? hospital.getModules() : null;
-        return modules != null && modules.contains("NURSING");
+    @Autowired
+    private com.hms.service.hospital.icu.IcuStayService icuStayService;
+
+    @Transactional
+    public IpdAdmission admitFromOpd(Long opdId, Long wardId, Long bedId, String admissionType, String primaryDiagnosis) {
+        return admitFromOpd(opdId, null, null, wardId, bedId, admissionType, primaryDiagnosis);
     }
 
-    public IpdAdmission admitFromOpd(Long opdId, Long wardId, Long bedId, String admissionType, String primaryDiagnosis) {
-        // Load OPD
-        Opd opd = opdRepository.findById(opdId).orElseThrow(() -> new ResourceNotFoundException("OPD not found"));
-
+    @Transactional
+    public IpdAdmission admitFromOpd(Long opdId, Long directPatientId, Long directDoctorId, Long wardId, Long bedId, String admissionType, String primaryDiagnosis) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found in context");
 
-        // Validate bed availability
-        Bed bed = bedRepository.findById(bedId).orElseThrow(() -> new ResourceNotFoundException("Bed not found"));
-        if (!bed.getStatus().equalsIgnoreCase("available")) {
-            throw new IllegalArgumentException("Bed is not available");
+        validateAdmissionSelectionIds(opdId, directPatientId, directDoctorId);
+
+        // IPD numbers are globally unique today. Lock one durable global hospital row before
+        // reading MAX+1 so admissions from different tenants cannot allocate the same number.
+        hospitalRepository.findGlobalIpdNumberLock()
+                .orElseThrow(() -> new IllegalStateException("No hospital available for IPD number allocation"));
+
+        Opd opd = resolveAdmissionOpd(opdId, hospitalId);
+        com.hms.entity.Patient patient = resolveAdmissionPatient(opd, directPatientId, hospitalId);
+        Long patientId = patient.getId();
+        Long doctorId = resolveAdmissionDoctor(opd, directDoctorId, hospitalId);
+
+        if (ipdAdmissionRepository.existsByHospitalIdAndPatientIdAndStatusIn(hospitalId, patient.getId(),
+                java.util.List.of("ADMITTED", "DISCHARGE_PLANNED"))) {
+            throw new ConflictException("Patient already has an active IPD admission");
         }
 
-        // Nursing Mgmt: a ward must have a Nurse Incharge before it can receive admissions.
-        // This is a NURSING rule, so only enforce it when that module is on — a hospital with
-        // IPD but no NURSING has no nurses at all and can never assign an incharge, so applying
-        // it unconditionally made every admission fail with a 400 (matches WardService's
-        // getWardsForAdmission gate).
-        com.hms.entity.Ward ward = wardRepository.findById(wardId)
-                .orElseThrow(() -> new IllegalArgumentException("Ward not found"));
-        if (hasNursingModule() && ward.getInchargeNurseId() == null) {
-            throw new IllegalArgumentException("This ward has no Nurse Incharge assigned. Assign an incharge before admitting.");
+        // Lock the selected tenant-scoped bed before checking availability. The lock remains
+        // held through the admission and status audit, so exactly one concurrent request wins.
+        Bed bed = bedRepository.findByBedIdAndHospitalIdForUpdate(bedId, hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Bed not found"));
+        if (!bed.getStatus().equalsIgnoreCase("available")) {
+            throw new ConflictException("Bed is no longer available");
+        }
+
+        // Resolve the selected ward tenant-scoped before creating an admission.
+        com.hms.entity.Ward ward = wardRepository.findByWardIdAndHospitalId(wardId, hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Ward not found"));
+        if (!wardId.equals(bed.getWardId())) {
+            throw new IllegalArgumentException("Selected bed does not belong to the selected ward");
         }
 
         // Create IPD admission with sequential IPD-1, IPD-2, IPD-3...
         IpdAdmission ipd = new IpdAdmission();
-        int nextIpd = (ipdAdmissionRepository.findMaxIpdSequence() != null ? ipdAdmissionRepository.findMaxIpdSequence() : 0) + 1;
+        long maxIpd = java.util.Optional.ofNullable(ipdAdmissionRepository.findMaxIpdSequence()).orElse(0L);
+        if (maxIpd == Long.MAX_VALUE) {
+            throw new IllegalStateException("IPD number sequence is exhausted");
+        }
+        long nextIpd = maxIpd + 1;
         ipd.setIpdNumber("IPD-" + nextIpd);
-        ipd.setPatientId(opd.getPatient().getId());
-        ipd.setDoctorId(opd.getDoctor() != null ? opd.getDoctor().getId() : null);
+        ipd.setPatientId(patientId);
+        ipd.setDoctorId(doctorId);
         ipd.setHospitalId(hospitalId);
-        ipd.setSourceOpdId(opd.getId());
+        ipd.setSourceOpdId(opd != null ? opd.getId() : null);
         ipd.setAdmissionType(admissionType != null ? admissionType : "ELECTIVE");
         ipd.setStatus("ADMITTED");
         ipd.setAdmissionDatetime(LocalDateTime.now());
@@ -172,96 +194,36 @@ public class IpdAdmissionService {
 
         IpdAdmission saved = ipdAdmissionRepository.save(ipd);
 
-        // Record initial bed assignment in IpdBedHistory
-        try {
-            com.hms.entity.IpdBedHistory initialHist = new com.hms.entity.IpdBedHistory();
-            initialHist.setIpdAdmissionId(saved.getId());
-            initialHist.setWardId(wardId);
-            initialHist.setBedId(bedId);
-            initialHist.setAssignedAt(LocalDateTime.now());
-            ipdBedHistoryRepository.save(initialHist);
-        } catch (Exception e) {
-            logger.warn("Failed to save initial bed history", e);
-        }
+        // Bed history is part of the admission record, not best-effort telemetry.
+        com.hms.entity.IpdBedHistory initialHist = new com.hms.entity.IpdBedHistory();
+        initialHist.setIpdAdmissionId(saved.getId());
+        initialHist.setWardId(wardId);
+        initialHist.setBedId(bedId);
+        initialHist.setAssignedAt(LocalDateTime.now());
+        ipdBedHistoryRepository.save(initialHist);
+
+        // ICU Phase 3: a direct admission into a critical-care ward opens an ICU stay. Critical
+        // state, deliberately NOT best-effort — a patient in an ICU bed with no stay record breaks
+        // the board's central invariant silently and loses the admission time for good.
+        // EMERGENCY vs OPD is derived from the admission type rather than asked again.
+        icuStayService.onWardSettled(saved, null,
+                "EMERGENCY".equalsIgnoreCase(saved.getAdmissionType())
+                        ? com.hms.entity.IcuStay.SRC_EMERGENCY
+                        : com.hms.entity.IcuStay.SRC_OPD,
+                null, null);
 
         // Mark bed occupied (Nursing Mgmt Phase C2: audited bed status change)
-        Bed occupiedBed = bedStatusService.change(bed.getBedId(), com.hms.entity.BedStatus.OCCUPIED, "IPD admission");
+        Bed occupiedBed = bedStatusService.changeLocked(bed, com.hms.entity.BedStatus.OCCUPIED, "IPD admission");
         occupiedBed.setCurrentIpdAdmissionId(saved.getId());
         bedRepository.save(occupiedBed);
 
-        // Nursing Mgmt Phase A: incharge-mediated assignment. Best-effort.
-        try {
-            patientAssignmentService.onAdmission(saved);
-        } catch (Exception e) {
-            logger.warn("Failed to run patient assignment for admission {}", saved.getId(), e);
-        }
+        // Primary assignment is optional, but an attempted persisted assignment must not be
+        // silently lost. With zero or multiple eligible nurses this is a no-op.
+        patientAssignmentService.onAdmission(saved);
 
-        // Mark OPD as completed/closed
-        // OPD status is stored as a string in many places; set to string to avoid enum mismatch
-        try {
-            opd.setStatus(Opd.Status.IN_IPD);
-        } catch (Exception ex) {
-            // fallback if OPD uses enum type
-            opd.setStatus(Opd.Status.COMPLETED);
-        }
-        opdRepository.save(opd);
-
-        // Remove from doctor's active queue
-        try {
-            queueEntryRepository.deleteByOpdId(opdId);
-        } catch (Exception e) {
-            logger.warn("Failed to delete queue entry for OPD ID during IPD admission", e);
-        }
-
+        closeOpdForAdmission(opd);
         com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId).orElse(null);
-        boolean hasBillingModule = hospital != null && hospital.getModules() != null && hospital.getModules().contains("BILLING");
-
-        if (hasBillingModule) {
-            // Create initial IPD billing (empty / started)
-            java.math.BigDecimal bedPrice = java.math.BigDecimal.ZERO;
-            if (wardId != null) {
-                java.util.Optional<com.hms.entity.Ward> wardOpt = wardRepository.findById(wardId);
-                if (wardOpt.isPresent()) {
-                    java.math.BigDecimal bp = wardOpt.get().getBedPrice();
-                    if (bp != null) {
-                        bedPrice = bp;
-                    }
-                }
-            }
-
-            Long appointmentId = null;
-            try {
-                java.util.List<com.hms.entity.Appointment> appointments = appointmentRepository.findByPatientIdAndHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(saved.getPatientId(), hospitalId);
-                if (appointments != null && !appointments.isEmpty()) {
-                    appointmentId = appointments.get(0).getId();
-                }
-            } catch (Exception e) {
-                logger.debug("Could not resolve latest appointment for patient during IPD admission billing", e);
-            }
-
-            Billing bill = new Billing();
-            bill.setHospitalId(hospitalId);
-            bill.setPatientId(saved.getPatientId());
-            bill.setDoctorId(saved.getDoctorId());
-            bill.setIpdAdmissionId(saved.getId());
-            bill.setOpdId(opd.getId());
-            bill.setAppointmentId(appointmentId);
-            bill.setBillingType("IPD");
-            bill.setAmount(bedPrice);
-            bill.setDescription("Bed Price");
-            bill.setPaymentStatus("PENDING");
-            Billing savedBill = billingRepository.save(bill);
-
-            // Create billing item for bed price
-            if (bedPrice != null) {
-                com.hms.entity.BillingItem item = new com.hms.entity.BillingItem();
-                item.setBillingId(savedBill.getId());
-                item.setHospitalId(hospitalId);
-                item.setDescription("Bed Price");
-                item.setAmount(bedPrice);
-                billingItemRepository.save(item);
-            }
-        }
+        createAdmissionBill(saved, opd, ward, hospitalId, hospital);
 
         logger.info("Created IPD admission {} for OPD {}", saved.getIpdNumber(), opdId);
 
@@ -286,6 +248,137 @@ public class IpdAdmissionService {
         }
 
         return saved;
+    }
+
+    private void validateAdmissionSelectionIds(Long opdId, Long patientId, Long doctorId) {
+        // Enforce selection in the shared service so every admission entry point fails closed.
+        if ((opdId != null && opdId <= 0) || (patientId != null && patientId <= 0)
+                || (doctorId != null && doctorId <= 0)) {
+            throw new IllegalArgumentException("Patient, OPD and doctor IDs must be positive");
+        }
+        if (opdId == null && patientId == null) {
+            throw new IllegalArgumentException("Please select a patient or OPD to admit");
+        }
+    }
+
+    private Opd resolveAdmissionOpd(Long opdId, Long hospitalId) {
+        if (opdId == null) return null;
+        Opd opd = opdRepository.findByIdAndHospitalIdWithPatientAndDoctorForUpdate(opdId, hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("OPD not found"));
+        if (Opd.Status.IN_IPD.equals(opd.getStatus())) {
+            throw new ConflictException("OPD is already admitted to IPD");
+        }
+        return opd;
+    }
+
+    private com.hms.entity.Patient resolveAdmissionPatient(Opd opd, Long patientId, Long hospitalId) {
+        if (opd != null) {
+            if (opd.getPatient() == null) {
+                throw new IllegalArgumentException("Selected OPD has no patient");
+            }
+            Long opdPatientId = opd.getPatient().getId();
+            if (patientId != null && !patientId.equals(opdPatientId)) {
+                throw new IllegalArgumentException("Selected patient does not match the selected OPD");
+            }
+            patientId = opdPatientId;
+        }
+        com.hms.entity.Patient patient = patientRepository.findByIdAndHospitalIdForUpdate(patientId, hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
+        if (!Boolean.TRUE.equals(patient.getIsActive())) {
+            throw new IllegalArgumentException("Selected patient is inactive");
+        }
+        return patient;
+    }
+
+    private Long resolveAdmissionDoctor(Opd opd, Long doctorId, Long hospitalId) {
+        if (doctorId == null && opd != null && opd.getDoctor() != null) {
+            doctorId = opd.getDoctor().getId();
+        }
+        if (doctorId == null) {
+            java.util.List<com.hms.entity.Doctor> doctors = doctorRepository.findByHospitalIdAndIsActiveTrueOrderByCreatedAtDesc(hospitalId);
+            if (doctors != null && !doctors.isEmpty()) {
+                doctorId = doctors.get(0).getId();
+            }
+        }
+        // Validate every source before persistence; foreign and missing doctors are indistinguishable.
+        if (doctorId != null && doctorRepository
+                .findByIdAndHospitalIdAndIsActiveTrue(doctorId, hospitalId).isEmpty()) {
+            throw new ResourceNotFoundException("Doctor not found");
+        }
+        return doctorId;
+    }
+
+    private void closeOpdForAdmission(Opd opd) {
+        // Mark OPD as completed/closed
+        if (opd != null) {
+            try {
+                opd.setStatus(Opd.Status.IN_IPD);
+            } catch (Exception ex) {
+                // fallback if OPD uses enum type
+                opd.setStatus(Opd.Status.COMPLETED);
+            }
+            opdRepository.save(opd);
+
+            // Remove from doctor's active queue
+            try {
+                queueEntryRepository.deleteByOpdId(opd.getId());
+            } catch (Exception e) {
+                logger.warn("Failed to delete queue entry for OPD ID during IPD admission", e);
+            }
+        }
+    }
+
+    private void createAdmissionBill(IpdAdmission saved, Opd opd, com.hms.entity.Ward ward,
+            Long hospitalId, com.hms.entity.Hospital hospital) {
+        boolean hasBillingModule = hospital != null && hospital.getModules() != null && hospital.getModules().contains("BILLING");
+
+        if (!hasBillingModule) {
+            return;
+        }
+        // Create initial IPD billing (empty / started)
+        java.math.BigDecimal bedPrice = java.math.BigDecimal.ZERO;
+        if (ward.getBedPrice() != null) {
+            bedPrice = ward.getBedPrice();
+        }
+
+        Long appointmentId = null;
+        try {
+            java.util.List<com.hms.entity.Appointment> appointments = appointmentRepository.findByPatientIdAndHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(saved.getPatientId(), hospitalId);
+            if (appointments != null && !appointments.isEmpty()) {
+                appointmentId = appointments.get(0).getId();
+            }
+        } catch (Exception e) {
+            logger.debug("Could not resolve latest appointment for patient during IPD admission billing", e);
+        }
+
+        Billing bill = new Billing();
+        bill.setHospitalId(hospitalId);
+        bill.setPatientId(saved.getPatientId());
+        bill.setDoctorId(saved.getDoctorId());
+        bill.setIpdAdmissionId(saved.getId());
+        bill.setOpdId(opd != null ? opd.getId() : null);
+        bill.setAppointmentId(appointmentId);
+        bill.setBillingType("IPD");
+        bill.setAmount(bedPrice);
+        bill.setDescription("Bed Price");
+        bill.setPaymentStatus("PENDING");
+        Billing savedBill = null;
+        if (billingService != null) {
+            savedBill = billingService.saveBillWithCollisionRetry(bill);
+        }
+        if (savedBill == null) {
+            savedBill = billingRepository.save(bill);
+        }
+
+        // Create billing item for bed price
+        if (bedPrice != null) {
+            com.hms.entity.BillingItem item = new com.hms.entity.BillingItem();
+            item.setBillingId(savedBill.getId());
+            item.setHospitalId(hospitalId);
+            item.setDescription("Bed Price");
+            item.setAmount(bedPrice);
+            billingItemRepository.save(item);
+        }
     }
 
     @Transactional(readOnly = true)
@@ -363,8 +456,15 @@ public class IpdAdmissionService {
             throw new org.springframework.security.access.AccessDeniedException("Not allowed");
         }
 
+        java.util.Set<Long> icuWardIds = icuWardRepository.findByHospitalId(hospitalId).stream()
+                .map(com.hms.entity.IcuWard::getWardId)
+                .collect(java.util.stream.Collectors.toSet());
+
         java.util.List<com.hms.dto.IpdAdmissionSummaryDTO> result = new java.util.ArrayList<>();
         for (IpdAdmission ipd : admissions) {
+            if (ipd.getWardId() != null && icuWardIds.contains(ipd.getWardId())) {
+                continue;
+            }
             com.hms.dto.IpdAdmissionSummaryDTO dto = new com.hms.dto.IpdAdmissionSummaryDTO();
             dto.setIpdId(ipd.getId());
             dto.setIpdNumber(ipd.getIpdNumber());
@@ -399,14 +499,18 @@ public class IpdAdmissionService {
      * hospitalId = ipd.getHospitalId()). A cross-tenant id is reported as not-found.
      */
     private IpdAdmission requireOwnedAdmission(Long ipdId) {
-        IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId)
-                .orElseThrow(() -> new ResourceNotFoundException("IPD admission not found"));
         Long callerHospitalId = securityHelper.getCurrentHospitalId();
-        if (callerHospitalId == null || ipd.getHospitalId() == null
-                || !ipd.getHospitalId().equals(callerHospitalId)) {
-            throw new ResourceNotFoundException("IPD admission not found");
-        }
-        return ipd;
+        if (callerHospitalId == null) throw new ResourceNotFoundException("IPD admission not found");
+        return ipdAdmissionRepository.findByIdAndHospitalId(ipdId, callerHospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("IPD admission not found"));
+    }
+
+    /** Re-reads the admission under lock before a lifecycle or bed mutation. */
+    private IpdAdmission requireOwnedAdmissionForUpdate(Long ipdId) {
+        Long callerHospitalId = securityHelper.getCurrentHospitalId();
+        if (callerHospitalId == null) throw new ResourceNotFoundException("IPD admission not found");
+        return ipdAdmissionRepository.findByIdAndHospitalIdForUpdate(ipdId, callerHospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("IPD admission not found"));
     }
 
     public com.hms.dto.IpdAdmissionDetailsDTO getIpdAdmissionDetails(Long ipdId) {
@@ -432,6 +536,7 @@ public class IpdAdmissionService {
         adm.admissionDateTime = ipd.getAdmissionDatetime();
         adm.admissionType = ipd.getAdmissionType();
         adm.primaryDiagnosis = ipd.getPrimaryDiagnosis();
+        adm.admissionConfirmed = Boolean.TRUE.equals(ipd.getAdmissionConfirmed());
         wardRepository.findById(ipd.getWardId()).ifPresent(w -> adm.ward = w.getWardName());
         bedRepository.findById(ipd.getBedId()).ifPresent(b -> adm.bed = b.getBedCode());
         doctorRepository.findById(ipd.getDoctorId()).ifPresent(d -> adm.doctor = d.getName());
@@ -580,7 +685,7 @@ public class IpdAdmissionService {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can add follow-ups");
         }
 
-        IpdAdmission ipd = requireOwnedAdmission(ipdId);
+        IpdAdmission ipd = requireOwnedAdmissionForUpdate(ipdId);
         if (ipd.getStatus() == null || !ipd.getStatus().equalsIgnoreCase("ADMITTED")) {
             throw new IllegalArgumentException("Cannot add follow-up to non-admitted IPD");
         }
@@ -631,7 +736,11 @@ public class IpdAdmissionService {
                     throw new IllegalArgumentException("Administered item quantity must be positive");
                 }
                 if (item.getMedicineId() != null) {
-                    com.hms.entity.Medicine med = medicineRepository.findById(item.getMedicineId())
+                    // Tenant-scoped: medicineId arrives from the request body, so an unscoped
+                    // findById let a caller in one hospital decrement another hospital's stock.
+                    // DoctorService's copy of this block always carried the check; these two did not.
+                    com.hms.entity.Medicine med = medicineRepository
+                            .findByIdAndHospitalId(item.getMedicineId(), hospitalId)
                             .orElseThrow(() -> new ResourceNotFoundException("Medicine not found in active inventory: ID " + item.getMedicineId()));
 
                     if (med.getStockQuantity() < item.getQuantity()) {
@@ -699,7 +808,7 @@ public class IpdAdmissionService {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can administer items");
         }
 
-        IpdAdmission ipd = requireOwnedAdmission(ipdId);
+        IpdAdmission ipd = requireOwnedAdmissionForUpdate(ipdId);
         if (ipd.getStatus() == null || !ipd.getStatus().equalsIgnoreCase("ADMITTED")) {
             throw new IllegalArgumentException("Cannot administer items to non-admitted IPD");
         }
@@ -723,7 +832,11 @@ public class IpdAdmissionService {
                     throw new IllegalArgumentException("Administered item quantity must be positive");
                 }
                 if (item.getMedicineId() != null) {
-                    com.hms.entity.Medicine med = medicineRepository.findById(item.getMedicineId())
+                    // Tenant-scoped: medicineId arrives from the request body, so an unscoped
+                    // findById let a caller in one hospital decrement another hospital's stock.
+                    // DoctorService's copy of this block always carried the check; these two did not.
+                    com.hms.entity.Medicine med = medicineRepository
+                            .findByIdAndHospitalId(item.getMedicineId(), hospitalId)
                             .orElseThrow(() -> new ResourceNotFoundException("Medicine not found in active inventory: ID " + item.getMedicineId()));
 
                     if (med.getStockQuantity() < item.getQuantity()) {
@@ -789,7 +902,7 @@ public class IpdAdmissionService {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can administer items");
         }
 
-        IpdAdmission ipd = requireOwnedAdmission(ipdId);
+        IpdAdmission ipd = requireOwnedAdmissionForUpdate(ipdId);
         if (ipd.getStatus() == null || (!ipd.getStatus().equalsIgnoreCase("ADMITTED") && !ipd.getStatus().equalsIgnoreCase("DISCHARGE_PLANNED"))) {
             throw new IllegalArgumentException("Cannot administer items to non-admitted IPD");
         }
@@ -856,7 +969,7 @@ public class IpdAdmissionService {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can add prescriptions");
         }
 
-        IpdAdmission ipd = requireOwnedAdmission(ipdId);
+        IpdAdmission ipd = requireOwnedAdmissionForUpdate(ipdId);
         if (ipd.getStatus() == null || !ipd.getStatus().equalsIgnoreCase("ADMITTED")) {
             throw new IllegalArgumentException("Cannot add prescription to non-admitted IPD");
         }
@@ -892,18 +1005,9 @@ public class IpdAdmissionService {
             latest = mrs.get(0);
         }
 
-        // Resolve medicine name:
-        // Priority 1: explicit name from request (doctor typed it manually)
-        // Priority 2: look up from inventory by medicineId
-        // Priority 3: fallback label using medicineId
         String medicineName = req.getMedicineName() != null && !req.getMedicineName().trim().isEmpty()
                 ? req.getMedicineName().trim()
                 : null;
-        if (medicineName == null && req.getMedicineId() != null) {
-            medicineName = medicineRepository.findById(req.getMedicineId())
-                    .map(m -> m.getName())
-                    .orElse(null);
-        }
         if ((req.getMedicineName() == null || req.getMedicineName().trim().isEmpty()) && req.getMedicineId() == null) {
             throw new IllegalArgumentException("Either Medicine Name or Medicine ID is required");
         }
@@ -926,16 +1030,34 @@ public class IpdAdmissionService {
             throw new IllegalArgumentException("Prescription duration must be at least 1 day");
         }
 
+        // Resolve the medicine, and with it the optional link to stock. After validation, so a
+        // badly-formed order is reported as badly formed rather than as a lookup failure.
+        //
+        // A medicineId means the prescriber picked a row out of this facility's inventory, and
+        // keeping that link is what later lets the nurse's chart show real stock instead of
+        // guessing. It is scoped to the caller's facility because the id arrives in the request
+        // body: unscoped, it read another hospital's medicine and copied its name onto this order.
+        //
+        // No medicineId means the doctor typed a name. That is a valid order and is stored as
+        // typed; nothing here goes looking for an inventory row that might match the text.
+        com.hms.entity.Medicine linkedMedicine = null;
+        if (req.getMedicineId() != null) {
+            linkedMedicine = medicineRepository.findByIdAndHospitalId(req.getMedicineId(), hospitalId)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Medicine not found in this facility's inventory: ID " + req.getMedicineId()));
+        }
         if (medicineName == null) {
-            medicineName = req.getMedicineId() != null ? "MED-" + req.getMedicineId() : "Unknown Medicine";
+            medicineName = linkedMedicine.getName();
         }
 
         com.hms.entity.Prescription p = new com.hms.entity.Prescription();
         p.setHospitalId(hospitalId);
         p.setMedicalRecordId(latest.getId());
         p.setMedicineName(medicineName);
+        p.setMedicineId(linkedMedicine == null ? null : linkedMedicine.getId());
         p.setType(req.getType() != null ? req.getType() : "TABLET");
         p.setRoute(req.getRoute() != null ? req.getRoute() : "ORAL");
+        p.setFoodTiming(com.hms.entity.FoodTiming.normalize(req.getFoodTiming()));
         p.setDosage(req.getDose());
         p.setFrequency(req.getFrequency());
         p.setDurationDays(req.getDurationDays());
@@ -973,10 +1095,13 @@ public class IpdAdmissionService {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can stop prescriptions");
         }
 
-        com.hms.entity.Prescription pres = prescriptionRepository.findById(prescriptionId).orElseThrow(() -> new ResourceNotFoundException("Prescription not found"));
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        com.hms.entity.Prescription pres = prescriptionRepository.findByIdAndHospitalId(prescriptionId, hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Prescription not found"));
 
         // Verify it belongs to an IPD by looking up medical record
-        com.hms.entity.MedicalRecord mr = medicalRecordRepository.findById(pres.getMedicalRecordId()).orElseThrow(() -> new ResourceNotFoundException("Related medical record not found"));
+        com.hms.entity.MedicalRecord mr = medicalRecordRepository.findByIdAndHospitalId(pres.getMedicalRecordId(), hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Related medical record not found"));
         if (mr.getIpdAdmissionId() == null) throw new IllegalArgumentException("Prescription is not linked to an IPD admission");
 
         pres.setStatus("STOPPED");
@@ -1010,7 +1135,7 @@ public class IpdAdmissionService {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can plan discharge");
         }
 
-        IpdAdmission ipd = requireOwnedAdmission(ipdId);
+        IpdAdmission ipd = requireOwnedAdmissionForUpdate(ipdId);
         if (ipd.getStatus() == null || !ipd.getStatus().equalsIgnoreCase("ADMITTED")) {
             throw new IllegalArgumentException("Can only plan discharge for ADMITTED patients");
         }
@@ -1051,20 +1176,21 @@ public class IpdAdmissionService {
 
     @Transactional
     public IpdAdmission confirmDischarge(Long ipdId) {
-        IpdAdmission ipd = requireOwnedAdmission(ipdId);
+        IpdAdmission ipd = requireOwnedAdmissionForUpdate(ipdId);
 
         String role = securityHelper.getCurrentUserRole();
         Long hospitalId = ipd.getHospitalId();
         com.hms.entity.HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(hospitalId).orElse(null);
-        boolean isSolo = settings != null && "SOLO".equalsIgnoreCase(settings.getReceptionMode());
+        boolean isSoloOrBoth = settings != null &&
+            ("SOLO".equalsIgnoreCase(settings.getReceptionMode()) || "BOTH".equalsIgnoreCase(settings.getReceptionMode()));
 
         if (!"RECEPTIONIST".equalsIgnoreCase(role) && 
             !"HOSPITAL_ADMIN".equalsIgnoreCase(role) && 
-            !("DOCTOR".equalsIgnoreCase(role) && isSolo)) {
-            throw new org.springframework.security.access.AccessDeniedException("Only receptionists (or doctors under Solo Doctor mode) can confirm discharge");
+            !("DOCTOR".equalsIgnoreCase(role) && isSoloOrBoth)) {
+            throw new org.springframework.security.access.AccessDeniedException("Only receptionists (or doctors under Solo / Both mode) can confirm discharge");
         }
-        if (ipd.getStatus() == null || !ipd.getStatus().equalsIgnoreCase("DISCHARGE_PLANNED")) {
-            throw new IllegalArgumentException("Discharge is not planned for this IPD");
+        if (ipd.getStatus() == null || (!ipd.getStatus().equalsIgnoreCase("DISCHARGE_PLANNED") && !ipd.getStatus().equalsIgnoreCase("ADMITTED"))) {
+            throw new IllegalArgumentException("Cannot discharge non-admitted patient");
         }
 
         com.hms.entity.Hospital hospital = hospitalRepository.findById(ipd.getHospitalId()).orElse(null);
@@ -1115,31 +1241,50 @@ public class IpdAdmissionService {
 
             java.math.BigDecimal balance = total.subtract(paid);
             if (balance.compareTo(java.math.BigDecimal.ZERO) > 0) {
-                throw new IllegalArgumentException("Outstanding balance: ₹" + balance + ". Please collect payment before discharge.");
+                throw new IllegalArgumentException("Outstanding balance must be settled before discharge");
             }
         }
 
-        // Stop all active prescriptions for this IPD
-        try {
-            java.util.List<com.hms.entity.Prescription> active = prescriptionRepository.findByIpdAdmissionIdAndStatus(ipdId, "ACTIVE");
-            if (active != null) {
-                for (com.hms.entity.Prescription pr : active) {
-                    pr.setStatus("COMPLETED");
-                    prescriptionRepository.save(pr);
-                }
+        // Stop all active prescriptions as part of the discharge transaction.
+        java.util.List<com.hms.entity.Prescription> active = prescriptionRepository.findByIpdAdmissionIdAndStatus(ipdId, "ACTIVE");
+        if (active != null) {
+            for (com.hms.entity.Prescription pr : active) {
+                pr.setStatus("COMPLETED");
+                prescriptionRepository.save(pr);
             }
-        } catch (Exception e) {
-            logger.warn("Failed to complete active prescriptions during IPD discharge", e);
         }
 
         // Mark bed for cleaning (Nursing Mgmt Phase C2: vacated beds await cleaning
         // before they can be reused, rather than becoming immediately available).
+        if (ipd.getBedId() == null) {
+            throw new IllegalStateException("Active IPD admission has no bed to release");
+        }
+        Bed bed = bedRepository.findByBedIdAndHospitalIdForUpdate(ipd.getBedId(), hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Bed not found"));
+        if (!com.hms.entity.BedStatus.OCCUPIED.equalsIgnoreCase(bed.getStatus())
+                || !ipd.getId().equals(bed.getCurrentIpdAdmissionId())) {
+            throw new ConflictException("IPD bed is not occupied by this admission");
+        }
+        bedStatusService.changeLocked(bed, com.hms.entity.BedStatus.CLEANING, "IPD discharge");
+
+        // Auto-create an ICU cleaning task
         try {
-            if (ipd.getBedId() != null) {
-                bedStatusService.change(ipd.getBedId(), com.hms.entity.BedStatus.CLEANING, "IPD discharge");
-            }
+            com.hms.entity.Ward w = ipd.getWardId() != null ? wardRepository.findById(ipd.getWardId()).orElse(null) : null;
+            String wardName = w != null ? w.getWardName() : "ICU";
+            String bedNum = (bed.getBedCode() != null) ? bed.getBedCode() : ("Bed " + ipd.getBedId());
+
+            com.hms.entity.IcuCleaningTask task = new com.hms.entity.IcuCleaningTask();
+            task.setHospitalId(ipd.getHospitalId());
+            task.setWardName(wardName);
+            task.setBedNumber(bedNum);
+            task.setTaskDescription("Post-discharge bed sanitation and cleaning");
+            task.setPriority("HIGH");
+            task.setStatus("PENDING");
+            task.setCreatedBy(securityHelper.getCurrentUserEmail() != null ? securityHelper.getCurrentUserEmail() : "SYSTEM");
+            task.setCreatedAt(LocalDateTime.now(java.time.ZoneId.systemDefault()));
+            icuCleaningTaskRepository.save(task);
         } catch (Exception e) {
-            logger.warn("Failed to mark bed for cleaning during IPD discharge", e);
+            logger.warn("Failed to create ICU cleaning task during IPD discharge", e);
         }
 
         // Finalize billing records for this IPD
@@ -1150,6 +1295,9 @@ public class IpdAdmissionService {
             }
         }
 
+        // ICU Phase 3: discharge ends any open ICU stay in the same transaction.
+        icuStayService.onDischarged(ipd, com.hms.entity.IcuStay.DISP_HOME);
+
         // Update IPD status and discharge datetime
         ipd.setStatus("DISCHARGED");
         ipd.setDischargeDatetime(LocalDateTime.now());
@@ -1157,29 +1305,22 @@ public class IpdAdmissionService {
 
         // Nurse module (Phase 1): auto-close any active nurse assignment for this
         // admission so the patient drops off the nurse's "My Patients" list.
-        try {
-            patientNurseAssignmentRepository.findByIpdAdmissionIdAndIsActiveTrue(ipd.getId())
-                    .ifPresent(assignment -> {
-                        assignment.setIsActive(false);
-                        assignment.setUnassignedAt(LocalDateTime.now());
-                        patientNurseAssignmentRepository.save(assignment);
-                    });
-        } catch (Exception e) {
-            logger.warn("Failed to close nurse assignment during IPD discharge", e);
-        }
+        patientNurseAssignmentRepository.findByIpdAdmissionIdAndIsActiveTrue(ipd.getId())
+                .ifPresent(assignment -> {
+                    assignment.setIsActive(false);
+                    assignment.setUnassignedAt(LocalDateTime.now());
+                    patientNurseAssignmentRepository.save(assignment);
+                });
 
         // Release the active bed history record
-        try {
-            java.util.Optional<com.hms.entity.IpdBedHistory> activeHistOpt = ipdBedHistoryRepository
-                    .findByIpdAdmissionIdAndReleasedAtIsNull(ipd.getId());
-            if (activeHistOpt.isPresent()) {
-                com.hms.entity.IpdBedHistory activeHist = activeHistOpt.get();
-                activeHist.setReleasedAt(LocalDateTime.now());
-                ipdBedHistoryRepository.save(activeHist);
-            }
-        } catch (Exception e) {
-            logger.warn("Failed to close bed history logs in confirmDischarge", e);
+        java.util.Optional<com.hms.entity.IpdBedHistory> activeHistOpt = ipdBedHistoryRepository
+                .findByIpdAdmissionIdAndReleasedAtIsNull(ipd.getId());
+        if (activeHistOpt.isEmpty()) {
+            throw new IllegalStateException("IPD admission has no active bed history to release");
         }
+        com.hms.entity.IpdBedHistory activeHist = activeHistOpt.get();
+        activeHist.setReleasedAt(LocalDateTime.now());
+        ipdBedHistoryRepository.save(activeHist);
 
         // Audit log
         try {
@@ -1206,74 +1347,102 @@ public class IpdAdmissionService {
 
     @org.springframework.transaction.annotation.Transactional
     public IpdAdmission changeBed(Long ipdId, Long newBedId) {
-        IpdAdmission ipd = requireOwnedAdmission(ipdId);
+        return changeBed(ipdId, newBedId, null);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public IpdAdmission changeBed(Long ipdId, Long newBedId, Long expectedWardId) {
+        IpdAdmission ipd = requireOwnedAdmissionForUpdate(ipdId);
 
         String role = securityHelper.getCurrentUserRole();
         Long hospitalId = ipd.getHospitalId();
         com.hms.entity.HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(hospitalId).orElse(null);
-        boolean isSolo = settings != null && "SOLO".equalsIgnoreCase(settings.getReceptionMode());
+        boolean isSoloOrBoth = settings != null &&
+            ("SOLO".equalsIgnoreCase(settings.getReceptionMode()) || "BOTH".equalsIgnoreCase(settings.getReceptionMode()));
 
         if (!"RECEPTIONIST".equalsIgnoreCase(role) && 
             !"HOSPITAL_ADMIN".equalsIgnoreCase(role) && 
-            !("DOCTOR".equalsIgnoreCase(role) && isSolo)) {
-            throw new org.springframework.security.access.AccessDeniedException("Only receptionists (or doctors under Solo Doctor mode) can change beds");
+            !("DOCTOR".equalsIgnoreCase(role) && isSoloOrBoth)) {
+            throw new org.springframework.security.access.AccessDeniedException("Only receptionists (or doctors under Solo / Both mode) can change beds");
         }
-        
+
         if (!"ADMITTED".equalsIgnoreCase(ipd.getStatus()) && !"DISCHARGE_PLANNED".equalsIgnoreCase(ipd.getStatus())) {
             throw new IllegalArgumentException("Bed change allowed only for active admissions");
         }
 
-        Bed newBed = bedRepository.findById(newBedId).orElseThrow(() -> new ResourceNotFoundException("New bed not found"));
-        if ("occupied".equalsIgnoreCase(newBed.getStatus()) && !newBedId.equals(ipd.getBedId())) {
-             throw new IllegalArgumentException("Requested bed is already occupied");
-        }
-
         Long oldBedId = ipd.getBedId();
-        String oldBedCode = "Unknown Bed";
-        String oldWardName = "Unknown Ward";
-        if (oldBedId != null) {
-            Bed oldBed = bedRepository.findById(oldBedId).orElse(null);
-            if (oldBed != null) {
-                oldBedCode = oldBed.getBedCode();
-                com.hms.entity.Ward oldW = wardRepository.findById(oldBed.getWardId()).orElse(null);
-                if (oldW != null) {
-                    oldWardName = oldW.getWardName();
-                }
-                if (!oldBedId.equals(newBedId)) {
-                    // Nursing Mgmt Phase C2: vacated bed awaits cleaning, not immediately available.
-                    bedStatusService.change(oldBed.getBedId(), com.hms.entity.BedStatus.CLEANING, "Bed transfer (vacated)");
-                }
-            }
+        if (oldBedId == null) throw new IllegalStateException("Active IPD admission has no current bed");
+        if (oldBedId.equals(newBedId)) throw new IllegalArgumentException("Patient is already assigned to the selected bed");
+
+        // A stable order prevents two opposing transfers from deadlocking. The admission row
+        // was locked first, followed by its bed resources.
+        Long firstBedId = Math.min(oldBedId, newBedId);
+        Long secondBedId = Math.max(oldBedId, newBedId);
+        Bed first = bedRepository.findByBedIdAndHospitalIdForUpdate(firstBedId, hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Bed not found"));
+        Bed second = bedRepository.findByBedIdAndHospitalIdForUpdate(secondBedId, hospitalId)
+                // Same wording as the first lookup on purpose. The two beds are locked in id
+                // order, so which of them is "the new one" depends on the ids involved; a
+                // distinct message here would let a caller tell a foreign bed from a missing one
+                // by watching which sentence comes back (C4).
+                .orElseThrow(() -> new ResourceNotFoundException("Bed not found"));
+        Bed oldBed = oldBedId.equals(firstBedId) ? first : second;
+        Bed newBed = newBedId.equals(firstBedId) ? first : second;
+        if (expectedWardId != null && !expectedWardId.equals(newBed.getWardId())) {
+            throw new IllegalArgumentException("Selected bed does not belong to the destination ward");
+        }
+        if (!com.hms.entity.BedStatus.AVAILABLE.equalsIgnoreCase(newBed.getStatus())) {
+            throw new ConflictException("Requested bed is no longer available");
+        }
+        if (!com.hms.entity.BedStatus.OCCUPIED.equalsIgnoreCase(oldBed.getStatus())
+                || !ipd.getId().equals(oldBed.getCurrentIpdAdmissionId())) {
+            throw new ConflictException("Current IPD bed is not occupied by this admission");
         }
 
-        Bed occupiedNewBed = bedStatusService.change(newBed.getBedId(), com.hms.entity.BedStatus.OCCUPIED, "Bed transfer");
+        String oldBedCode = oldBed.getBedCode();
+        com.hms.entity.Ward oldWard = wardRepository.findByWardIdAndHospitalId(oldBed.getWardId(), hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Ward not found"));
+        String oldWardName = oldWard.getWardName();
+        bedStatusService.changeLocked(oldBed, com.hms.entity.BedStatus.CLEANING, "Bed transfer (vacated)");
+
+        Bed occupiedNewBed = bedStatusService.changeLocked(newBed, com.hms.entity.BedStatus.OCCUPIED, "Bed transfer");
         occupiedNewBed.setCurrentIpdAdmissionId(ipd.getId());
         bedRepository.save(occupiedNewBed);
 
         String newBedCode = newBed.getBedCode();
-        String newWardName = "Unknown Ward";
-        com.hms.entity.Ward newWardEntity = wardRepository.findById(newBed.getWardId()).orElse(null);
-        if (newWardEntity != null) {
-            newWardName = newWardEntity.getWardName();
-        }
+        com.hms.entity.Ward newWardEntity = wardRepository.findByWardIdAndHospitalId(newBed.getWardId(), hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Ward not found"));
+        String newWardName = newWardEntity.getWardName();
 
-        // Calculate price difference if new ward is more expensive
-        try {
-            java.math.BigDecimal oldRate = java.math.BigDecimal.ZERO;
-            if (ipd.getWardId() != null) {
-                com.hms.entity.Ward oldW = wardRepository.findById(ipd.getWardId()).orElse(null);
-                if (oldW != null && oldW.getBedPrice() != null) oldRate = oldW.getBedPrice();
+        // A chargeable upgrade must post together with the transfer; silently losing it is a
+        // financial inconsistency, not an optional notification.
+        {
+            java.math.BigDecimal oldRate = oldWard.getBedPrice() != null ? oldWard.getBedPrice() : java.math.BigDecimal.ZERO;
+            java.math.BigDecimal newRate = newWardEntity.getBedPrice() != null ? newWardEntity.getBedPrice() : java.math.BigDecimal.ZERO;
+
+            java.util.List<Billing> bills = billingRepository.findByIpdAdmissionId(ipd.getId());
+            Billing bill = (bills != null && !bills.isEmpty()) ? bills.get(0) : null;
+
+            // Charge only the part of the new rate not already billed for this admission. Using
+            // newRate - oldRate charged a ward -> ICU -> ward -> ICU patient the full upgrade on
+            // every return to ICU, because stepping down never credits it back. The admission
+            // Bed Price plus earlier adjustments is what has been charged so far; the old ward's
+            // rate is the floor, so a legacy bill without those lines keeps the old behaviour.
+            java.math.BigDecimal alreadyCharged = oldRate;
+            if (bill != null) {
+                java.math.BigDecimal billed = java.math.BigDecimal.ZERO;
+                for (com.hms.entity.BillingItem it : billingItemRepository.findByBillingId(bill.getId())) {
+                    if (it.getAmount() != null && ("Bed Price".equals(it.getDescription())
+                            || "Bed Upgrade Price Adjustment".equals(it.getDescription()))) {
+                        billed = billed.add(it.getAmount());
+                    }
+                }
+                alreadyCharged = alreadyCharged.max(billed);
             }
-            
-            java.math.BigDecimal newRate = java.math.BigDecimal.ZERO;
-            com.hms.entity.Ward newW = wardRepository.findById(newBed.getWardId()).orElse(null);
-            if (newW != null && newW.getBedPrice() != null) newRate = newW.getBedPrice();
 
-            java.math.BigDecimal diff = newRate.subtract(oldRate);
+            java.math.BigDecimal diff = newRate.subtract(alreadyCharged);
             // If positive difference (upgrade), add to bill immediately
             if (diff.compareTo(java.math.BigDecimal.ZERO) > 0) {
-                java.util.List<Billing> bills = billingRepository.findByIpdAdmissionId(ipd.getId());
-                Billing bill = (bills != null && !bills.isEmpty()) ? bills.get(0) : null;
                 if (bill != null) {
                     com.hms.entity.BillingItem item = new com.hms.entity.BillingItem();
                     item.setBillingId(bill.getId());
@@ -1285,8 +1454,6 @@ public class IpdAdmissionService {
                     billingService.recalculateTotal(bill.getId());
                 }
             }
-        } catch (Exception ex) {
-            // Log but don't hard crash simple bed transfer on side-billing logic
         }
 
         ipd.setBedId(newBed.getBedId());
@@ -1294,25 +1461,39 @@ public class IpdAdmissionService {
         
         IpdAdmission saved = ipdAdmissionRepository.save(ipd);
 
-        // Update IpdBedHistory
-        try {
-            java.util.Optional<com.hms.entity.IpdBedHistory> activeHistOpt = ipdBedHistoryRepository
-                    .findByIpdAdmissionIdAndReleasedAtIsNull(ipd.getId());
-            if (activeHistOpt.isPresent()) {
-                com.hms.entity.IpdBedHistory activeHist = activeHistOpt.get();
-                activeHist.setReleasedAt(LocalDateTime.now());
-                ipdBedHistoryRepository.save(activeHist);
-            }
-            
-            com.hms.entity.IpdBedHistory newHist = new com.hms.entity.IpdBedHistory();
-            newHist.setIpdAdmissionId(ipd.getId());
-            newHist.setWardId(newBed.getWardId());
-            newHist.setBedId(newBed.getBedId());
-            newHist.setAssignedAt(LocalDateTime.now());
-            ipdBedHistoryRepository.save(newHist);
-        } catch (Exception e) {
-            logger.warn("Failed to update bed history logs in changeBed", e);
+        // ICU Phase 3: one call covers every case, because they are one question — is the patient
+        // in critical care now, and were they before? Ward -> ICU opens, ICU -> ward closes,
+        // ICU -> a different ICU closes and reopens (readmission is real), and a bed change inside
+        // the same unit does nothing, since the stay is bounded by the ward and ipd_bed_history
+        // already records the bed. Same transaction as the transfer.
+        icuStayService.onWardSettled(saved, oldWard.getWardId(), null, oldWard.getWardId(), null);
+
+        // A cross-ward transfer ends primary ownership; destination visibility is derived
+        // from the admission's new ward and therefore needs no manufactured row.
+        if (!java.util.Objects.equals(oldWard.getWardId(), newWardEntity.getWardId())) {
+            patientNurseAssignmentRepository.findByIpdAdmissionIdAndIsActiveTrue(ipd.getId()).ifPresent(assignment -> {
+                assignment.setIsActive(false);
+                assignment.setUnassignedAt(LocalDateTime.now());
+                patientNurseAssignmentRepository.save(assignment);
+            });
         }
+
+        // Transfer history is required for a defensible inpatient bed record.
+        java.util.Optional<com.hms.entity.IpdBedHistory> activeHistOpt = ipdBedHistoryRepository
+                .findByIpdAdmissionIdAndReleasedAtIsNull(ipd.getId());
+        if (activeHistOpt.isEmpty()) {
+            throw new IllegalStateException("IPD admission has no active bed history to transfer");
+        }
+        com.hms.entity.IpdBedHistory activeHist = activeHistOpt.get();
+        activeHist.setReleasedAt(LocalDateTime.now());
+        ipdBedHistoryRepository.save(activeHist);
+
+        com.hms.entity.IpdBedHistory newHist = new com.hms.entity.IpdBedHistory();
+        newHist.setIpdAdmissionId(ipd.getId());
+        newHist.setWardId(newBed.getWardId());
+        newHist.setBedId(newBed.getBedId());
+        newHist.setAssignedAt(LocalDateTime.now());
+        ipdBedHistoryRepository.save(newHist);
 
         try {
             String details = "Transferred from Bed " + oldBedCode + " (" + oldWardName + ") to Bed " + newBedCode + " (" + newWardName + ").";
@@ -1336,4 +1517,3 @@ public class IpdAdmissionService {
         return saved;
     }
 }
-

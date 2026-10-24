@@ -1,10 +1,7 @@
 package com.hms.security;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.config.BeanDefinition;
-import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
 import org.springframework.core.annotation.AnnotatedElementUtils;
-import org.springframework.core.type.filter.AssignableTypeFilter;
 import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.lang.reflect.Method;
@@ -19,63 +16,108 @@ import java.util.regex.Pattern;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Phase 2's exit criterion: swapping OT authorization from hasRole(...) to
- * hasAuthority('OT_*') must not change who can reach which endpoint on day one.
+ * Locks OtPermissions.DEFAULTS against silent drift.
  *
- * The table below is the PRE-refactor access, transcribed from the @PreAuthorize
- * annotations as they stood at 408f69d. This test derives post-refactor access from
- * the live annotations plus OtPermissions.DEFAULTS and asserts the two agree.
- *
- * If this fails, either a default changed or an endpoint's permission is wrong.
+ * Originally Phase 2's exit criterion (day-1 access must survive the hasRole(...) ->
+ * hasAuthority('OT_*') refactor unchanged) -- superseded by OT-P0A. That release found three
+ * codes (OT_ASSIGN_TEAM, OT_RECOVERY, OT_TRANSFER) granted to nobody, and HOSPITAL_ADMIN holding
+ * clinical execution powers (schedule/start/complete/...) no UI ever exercised. EXPECTED_ACCESS
+ * below is the v2 baseline those fixes established, reviewed against the actual workflow rather
+ * than transcribed from old @PreAuthorize checks. A future change to DEFAULTS is expected to
+ * require updating this table -- that diff is exactly the review this test forces.
  */
 class OtPermissionsParityTest {
 
-    private static final Pattern AUTHORITY = Pattern.compile("hasAuthority\\('([A-Z_]+)'\\)");
+    /**
+     * Matches both forms an OT endpoint may use: a single required permission, or a set of
+     * alternatives. hasAnyAuthority is legitimate -- recording a milestone is open to anyone with
+     * a hand in the case -- so the parity check reads the union rather than rejecting it.
+     */
+    private static final Pattern AUTHORITY = Pattern.compile("'([A-Z_]+)'");
 
-    /** Roles that could reach each OT endpoint BEFORE the permission layer. */
-    private static final Map<String, Set<String>> PRE_REFACTOR_ACCESS = new LinkedHashMap<>();
+    /** Roles that should reach each OT endpoint, under the v2 (OT-P0A) defaults. */
+    private static final Map<String, Set<String>> EXPECTED_ACCESS = new LinkedHashMap<>();
     static {
-        // SurgeryController
-        PRE_REFACTOR_ACCESS.put("SurgeryController#create", Set.of("DOCTOR"));
-        PRE_REFACTOR_ACCESS.put("SurgeryController#activeForAdmission",
-                Set.of("DOCTOR", "RECEPTIONIST", "NURSE", "HOSPITAL_ADMIN"));
-        PRE_REFACTOR_ACCESS.put("SurgeryController#requests", Set.of("RECEPTIONIST"));
-        PRE_REFACTOR_ACCESS.put("SurgeryController#board", Set.of("RECEPTIONIST"));
-        PRE_REFACTOR_ACCESS.put("SurgeryController#myBoard", Set.of("DOCTOR"));
-        PRE_REFACTOR_ACCESS.put("SurgeryController#surgeons", Set.of("RECEPTIONIST"));
-        PRE_REFACTOR_ACCESS.put("SurgeryController#schedule", Set.of("RECEPTIONIST"));
-        PRE_REFACTOR_ACCESS.put("SurgeryController#start", Set.of("RECEPTIONIST"));
-        PRE_REFACTOR_ACCESS.put("SurgeryController#complete", Set.of("RECEPTIONIST"));
-        PRE_REFACTOR_ACCESS.put("SurgeryController#cancel", Set.of("RECEPTIONIST"));
-        // SurgeryFormController
-        PRE_REFACTOR_ACCESS.put("SurgeryFormController#save", Set.of("NURSE"));
-        PRE_REFACTOR_ACCESS.put("SurgeryFormController#get", Set.of("NURSE", "DOCTOR", "HOSPITAL_ADMIN"));
-        PRE_REFACTOR_ACCESS.put("SurgeryFormController#listSaved", Set.of("NURSE", "DOCTOR", "HOSPITAL_ADMIN"));
+        // SurgeryController -- DOCTOR requests/reads its own board; OT_INCHARGE, as the
+        // theatre-owning role, gets the full clinical set. RECEPTIONIST keeps front-desk
+        // scheduling/execution; HOSPITAL_ADMIN deliberately does not appear on any of these.
+        EXPECTED_ACCESS.put("SurgeryController#create", Set.of("DOCTOR", "OT_INCHARGE"));
+        EXPECTED_ACCESS.put("SurgeryController#activeForAdmission",
+                Set.of("DOCTOR", "RECEPTIONIST", "NURSE", "NURSE_INCHARGE", "OT_INCHARGE", "HOSPITAL_ADMIN"));
+        EXPECTED_ACCESS.put("SurgeryController#requests", Set.of("RECEPTIONIST", "OT_INCHARGE"));
+        EXPECTED_ACCESS.put("SurgeryController#board", Set.of("RECEPTIONIST", "OT_INCHARGE"));
+        EXPECTED_ACCESS.put("SurgeryController#myBoard", Set.of("DOCTOR", "OT_INCHARGE"));
+        EXPECTED_ACCESS.put("SurgeryController#surgeons", Set.of("RECEPTIONIST", "OT_INCHARGE"));
+        EXPECTED_ACCESS.put("SurgeryController#schedule", Set.of("RECEPTIONIST", "OT_INCHARGE"));
+        EXPECTED_ACCESS.put("SurgeryController#start", Set.of("RECEPTIONIST", "OT_INCHARGE"));
+        EXPECTED_ACCESS.put("SurgeryController#complete", Set.of("RECEPTIONIST", "OT_INCHARGE"));
+        EXPECTED_ACCESS.put("SurgeryController#cancel", Set.of("RECEPTIONIST", "OT_INCHARGE"));
+        // SurgeryFormController -- NURSE fills forms bedside; OT_INCHARGE can too; NURSE_INCHARGE
+        // reads (ward-side oversight) but does not sign; HOSPITAL_ADMIN reads only.
+        EXPECTED_ACCESS.put("SurgeryFormController#save", Set.of("NURSE", "OT_INCHARGE"));
+        EXPECTED_ACCESS.put("SurgeryFormController#get",
+                Set.of("NURSE", "DOCTOR", "NURSE_INCHARGE", "OT_INCHARGE", "HOSPITAL_ADMIN"));
+        EXPECTED_ACCESS.put("SurgeryFormController#listSaved",
+                Set.of("NURSE", "DOCTOR", "NURSE_INCHARGE", "OT_INCHARGE", "HOSPITAL_ADMIN"));
+        // SurgeryExecutionController -- the theatre floor. This controller was outside the parity
+        // baseline, which is how a real mismatch survived: the WHO checklist is signed under
+        // OT_TIME_OUT, which reception does not hold, while the only screen that offers the
+        // signature is mounted on reception's dashboard. Signing SIGN_IN returned Access Denied on
+        // staging. The permissions below are the clinically correct ones and are now pinned, so a
+        // future edit to either the endpoint or the defaults has to be deliberate.
+        EXPECTED_ACCESS.put("SurgeryExecutionController#milestones",
+                Set.of("DOCTOR", "RECEPTIONIST", "NURSE", "NURSE_INCHARGE", "OT_INCHARGE", "HOSPITAL_ADMIN"));
+        EXPECTED_ACCESS.put("SurgeryExecutionController#checklist",
+                Set.of("DOCTOR", "RECEPTIONIST", "NURSE", "NURSE_INCHARGE", "OT_INCHARGE", "HOSPITAL_ADMIN"));
+        EXPECTED_ACCESS.put("SurgeryExecutionController#recordMilestone",
+                Set.of("RECEPTIONIST", "NURSE", "OT_INCHARGE"));
+        EXPECTED_ACCESS.put("SurgeryExecutionController#signPhase", Set.of("NURSE", "OT_INCHARGE"));
+        EXPECTED_ACCESS.put("SurgeryExecutionController#operativeNote",
+                Set.of("RECEPTIONIST", "OT_INCHARGE"));
+        // SurgeryTeamController / RecoveryController -- assignment and PACU.
+        EXPECTED_ACCESS.put("SurgeryTeamController#team",
+                Set.of("DOCTOR", "RECEPTIONIST", "NURSE", "NURSE_INCHARGE", "OT_INCHARGE", "HOSPITAL_ADMIN"));
+        // NURSE_INCHARGE is absent here on purpose: it does not hold OT_ASSIGN_TEAM in DEFAULTS.
+        // The OtPermissions javadoc claimed otherwise and has been corrected to match the code --
+        // the fix is to the sentence, not to the grant.
+        EXPECTED_ACCESS.put("SurgeryTeamController#assign", Set.of("DOCTOR", "OT_INCHARGE"));
+        EXPECTED_ACCESS.put("SurgeryTeamController#remove", Set.of("DOCTOR", "OT_INCHARGE"));
+        EXPECTED_ACCESS.put("RecoveryController#admit", Set.of("NURSE", "NURSE_INCHARGE", "OT_INCHARGE"));
+        EXPECTED_ACCESS.put("RecoveryController#observe", Set.of("NURSE", "NURSE_INCHARGE", "OT_INCHARGE"));
+        EXPECTED_ACCESS.put("RecoveryController#discharge",
+                Set.of("RECEPTIONIST", "NURSE_INCHARGE", "OT_INCHARGE"));
     }
 
-    /** Endpoint -> the permission its @PreAuthorize now demands. */
-    private Map<String, String> currentPermissions() throws Exception {
-        Map<String, String> out = new LinkedHashMap<>();
-        for (String simpleName : Set.of("SurgeryController", "SurgeryFormController")) {
+    /** Endpoint -> the permission(s) its @PreAuthorize now demands. */
+    private Map<String, Set<String>> currentPermissions() throws Exception {
+        Map<String, Set<String>> out = new LinkedHashMap<>();
+        for (String simpleName : Set.of("SurgeryController", "SurgeryFormController",
+                "SurgeryExecutionController", "SurgeryTeamController", "RecoveryController")) {
             Class<?> type = Class.forName("com.hms.controller.hospital." + simpleName);
             for (Method m : type.getDeclaredMethods()) {
                 PreAuthorize pa = AnnotatedElementUtils.findMergedAnnotation(m, PreAuthorize.class);
                 if (pa == null) continue;
+                assertThat(pa.value())
+                        .as("%s#%s still authorizes on a role, not a permission", simpleName, m.getName())
+                        .doesNotContain("hasRole").doesNotContain("hasAnyRole");
                 Matcher matcher = AUTHORITY.matcher(pa.value());
-                assertThat(matcher.find())
-                        .as("%s#%s still authorizes on a role, not a permission: %s",
-                                simpleName, m.getName(), pa.value())
-                        .isTrue();
-                out.put(simpleName + "#" + m.getName(), matcher.group(1));
+                Set<String> required = new TreeSet<>();
+                while (matcher.find()) required.add(matcher.group(1));
+                assertThat(required)
+                        .as("%s#%s declares no OT permission: %s", simpleName, m.getName(), pa.value())
+                        .isNotEmpty();
+                out.put(simpleName + "#" + m.getName(), required);
             }
         }
         return out;
     }
 
-    private Set<String> rolesHolding(String permission) {
+    /** Roles that hold ANY of the required permissions -- the union hasAnyAuthority expresses. */
+    private Set<String> rolesHolding(Set<String> permissions) {
         Set<String> roles = new TreeSet<>();
         for (String role : OtPermissions.ROLES) {
-            if (OtPermissions.defaultsFor(role).contains(permission)) roles.add(role);
+            Set<String> held = OtPermissions.defaultsFor(role);
+            if (permissions.stream().anyMatch(held::contains)) roles.add(role);
         }
         return roles;
     }
@@ -86,13 +128,13 @@ class OtPermissionsParityTest {
     }
 
     @Test
-    void dayOneAccess_isIdenticalToThePreRefactorRoleChecks() throws Exception {
-        Map<String, String> permissions = currentPermissions();
+    void currentAccess_matchesTheReviewedV2Baseline() throws Exception {
+        Map<String, Set<String>> permissions = currentPermissions();
         Map<String, Set<String>> mismatches = new LinkedHashMap<>();
 
-        for (Map.Entry<String, Set<String>> expected : PRE_REFACTOR_ACCESS.entrySet()) {
+        for (Map.Entry<String, Set<String>> expected : EXPECTED_ACCESS.entrySet()) {
             String endpoint = expected.getKey();
-            String permission = permissions.get(endpoint);
+            Set<String> permission = permissions.get(endpoint);
             assertThat(permission).as("no @PreAuthorize found for %s", endpoint).isNotNull();
 
             Set<String> now = rolesHolding(permission);
@@ -102,8 +144,9 @@ class OtPermissionsParityTest {
             }
         }
         assertThat(mismatches)
-                .as("Access changed for these endpoints. Day-1 behaviour must be identical; "
-                        + "a hospital opts into anything different via the permission matrix.")
+                .as("Access changed for these endpoints (+added/-removed vs the reviewed v2 "
+                        + "baseline). If intentional, update EXPECTED_ACCESS with the same review "
+                        + "this table represents; if not, DEFAULTS regressed.")
                 .isEmpty();
     }
 
@@ -125,9 +168,57 @@ class OtPermissionsParityTest {
         }
     }
 
+    /**
+     * OT-P0A: the whole point of the fix. Every code in the vocabulary must have at least one
+     * intended owner, or the action behind it is unreachable in every hospital that has not
+     * customised its matrix -- exactly how OT_ASSIGN_TEAM/OT_RECOVERY/OT_TRANSFER went dark.
+     */
+    @Test
+    void everyPermissionCode_isGrantedToAtLeastOneRoleByDefault() {
+        Set<String> granted = new TreeSet<>();
+        for (String role : OtPermissions.ROLES) granted.addAll(OtPermissions.defaultsFor(role));
+
+        Set<String> orphaned = new TreeSet<>(OtPermissions.ALL);
+        orphaned.removeAll(granted);
+
+        assertThat(orphaned).as("permission codes with no default owner").isEmpty();
+    }
+
     /** A hospital admin must always retain the ability to reach the matrix itself. */
     @Test
     void hospitalAdmin_holdsOtSettingsByDefault() {
         assertThat(OtPermissions.defaultsFor("HOSPITAL_ADMIN")).contains(OtPermissions.OT_SETTINGS);
+    }
+
+    /**
+     * OT-P0A: Hospital Admin is configuration and view only by default -- routine clinical
+     * execution is not granted accidentally through a broad default. A hospital that wants its
+     * admin to act clinically opts in explicitly via the permission matrix, same as any other
+     * customisation.
+     */
+    @Test
+    void hospitalAdmin_doesNotHoldRoutineClinicalExecutionByDefault() {
+        Set<String> clinicalExecution = Set.of(
+                OtPermissions.OT_CREATE, OtPermissions.OT_APPROVE, OtPermissions.OT_SCHEDULE,
+                OtPermissions.OT_RESCHEDULE, OtPermissions.OT_CANCEL, OtPermissions.OT_ASSIGN_ROOM,
+                OtPermissions.OT_ASSIGN_TEAM, OtPermissions.OT_PRE_OP, OtPermissions.OT_ANAESTHESIA_CLEARANCE,
+                OtPermissions.OT_EMERGENCY_OVERRIDE, OtPermissions.OT_TIME_OUT, OtPermissions.OT_START,
+                OtPermissions.OT_COMPLETE, OtPermissions.OT_RECOVERY, OtPermissions.OT_TRANSFER,
+                OtPermissions.OT_CLOSE, OtPermissions.OT_FORM_EDIT);
+
+        Set<String> adminDefaults = OtPermissions.defaultsFor("HOSPITAL_ADMIN");
+        Set<String> accidental = new TreeSet<>(adminDefaults);
+        accidental.retainAll(clinicalExecution);
+
+        assertThat(accidental).as("clinical execution codes HOSPITAL_ADMIN holds by default").isEmpty();
+    }
+
+    /**
+     * OT-P0A: OT_INCHARGE is the theatre-owning role and must not default to nothing, as it did
+     * before this fix (every endpoint 403'd for it on day one).
+     */
+    @Test
+    void otIncharge_noLongerDefaultsToNoOtAccess() {
+        assertThat(OtPermissions.defaultsFor("OT_INCHARGE")).isNotEmpty();
     }
 }

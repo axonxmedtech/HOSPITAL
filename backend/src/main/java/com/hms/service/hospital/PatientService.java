@@ -25,11 +25,30 @@ import java.util.List;
 public class PatientService {
     private static final String HOSPITAL_NOT_FOUND = "Hospital not found";
 
+    /**
+     * Shown to the person at the desk, so it says what happened rather than what was rejected.
+     * Shared with the appointment path so both ways of registering a patient read the same.
+     */
+    public static final String DUPLICATE_PHONE_MESSAGE =
+            "This mobile number is already registered to a patient at this hospital.";
+
 
     private static final Logger logger = LoggerFactory.getLogger(PatientService.class);
 
     @Autowired
+    private BusinessClock businessClock;
+
+    @Autowired
     private PatientRepository patientRepository;
+
+    @Autowired
+    private PatientRegistrar patientRegistrar;
+
+    @Autowired
+    private DuplicatePhoneRaceTranslator duplicatePhoneRaceTranslator;
+
+    @Autowired
+    private PatientDuplicateFinder patientDuplicateFinder;
 
     @Autowired
     private org.springframework.cache.CacheManager cacheManager;
@@ -110,6 +129,102 @@ public class PatientService {
     }
 
     /**
+     * Stamps the value-bound acknowledgement onto a patient about to hold {@code phone}.
+     *
+     * <p>Stores the number itself, not a flag, so the exemption lapses by itself if the patient's
+     * phone later changes — an acknowledgement for X must never exempt Y. See
+     * {@code Patient.duplicatePhoneAckFor} for the full semantics.
+     */
+    /**
+     * Write the new patient, and turn a lost race into the same answer a detected duplicate gets.
+     *
+     * <p>Two registrations can both pass the duplicate check above before either commits; the
+     * database settles it and the loser arrives here. The re-read is safe precisely because
+     * {@code addPatient} is NOT transactional: {@link PatientRegistrar} owns its own transaction,
+     * so by the time this catch runs that transaction has already rolled back and closed, and a
+     * fresh query is a fresh session rather than a doomed one.
+     *
+     * <p>Only the active-phone index is translated. Any other constraint failure is rethrown
+     * untouched — calling an unrelated defect a duplicate phone would hide it.
+     */
+    private Patient persistOrReportDuplicatePhone(Patient patient, Long hospitalId, String phone) {
+        try {
+            return patientRegistrar.persistNewPatient(patient);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            throw duplicatePhoneOrOriginal(e, hospitalId, phone, null);
+        }
+    }
+
+    /** The same translation for a phone EDIT, which can lose the same race. */
+    private Patient saveOrReportDuplicatePhone(Patient patient, Long hospitalId, String phone,
+            Long excludePatientId) {
+        try {
+            return patientRepository.save(patient);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            throw duplicatePhoneOrOriginal(e, hospitalId, phone, excludePatientId);
+        }
+    }
+
+    /**
+     * @return the structured duplicate-phone conflict when this really was the active-phone index,
+     *         and the original exception otherwise. The decision itself lives in
+     *         {@link DuplicatePhoneRaceTranslator} so the appointment path, which must translate at
+     *         its controller, uses exactly the same rule.
+     */
+    private RuntimeException duplicatePhoneOrOriginal(
+            org.springframework.dao.DataIntegrityViolationException e, Long hospitalId, String phone,
+            Long excludePatientId) {
+        return duplicatePhoneRaceTranslator.translate(e, hospitalId, phone, excludePatientId,
+                DUPLICATE_PHONE_MESSAGE);
+    }
+
+    private void recordAcknowledgement(Patient patient, String phone) {
+        patient.setDuplicatePhoneAckFor(phone);
+        patient.setDuplicatePhoneAckAt(java.time.LocalDateTime.now(java.time.ZoneId.systemDefault()));
+        patient.setDuplicatePhoneAckBy(securityHelper.getCurrentUserEmail());
+    }
+
+    /**
+     * Clears an acknowledgement that no longer describes the patient's number.
+     *
+     * <p>Strictly speaking redundant — every read of the acknowledgement compares it against the
+     * current phone, so a stale value grants nothing. It is cleared anyway because a record
+     * claiming staff acknowledged a number the patient does not have is a misleading audit trail.
+     */
+    private void clearStaleAcknowledgement(Patient patient) {
+        DuplicatePhoneAcknowledgement.clear(patient);
+    }
+
+    /**
+     * Best-effort audit of a shared-number decision, with the number masked.
+     *
+     * <p>The three ack columns hold only the latest acknowledgement and are overwritten by the
+     * next one; this is the durable record of who decided what, and when. Masked because an audit
+     * trail should let you reconcile a record against a number someone is holding, not serve as a
+     * contact list.
+     */
+    private void auditDuplicatePhoneAcknowledgement(Patient saved, String phone,
+            List<com.hms.dto.DuplicatePatientMatch> conflicts, Long hospitalId) {
+        try {
+            String existing = conflicts.stream()
+                    .map(c -> c.customId() != null ? c.customId() : String.valueOf(c.id()))
+                    .collect(java.util.stream.Collectors.joining(", "));
+            auditLogService.logAction(
+                    "PATIENT_DUPLICATE_PHONE_ACKNOWLEDGED",
+                    "Registered as a different person sharing phone "
+                            + PatientDuplicateFinder.maskPhone(phone)
+                            + " with existing patient(s): " + existing,
+                    securityHelper.getCurrentUserEmail(),
+                    hospitalId,
+                    "PATIENT",
+                    saved.getPublicId(),
+                    "Shared phone acknowledged by staff");
+        } catch (Exception e) {
+            logger.warn("Failed to create audit log for duplicate-phone acknowledgement", e);
+        }
+    }
+
+    /**
      * "Always required" for dateOfBirth is enforced here rather than at the
      * DB/entity level — see the comment on Patient.dateOfBirth for why.
      */
@@ -132,7 +247,32 @@ public class PatientService {
      * @param patient Patient entity to create
      * @return Created Patient entity
      */
+    /**
+     * Deliberately NOT {@code @Transactional}. The audit call below is non-fatal by design, but
+     * AuditLogService.logAction is itself transactional: inside a caller's transaction its failure
+     * marks that transaction rollback-only, and the patient is lost at commit even though the
+     * exception is caught here. Keeping the insert's transaction inside PatientRegistrar lets the
+     * patient commit first and leaves the audit in a transaction of its own.
+     */
     public Patient addPatient(Patient patient) {
+        return addPatient(patient, false);
+    }
+
+    /**
+     * @param acknowledgeDuplicatePhone the caller has been shown the existing patients on this
+     *                                  number and has explicitly stated that this registration is
+     *                                  a different person. Never inferred, never defaulted to
+     *                                  true: the whole point is that only a human can tell a
+     *                                  parent from a child on one mobile.
+     */
+    public Patient addPatient(Patient patient, boolean acknowledgeDuplicatePhone) {
+        if (patient.getPhone() != null) {
+            String sanitized = patient.getPhone().replaceAll("[^0-9]", "");
+            if (sanitized.length() > 10 && sanitized.startsWith("91")) {
+                sanitized = sanitized.substring(sanitized.length() - 10);
+            }
+            patient.setPhone(sanitized);
+        }
         // Validate phone number
         if (patient.getPhone() == null || !patient.getPhone().matches("^[0-9]{10}$")) {
             throw new IllegalArgumentException("Phone number must be exactly 10 digits");
@@ -149,12 +289,35 @@ public class PatientService {
         // Set hospital_id to ensure multi-tenant isolation
         patient.setHospitalId(hospitalId);
 
-        logger.info("Hospital {} creating new patient: {}", hospitalId, LogSanitizer.clean(patient.getName()));
-        Patient savedPatient = patientRepository.save(patient);
+        // The acknowledgement is server-controlled. Whatever arrived on the request body is
+        // discarded here, before anything can read it: the fields are also non-bindable through
+        // Jackson, and this is the second lock on the same door.
+        patient.setDuplicatePhoneAckFor(null);
+        patient.setDuplicatePhoneAckAt(null);
+        patient.setDuplicatePhoneAckBy(null);
 
-        // Set sequential customId using the auto-increment id: PAT1, PAT2, PAT3...
-        savedPatient.setCustomId("PAT" + savedPatient.getId());
-        savedPatient = patientRepository.save(savedPatient);
+        // Asked before the insert, and never answered automatically. A single match is NOT
+        // grounds for reusing that patient: a parent and a child share one mobile, and silently
+        // attaching the child's record to the parent is a clinical-safety failure, not a
+        // convenience.
+        List<com.hms.dto.DuplicatePatientMatch> conflicts =
+                patientDuplicateFinder.findActiveByPhone(hospitalId, patient.getPhone(), null);
+        if (!conflicts.isEmpty() && !acknowledgeDuplicatePhone) {
+            throw new com.hms.exception.DuplicatePhoneConflictException(
+                    DUPLICATE_PHONE_MESSAGE, conflicts);
+        }
+        boolean acknowledged = !conflicts.isEmpty() && acknowledgeDuplicatePhone;
+        if (acknowledged) {
+            recordAcknowledgement(patient, patient.getPhone());
+        }
+
+        logger.info("Hospital {} creating new patient: {}", hospitalId, LogSanitizer.clean(patient.getName()));
+        Patient savedPatient = persistOrReportDuplicatePhone(patient, hospitalId, patient.getPhone());
+
+        if (acknowledged) {
+            auditDuplicatePhoneAcknowledgement(savedPatient, patient.getPhone(), conflicts,
+                    hospitalId);
+        }
 
         evictStatsCache(hospitalId);
 
@@ -192,6 +355,23 @@ public class PatientService {
      * @return Updated Patient entity
      */
     public Patient updatePatient(Long publicId, Patient updatedData) {
+        return updatePatient(publicId, updatedData, false);
+    }
+
+    /**
+     * @param acknowledgeDuplicatePhone as on {@link #addPatient(Patient, boolean)} — staff have
+     *                                  seen the existing patients on the new number and confirmed
+     *                                  this is a different person.
+     */
+    public Patient updatePatient(Long publicId, Patient updatedData,
+            boolean acknowledgeDuplicatePhone) {
+        if (updatedData.getPhone() != null) {
+            String sanitized = updatedData.getPhone().replaceAll("[^0-9]", "");
+            if (sanitized.length() > 10 && sanitized.startsWith("91")) {
+                sanitized = sanitized.substring(sanitized.length() - 10);
+            }
+            updatedData.setPhone(sanitized);
+        }
         // Validate phone number
         if (updatedData.getPhone() == null || !updatedData.getPhone().matches("^[0-9]{10}$")) {
             throw new IllegalArgumentException("Phone number must be exactly 10 digits");
@@ -202,6 +382,29 @@ public class PatientService {
 
         validateDateOfBirth(updatedData.getDateOfBirth());
 
+        // A phone change is a second way to create a duplicate, and until now the only one that
+        // was not checked at all: register B on a free number, then edit B onto A's number.
+        String newPhone = updatedData.getPhone();
+        boolean phoneChanged = !newPhone.equals(existingPatient.getPhone());
+        List<com.hms.dto.DuplicatePatientMatch> acknowledgedConflicts = List.of();
+        if (phoneChanged) {
+            // An acknowledgement made for the OLD number says nothing about the new one, so it
+            // cannot carry over. Cleared before the check, not after, so it can never suppress it.
+            clearStaleAcknowledgement(existingPatient);
+
+            List<com.hms.dto.DuplicatePatientMatch> conflicts = patientDuplicateFinder
+                    .findActiveByPhone(existingPatient.getHospitalId(), newPhone,
+                            existingPatient.getId());
+            if (!conflicts.isEmpty()) {
+                if (!acknowledgeDuplicatePhone) {
+                    throw new com.hms.exception.DuplicatePhoneConflictException(
+                            DUPLICATE_PHONE_MESSAGE, conflicts);
+                }
+                recordAcknowledgement(existingPatient, newPhone);
+                acknowledgedConflicts = conflicts;
+            }
+        }
+
         existingPatient.setName(updatedData.getName());
         existingPatient.setDateOfBirth(updatedData.getDateOfBirth());
         existingPatient.setGender(updatedData.getGender());
@@ -209,8 +412,14 @@ public class PatientService {
         existingPatient.setAddress(updatedData.getAddress());
         existingPatient.setMedicalHistory(updatedData.getMedicalHistory());
 
-        Patient saved = patientRepository.save(existingPatient);
+        Patient saved = saveOrReportDuplicatePhone(existingPatient, existingPatient.getHospitalId(),
+                newPhone, existingPatient.getId());
         evictStatsCache(saved.getHospitalId());
+
+        if (!acknowledgedConflicts.isEmpty()) {
+            auditDuplicatePhoneAcknowledgement(saved, newPhone, acknowledgedConflicts,
+                    saved.getHospitalId());
+        }
 
         // Create audit log
         try {
@@ -256,30 +465,12 @@ public class PatientService {
 
         org.springframework.data.domain.Page<Patient> patients;
 
-        if (date != null) {
-            java.time.LocalDateTime localStart = date.atStartOfDay();
-            java.time.LocalDateTime localEnd = date.atTime(java.time.LocalTime.MAX);
-
-            java.time.ZoneId sysZone = java.time.ZoneId.systemDefault();
-            java.time.ZoneOffset utcOffset = java.time.ZoneOffset.UTC;
-
-            java.time.LocalDateTime startOfDay = localStart.atZone(sysZone).withZoneSameInstant(utcOffset).toLocalDateTime();
-            java.time.LocalDateTime endOfDay = localEnd.atZone(sysZone).withZoneSameInstant(utcOffset).toLocalDateTime();
-
-            patients = patientRepository.findByHospitalIdAndIsActiveTrueAndCreatedAtBetweenOrderByCreatedAtDesc(
-                    hospitalId, startOfDay, endOfDay, pageable);
-        } else if ("today".equalsIgnoreCase(view)) {
-            java.time.LocalDateTime localStart = java.time.LocalDate.now().atStartOfDay();
-            java.time.LocalDateTime localEnd = java.time.LocalDate.now().atTime(java.time.LocalTime.MAX);
-
-            java.time.ZoneId sysZone = java.time.ZoneId.systemDefault();
-            java.time.ZoneOffset utcOffset = java.time.ZoneOffset.UTC;
-
-            java.time.LocalDateTime startOfDay = localStart.atZone(sysZone).withZoneSameInstant(utcOffset).toLocalDateTime();
-            java.time.LocalDateTime endOfDay = localEnd.atZone(sysZone).withZoneSameInstant(utcOffset).toLocalDateTime();
-
-            patients = patientRepository.findByHospitalIdAndIsActiveTrueAndCreatedAtBetweenOrderByCreatedAtDesc(
-                    hospitalId, startOfDay, endOfDay, pageable);
+        if (date != null || "today".equalsIgnoreCase(view)) {
+            LocalDate businessDate = date != null ? date : businessClock.today();
+            // Existing DATETIME values are IST wall time. Keep bounds in that representation.
+            patients = patientRepository.findActiveInDateRange(
+                    hospitalId, businessDate.atStartOfDay(),
+                    businessDate.plusDays(1).atStartOfDay(), pageable);
         } else {
             // Default / History
             patients = patientRepository.findByHospitalIdAndIsActiveTrueOrderByCreatedAtDesc(hospitalId, pageable);
@@ -359,9 +550,7 @@ public class PatientService {
             return getAllPatients();
         }
 
-        List<Patient> patients = patientRepository
-                .findByHospitalIdAndIsActiveTrueAndNameContainingIgnoreCaseOrHospitalIdAndIsActiveTrueAndPhoneContaining(
-                        hospitalId, query, hospitalId, query);
+        List<Patient> patients = patientRepository.searchActiveByNameOrPhone(hospitalId, query.trim());
 
         // Populate latest bill
         populateLatestBills(patients);
@@ -893,7 +1082,11 @@ public class PatientService {
         com.hms.entity.Doctor doctor = (record.getDoctorId() != null)
                 ? doctorRepository.findById(record.getDoctorId()).orElse(null)
                 : null;
-        com.hms.entity.Opd opd = opdRepository.findById(opdId).orElse(null);
+        // Scoped: the record's tenant was verified above, and the OPD is now fetched under the
+        // same tenant rather than by raw id. A foreign OPD yields null and the case number falls
+        // back exactly as it does when the OPD is absent -- no behaviour change for real data.
+        com.hms.entity.Opd opd = opdRepository
+                .findByIdAndHospitalIdWithPatientAndDoctor(opdId, hospitalId).orElse(null);
         String customNo = (opd != null) ? opd.getCaseId() : "-";
         java.time.LocalDateTime createdAt = (opd != null) ? opd.getCreatedAt() : record.getCreatedAt();
 

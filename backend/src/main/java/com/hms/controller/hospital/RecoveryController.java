@@ -32,8 +32,12 @@ public class RecoveryController {
 
     @PostMapping("/admit")
     @PreAuthorize("hasAuthority('OT_RECOVERY')")
-    public ResponseEntity<?> admit(@PathVariable Long surgeryId) {
-        return ResponseEntity.ok(service.admit(surgeryId));
+    public ResponseEntity<?> admit(@PathVariable Long surgeryId, @RequestBody Map<String, Object> body) {
+        // The bay picker (GET /hospital/ot/recovery-bays) addresses bays by publicId, matching
+        // every other resource in this codebase (OtRoom, etc.) -- never a raw internal id.
+        String recoveryBayPublicId = body.get("recoveryBayId") == null ? null
+                : String.valueOf(body.get("recoveryBayId"));
+        return ResponseEntity.ok(service.admit(surgeryId, recoveryBayPublicId));
     }
 
     @PostMapping("/observe")

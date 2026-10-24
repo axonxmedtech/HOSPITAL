@@ -1,7 +1,11 @@
 package com.hms.repository;
 
 import com.hms.entity.Surgery;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.Collection;
@@ -11,6 +15,14 @@ import java.util.Optional;
 @Repository
 public interface SurgeryRepository extends JpaRepository<Surgery, Long> {
     Optional<Surgery> findByPublicId(String publicId);
+
+    Optional<Surgery> findByPublicIdAndHospitalId(String publicId, Long hospitalId);
+
+    /** Serializes lifecycle commands while keeping foreign IDs indistinguishable from missing ones. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT s FROM Surgery s WHERE s.publicId = :publicId AND s.hospitalId = :hospitalId")
+    Optional<Surgery> findByPublicIdAndHospitalIdForUpdate(
+            @Param("publicId") String publicId, @Param("hospitalId") Long hospitalId);
 
     List<Surgery> findByHospitalIdAndStatusOrderByRequestedAtDesc(Long hospitalId, String status);
 
@@ -22,6 +34,10 @@ public interface SurgeryRepository extends JpaRepository<Surgery, Long> {
 
     /** Patient-scoped: the only "already has an active surgery" check that works for day-care. */
     List<Surgery> findByPatientIdAndStatusIn(Long patientId, Collection<String> statuses);
+
+    /** CLIN-P1: every surgery for one patient at this hospital, across every status -- the
+     *  clinical timeline needs the whole history, not just the currently active case. */
+    List<Surgery> findByPatientIdAndHospitalId(Long patientId, Long hospitalId);
 
     List<Surgery> findByOtWardIdAndStatus(Long otWardId, String status);
 

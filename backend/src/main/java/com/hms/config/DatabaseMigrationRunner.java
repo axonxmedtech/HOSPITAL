@@ -9,6 +9,11 @@ import org.springframework.context.event.EventListener;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
 /**
  * Runs idempotent schema patches on every startup.
  *
@@ -28,8 +33,78 @@ public class DatabaseMigrationRunner {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private StartupInitializationState startupState;
+
+    /**
+     * Schema objects the application needs on EVERY request path, whatever modules a hospital
+     * has enabled, that only this runner (or Hibernate) creates -- Flyway does not. A missing one
+     * makes readiness DOWN, so a deployment cannot be declared healthy without it.
+     *
+     * <p>Kept deliberately narrow; this lists objects, never data (an empty table is fine, and a
+     * hospital with no ICU wards is normal):
+     * <ul>
+     *   <li>{@code icu_wards} and {@code icu_stay}: every IPD admission, bed transfer and discharge
+     *       consults them (IcuStayService.onWardSettled / onDischarged), with or without ICU.</li>
+     *   <li>the ICU columns on {@code vitals_records}: mapped on VitalsRecord, so every vitals read
+     *       and write selects them.</li>
+     * </ul>
+     *
+     * <p>Not listed, on purpose: tables used only behind a module gate (the other ICU tables, the
+     * OT pre-op tables), objects Flyway already guarantees (V12-V24), and legacy compatibility
+     * patches. Their failures keep today's log-and-continue behaviour. When a new step creates an
+     * object that a non-gated path requires, add it here.
+     */
+    static final Map<String, List<String>> REQUIRED_SCHEMA = requiredSchema();
+
+    private static Map<String, List<String>> requiredSchema() {
+        Map<String, List<String>> required = new LinkedHashMap<>();
+        required.put("icu_wards", List.of("id", "hospital_id", "ward_id"));
+        required.put("icu_stay", List.of("id", "hospital_id", "ipd_admission_id", "status", "active_marker"));
+        required.put("vitals_records", List.of("gcs_eye", "gcs_verbal", "gcs_motor", "gcs_total",
+                "map_mmhg", "cvp_cmh2o", "urine_output_ml", "supersedes_vitals_id"));
+        return java.util.Collections.unmodifiableMap(required);
+    }
+
     @EventListener(ApplicationReadyEvent.class)
     public void runMigrations() {
+        try {
+            runAllSteps();
+        } catch (RuntimeException e) {
+            // The fail-closed steps throw on purpose. Spring then aborts startup, so readiness
+            // never reaches ACCEPTING_TRAFFIC; recording it as well keeps the reason in the log.
+            startupState.fail(List.of("startup step failed: " + e.getClass().getSimpleName()));
+            throw e;
+        }
+        List<String> missing = missingRequiredSchema();
+        if (missing.isEmpty()) {
+            startupState.complete();
+        } else {
+            startupState.fail(missing);
+            throw new IllegalStateException("Mandatory schema missing at startup: " + missing);
+        }
+    }
+
+    /**
+     * Each required table and column, probed with a zero-row SELECT: read-only, portable across
+     * MySQL and H2, and it fails exactly when the application's own query would. The names are
+     * constants above, never input.
+     */
+    List<String> missingRequiredSchema() {
+        List<String> missing = new ArrayList<>();
+        for (Map.Entry<String, List<String>> entry : REQUIRED_SCHEMA.entrySet()) {
+            String table = entry.getKey();
+            String columns = String.join(", ", entry.getValue());
+            try {
+                jdbcTemplate.queryForList("SELECT " + columns + " FROM " + table + " WHERE 1 = 0");
+            } catch (RuntimeException e) {
+                missing.add("missing required schema: " + table + " (" + columns + ")");
+            }
+        }
+        return missing;
+    }
+
+    void runAllSteps() {
         fixHospitalsPlanColumn();
         ensureHospitalSettingsInClinic();
         ensureHospitalsIsSingleDoctor();
@@ -43,7 +118,7 @@ public class DatabaseMigrationRunner {
         ensureInventoryServicesTables(); // NEW
         ensureHospitalSettingsBarcodeEnabled(); // NEW — pharmacy barcode toggle
         ensurePlanMultiOutletColumns(); // NEW — pharmacy multi-outlet plan support
-        dropLegacyNotNullNoDefaultColumns(); // NEW — remove NOT-NULL-no-default landmines
+        preserveAndRelaxLegacyNotNullColumns(); // NEW — relax NOT-NULL-no-default while preserving historical data
         ensureMedicineMasterManufacturerName(); // NEW — free-text manufacturer from purchase
         ensurePharmacyBranchSupport(); // NEW — Multi Pharmacy branches
         ensurePharmacyDataBranchColumns(); // NEW — branch_id on pharmacy data tables
@@ -74,11 +149,13 @@ public class DatabaseMigrationRunner {
         ensureRolePermissionsTable(); // OT Phase 2 — authorization decoupled from role checks
         ensureSurgeryStateTransitionsTable(); // OT Phase 3 — append-only status audit
         ensureSurgeryWaitlistColumns(); // OT Phase 3 — the waiting list is a query, not a status
+        ensureSurgeryLifecycleVersionColumn(); // OT 4.6D-A — stale schedule command detection
         ensureOtRoomsTable(); // OT Phase 4 — a theatre is a resource, not a ward named "OT"
         ensureSurgeryRoomColumns(); // OT Phase 4 — interval booking
         ensureOtWorkflowPoliciesTable(); // OT Phase 5 — hospital variation is configuration
         ensureSurgeryTeamTables(); // OT Phase 6 — who was in the room
         ensureSurgeryExecutionTables(); // OT Phase 7 — WHO checklist, milestones, operative note
+        ensureSurgeryPreOpSafetyTables(); // OT 4.6A — anaesthesia decisions and emergency bypasses
         ensureRecoveryTables(); // OT Phase 8 — PACU recovery (never a case state)
         ensureOtRoomOccupancyTable(); // OT Phase 9 — utilisation & turnover from real spans
         backfillSupportTicketHospitalType(); // tickets created before hospital_type was set
@@ -124,6 +201,54 @@ public class DatabaseMigrationRunner {
         backfillPrintPaymentDefaults();
         widenVitalsDecimalColumns();
         backfillStrandedOpdStatuses();
+        reconcileOtPermissionOrphanDefaults(); // OT-P0A — v2 defaults for already-configured hospitals
+        ensureRecoveryBaysTable(); // OT-P0B — recovery admission needs a tenant-owned location
+        addColumnIfMissing("ot_recovery_episodes", "recovery_bay_id", "BIGINT NULL");
+        ensureMedicineStockTables(); // INV-2/3 — batch-aware medicine stock + append-only ledger
+        addColumnIfMissing("prescriptions", "medicine_id", "BIGINT NULL");
+        addColumnIfMissing("medicine_purchases", "batch_number", "VARCHAR(100) NULL");
+        addColumnIfMissing("prescriptions", "food_timing", "VARCHAR(20) NULL"); // V15
+        ensureOpdIdempotencyTable(); // V16 — one OPD registration per logical submission
+
+        // V17 — follow-up lifecycle. A NULL status reads as OPEN, so historical consultations
+        // stay actionable and nothing is rewritten.
+        addColumnIfMissing("medical_records", "follow_up_instructions", "VARCHAR(1000) NULL");
+        addColumnIfMissing("medical_records", "follow_up_status", "VARCHAR(20) NULL");
+        addCompositeIndexIfMissing("medical_records", "idx_medical_records_followup",
+                "`hospital_id`, `follow_up_date`");
+
+        // V18 — the arrival link. The unique index is the invariant that stops one follow-up
+        // becoming two visits; NULLs do not collide, so unactioned follow-ups are unaffected.
+        addColumnIfMissing("medical_records", "actioned_opd_id", "BIGINT NULL");
+        addColumnIfMissing("medical_records", "actioned_by_user_id", "BIGINT NULL");
+        addColumnIfMissing("medical_records", "actioned_at", "DATETIME(6) NULL");
+        addUniqueIndexIfMissing("medical_records", "uk_medical_records_actioned_opd",
+                "`actioned_opd_id`");
+
+        // V19 — what a pharmacy sale line has already had returned, so the same sold units
+        // cannot be refunded twice. Existing rows start at zero; see the migration.
+        addColumnIfMissing("pharmacy_sale_items", "returned_quantity",
+                "DECIMAL(10,2) NOT NULL DEFAULT 0");
+
+        ensurePatientDocumentsTable(); // V20 -- documents patients bring with them
+
+        ensureIcuAlertThresholdTable();// ICU Phase 9
+        ensureIcuSeverityScoreTables();// ICU Phase 8
+        ensureIcuVentilatorTables();   // ICU Phase 7
+        ensureIcuInfusionTables();     // ICU Phase 6
+        ensureIcuIoEntryTable();       // ICU Phase 5
+        ensureVitalsIcuColumns();      // ICU Phase 4
+        ensureIcuStayTable();          // ICU Phase 3
+        migrateIcuWardsAndStays();
+        ensurePatientDuplicatePhoneAckColumns(); // Patient duplicate prevention (Phase A)
+        
+        // Bilingual consultation instructions & statements
+        addColumnIfMissing("hospital_settings", "default_consultation_language", "VARCHAR(10) NOT NULL DEFAULT 'EN'");
+        addColumnIfMissing("medical_records", "consultation_language", "VARCHAR(10) NOT NULL DEFAULT 'EN'");
+        addColumnIfMissing("consultation_note_presets", "marathi_text", "VARCHAR(500) NULL");
+        addColumnIfMissing("consultation_note_presets", "hindi_text", "VARCHAR(500) NULL");
+        ensureConsultationStatementsTable();
+        ensureIcuCleaningTasksTable();
     }
 
     /**
@@ -1232,32 +1357,66 @@ public class DatabaseMigrationRunner {
     }
 
     /**
-     * Drop orphaned columns that are NOT NULL with no default and no longer mapped by
-     * any entity (hospital_settings.shift_mode, users.is_trainer). Hibernate omits them
-     * on INSERT, so MySQL rejects every insert on those tables (error 1364), breaking
-     * hospital/clinic/pharmacy onboarding and user creation. The canonical schema has
-     * no such columns — this realigns older databases with it.
+     * Realign orphaned legacy columns that were historically defined as NOT NULL without a default
+     * and are no longer mapped by active JPA entities (hospital_settings.shift_mode, users.is_trainer,
+     * doctors.is_anaesthetist).
+     *
+     * In accordance with AxonX HMS data safety policy:
+     * 1. Historical clinical, user, and configuration values are NEVER deleted or dropped.
+     * 2. The column constraint is dynamically and idempotently modified to NULL DEFAULT NULL
+     *    (preserving its existing data type and any existing default).
+     * 3. This resolves MySQL error 1364 on new Hibernate INSERTs without destroying historical records.
      */
-    private void dropLegacyNotNullNoDefaultColumns() {
+    private void preserveAndRelaxLegacyNotNullColumns() {
         String[][] orphanColumns = {
             {"hospital_settings", "shift_mode"},
             {"users", "is_trainer"},
             {"doctors", "is_anaesthetist"},
         };
+        boolean isH2 = false;
+        try (java.sql.Connection conn = jdbcTemplate.getDataSource().getConnection()) {
+            java.sql.DatabaseMetaData meta = conn.getMetaData();
+            String productName = meta.getDatabaseProductName();
+            isH2 = productName != null && productName.toLowerCase().contains("h2");
+        } catch (Exception e) {
+            log.debug("Could not inspect database product name: {}", e.getMessage());
+        }
+
         for (String[] tc : orphanColumns) {
             String table = tc[0], column = tc[1];
             try {
-                Integer count = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM information_schema.COLUMNS " +
-                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?",
-                    Integer.class, table, column
-                );
-                if (count != null && count > 0) {
-                    jdbcTemplate.execute("ALTER TABLE `" + table + "` DROP COLUMN `" + column + "`");
-                    log.info("DB migration applied: dropped legacy {}.{} column", table, column);
+                if (isH2) {
+                    List<Map<String, Object>> cols = jdbcTemplate.queryForList(
+                        "SELECT IS_NULLABLE FROM information_schema.COLUMNS " +
+                        "WHERE UPPER(TABLE_NAME) = ? AND UPPER(COLUMN_NAME) = ?",
+                        table.toUpperCase(), column.toUpperCase()
+                    );
+                    if (!cols.isEmpty()) {
+                        String isNullable = String.valueOf(cols.get(0).get("IS_NULLABLE"));
+                        if ("NO".equalsIgnoreCase(isNullable)) {
+                            jdbcTemplate.execute("ALTER TABLE " + table + " ALTER COLUMN " + column + " SET NULL");
+                            log.info("DB migration applied (H2): relaxed legacy {}.{} constraint to NULLABLE", table, column);
+                        }
+                    }
+                } else {
+                    List<Map<String, Object>> cols = jdbcTemplate.queryForList(
+                        "SELECT DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, CHARACTER_SET_NAME, COLLATION_NAME, EXTRA " +
+                        "FROM information_schema.COLUMNS " +
+                        "WHERE TABLE_SCHEMA = DATABASE() AND LOWER(TABLE_NAME) = ? AND LOWER(COLUMN_NAME) = ?",
+                        table.toLowerCase(), column.toLowerCase()
+                    );
+                    if (!cols.isEmpty()) {
+                        Map<String, Object> colInfo = cols.get(0);
+                        String isNullable = String.valueOf(colInfo.get("IS_NULLABLE"));
+                        if ("NO".equalsIgnoreCase(isNullable)) {
+                            jdbcTemplate.update(LegacyColumnDdl.nullableColumn(table, column, colInfo),
+                                    colInfo.get("COLUMN_DEFAULT"));
+                            log.info("DB migration applied: relaxed legacy {}.{} constraint to NULL (historical data, type, charset, and collation preserved)", table, column);
+                        }
+                    }
                 }
             } catch (Exception e) {
-                log.warn("DB migration skipped (drop {}.{}): {}", table, column, e.getMessage());
+                log.warn("DB migration skipped (relax {}.{}): {}", table, column, e.getMessage());
             }
         }
     }
@@ -1385,6 +1544,152 @@ public class DatabaseMigrationRunner {
         addIndexIfMissing("appointments", "idx_appt_date", "appointment_date");
         addIndexIfMissing("patients",     "idx_patient_hospital", "hospital_id");
         addIndexIfMissing("doctors",      "idx_doctor_hospital",  "hospital_id");
+    }
+
+    /**
+     * Composite sibling of {@link #addIndexIfMissing}, which quotes a single column and so cannot
+     * express one. {@code columns} is inserted as written, already quoted by the caller.
+     */
+    /**
+     * V20 -- clinical documents a patient supplied. Metadata plus an opaque storage key; the file
+     * lives in a private directory, never anywhere the web server publishes.
+     */
+    private void ensurePatientDocumentsTable() {
+        createTableIfMissing("patient_documents",
+            "CREATE TABLE patient_documents (" +
+            "  id BIGINT NOT NULL AUTO_INCREMENT," +
+            "  public_id VARCHAR(64) NOT NULL," +
+            "  hospital_id BIGINT NOT NULL," +
+            "  patient_id BIGINT NOT NULL," +
+            "  opd_id BIGINT NULL," +
+            "  ipd_admission_id BIGINT NULL," +
+            "  document_type VARCHAR(40) NOT NULL," +
+            "  title VARCHAR(200) NOT NULL," +
+            "  report_date DATE NULL," +
+            "  source VARCHAR(200) NULL," +
+            "  notes VARCHAR(1000) NULL," +
+            "  original_file_name VARCHAR(255) NOT NULL," +
+            "  mime_type VARCHAR(100) NOT NULL," +
+            "  file_size_bytes BIGINT NOT NULL," +
+            "  storage_key VARCHAR(255) NOT NULL," +
+            "  uploaded_by_user_id BIGINT NULL," +
+            "  is_active TINYINT(1) NOT NULL DEFAULT 1," +
+            "  archived_by_user_id BIGINT NULL," +
+            "  archived_at DATETIME(6) NULL," +
+            "  archive_reason VARCHAR(500) NULL," +
+            "  created_at DATETIME(6) NOT NULL," +
+            "  PRIMARY KEY (id)," +
+            "  UNIQUE KEY uk_patient_documents_public_id (public_id)," +
+            "  KEY idx_patient_documents_patient (hospital_id, patient_id, report_date)" +
+            ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci");
+    }
+
+    /** As {@link #addCompositeIndexIfMissing}, but the index enforces uniqueness. */
+    private void addUniqueIndexIfMissing(String table, String indexName, String columns) {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.STATISTICS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?",
+                Integer.class, table, indexName
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "ALTER TABLE `" + table + "` ADD UNIQUE INDEX `" + indexName + "` (" + columns + ")"
+                );
+                log.info("DB migration applied: unique index {} added on {} ({})", indexName, table, columns);
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (unique index {} on {}): {}", indexName, table, e.getMessage());
+        }
+    }
+
+    private void addCompositeIndexIfMissing(String table, String indexName, String columns) {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.STATISTICS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?",
+                Integer.class, table, indexName
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "ALTER TABLE `" + table + "` ADD INDEX `" + indexName + "` (" + columns + ")"
+                );
+                log.info("DB migration applied: index {} added on {} ({})", indexName, table, columns);
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (index {} on {}): {}", indexName, table, e.getMessage());
+        }
+    }
+
+
+    /**
+     * Race-safe enforcement of the patient duplicate-phone invariant (S-PID-D).
+     *
+     * <p>Deliberately does NOT use {@code addColumnIfMissing} or {@code addIndexIfMissing}: both
+     * log a warning and continue, and {@code addIndexIfMissing} cannot express UNIQUE at all. A
+     * constraint that silently fails to exist is worse than no constraint, because the deployment
+     * reports success and the invariant is not enforced. Everything here propagates.
+     *
+     * <p>Flyway owns this on prod/staging (V21) and may have created the objects already, so each
+     * step checks {@code information_schema} first. Where an object exists, its shape is verified
+     * rather than assumed: a same-named NON-UNIQUE index would satisfy a naive existence check
+     * while enforcing nothing.
+     */
+    private void ensurePatientActivePhoneUniqueness() {
+        Integer keyColumn = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() "
+                + "AND TABLE_NAME = 'patients' AND COLUMN_NAME = 'active_phone_key'", Integer.class);
+        if (keyColumn == null || keyColumn == 0) {
+            jdbcTemplate.execute(
+                "ALTER TABLE patients ADD COLUMN active_phone_key VARCHAR(15) GENERATED ALWAYS AS ("
+                    + "CASE WHEN is_active = 1 AND phone IS NOT NULL AND phone <> '' "
+                    + "AND (duplicate_phone_ack_for IS NULL OR duplicate_phone_ack_for <> phone) "
+                    + "THEN phone END) VIRTUAL");
+            log.info("DB migration applied: patients.active_phone_key generated column added");
+        } else {
+            // A column of that name with a different expression would enforce a different rule.
+            String expression = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(GENERATION_EXPRESSION, '') FROM information_schema.COLUMNS "
+                    + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'patients' "
+                    + "AND COLUMN_NAME = 'active_phone_key'", String.class);
+            if (expression == null || !expression.contains("duplicate_phone_ack_for")) {
+                throw new IllegalStateException(
+                    "patients.active_phone_key exists but does not test duplicate_phone_ack_for. "
+                        + "It is enforcing a different rule; resolve it before starting the application.");
+            }
+        }
+
+        Integer index = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() "
+                + "AND TABLE_NAME = 'patients' AND INDEX_NAME = 'uq_patient_active_phone'", Integer.class);
+        if (index == null || index == 0) {
+            // Fails with ER_DUP_ENTRY if conflicting rows exist. That is the point: a human decides
+            // what to do with them (docs/operations/patient-duplicate-phone-preflight.sql), never
+            // this migration, because merging or deactivating a patient moves their appointments,
+            // bills, prescriptions and admissions with them.
+            jdbcTemplate.execute(
+                "ALTER TABLE patients ADD UNIQUE KEY uq_patient_active_phone (hospital_id, active_phone_key)");
+            log.info("DB migration applied: patients.uq_patient_active_phone unique index added");
+            return;
+        }
+
+        Integer nonUnique = jdbcTemplate.queryForObject(
+            "SELECT MAX(NON_UNIQUE) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() "
+                + "AND TABLE_NAME = 'patients' AND INDEX_NAME = 'uq_patient_active_phone'", Integer.class);
+        if (nonUnique != null && nonUnique == 1) {
+            throw new IllegalStateException(
+                "patients.uq_patient_active_phone exists but is NOT UNIQUE, so it enforces nothing. "
+                    + "Drop it and restart so the unique index can be created.");
+        }
+        String columns = jdbcTemplate.queryForObject(
+            "SELECT GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) FROM information_schema.STATISTICS "
+                + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'patients' "
+                + "AND INDEX_NAME = 'uq_patient_active_phone'", String.class);
+        if (!"hospital_id,active_phone_key".equals(columns)) {
+            throw new IllegalStateException(
+                "patients.uq_patient_active_phone covers [" + columns
+                    + "] instead of [hospital_id,active_phone_key].");
+        }
     }
 
     private void addIndexIfMissing(String table, String indexName, String column) {
@@ -1837,6 +2142,38 @@ public class DatabaseMigrationRunner {
      * OT Phase 7 — WHO checklist (phases as signed columns, so compliance is a query),
      * clinical milestones (append-only facts, never states), and the operative note.
      */
+    /**
+     * OT 4.6A — immutable clinician clearance decisions and explicit emergency bypasses.
+     * Mirrors setup/schema-full.sql and remains safe on an already populated database.
+     */
+    private void ensureSurgeryPreOpSafetyTables() {
+        try {
+            Integer clearances = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'surgery_anaesthesia_clearances'",
+                    Integer.class);
+            if (clearances != null && clearances == 0) {
+                jdbcTemplate.execute("CREATE TABLE surgery_anaesthesia_clearances ("
+                        + "id BIGINT NOT NULL AUTO_INCREMENT, surgery_id BIGINT NOT NULL, hospital_id BIGINT NOT NULL, "
+                        + "outcome VARCHAR(40) NOT NULL, conditions_comments TEXT NULL, recorded_by_user_id BIGINT NOT NULL, "
+                        + "recorded_at DATETIME(6) NOT NULL, PRIMARY KEY (id), "
+                        + "KEY idx_sac_hospital_surgery_time (hospital_id,surgery_id,recorded_at), "
+                        + "KEY idx_sac_surgery (surgery_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            }
+            Integer overrides = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'surgery_emergency_overrides'",
+                    Integer.class);
+            if (overrides != null && overrides == 0) {
+                jdbcTemplate.execute("CREATE TABLE surgery_emergency_overrides ("
+                        + "id BIGINT NOT NULL AUTO_INCREMENT, surgery_id BIGINT NOT NULL, hospital_id BIGINT NOT NULL, "
+                        + "reason TEXT NOT NULL, bypassed_gates VARCHAR(100) NOT NULL, recorded_by_user_id BIGINT NOT NULL, "
+                        + "recorded_at DATETIME(6) NOT NULL, PRIMARY KEY (id), "
+                        + "KEY idx_seo_hospital_surgery_time (hospital_id,surgery_id,recorded_at)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (OT pre-op safety): {}", e.getMessage());
+        }
+    }
+
     private void ensureSurgeryExecutionTables() {
         try {
             Integer who = jdbcTemplate.queryForObject(
@@ -1989,7 +2326,7 @@ public class DatabaseMigrationRunner {
                         "  public_id VARCHAR(255) NOT NULL," +
                         "  hospital_id BIGINT NOT NULL," +
                         "  name VARCHAR(100) NOT NULL," +
-                        "  status VARCHAR(20) NOT NULL DEFAULT 'AVAILABLE'," +
+                    "  status VARCHAR(20) NOT NULL DEFAULT 'PENDING'," +
                         "  current_surgery_id BIGINT NULL," +
                         "  turnover_minutes INT NOT NULL DEFAULT 15," +
                         "  source_ward_id BIGINT NULL," +
@@ -2068,6 +2405,11 @@ public class DatabaseMigrationRunner {
         } catch (Exception e) {
             // already present
         }
+    }
+
+    /** Adds the optimistic lifecycle revision used by schedule/reschedule commands. */
+    private void ensureSurgeryLifecycleVersionColumn() {
+        addColumnIfMissing("surgeries", "lifecycle_version", "BIGINT NOT NULL DEFAULT 0");
     }
 
     /**
@@ -2229,6 +2571,202 @@ public class DatabaseMigrationRunner {
         }
     }
 
+    /**
+     * OT-P0A reconciliation. OtPermissionService freezes a hospital's role_permissions rows the
+     * moment it saves its first customisation: from then on, effectiveFor() reads only those
+     * rows and never OtPermissions.defaultsFor(role) again. A hospital that customised before
+     * this fix therefore cannot see OT_ASSIGN_TEAM / OT_RECOVERY / OT_TRANSFER acquire owners --
+     * every role stays permanently at whatever it had the day the matrix was first saved.
+     *
+     * These three codes are not new: OtPermissions.ALL and the admin matrix catalogue always
+     * listed them, so a hospital that already granted one of them to some role has an explicit,
+     * intentional row for it. Touching that hospital's rows for that code -- even to add a
+     * second role -- would either double a decision it already made or overwrite one it didn't.
+     * The only population this can safely help is a hospital with ZERO rows for a given code,
+     * across every role: nothing was ever decided about it, so the v2 default is a genuinely new
+     * default arriving, not a correction being forced onto a customised choice.
+     *
+     * Residual, accepted gap: role_permissions has no history, so a hospital that once granted a
+     * code and later revoked it from every role is indistinguishable from one that never
+     * considered it -- both read as zero rows. Building a permission audit trail to close that
+     * gap is disproportionate for three codes nobody could reach before this release (they had
+     * no default owner, so reaching them required an admin to open the full catalogue and grant
+     * one deliberately); flagged here rather than silently assumed away.
+     */
+    private void reconcileOtPermissionOrphanDefaults() {
+        try {
+            java.util.List<Long> configuredHospitalIds = jdbcTemplate.queryForList(
+                    "SELECT DISTINCT hospital_id FROM role_permissions", Long.class);
+            if (configuredHospitalIds.isEmpty()) return;
+
+            java.util.List<String> orphanCodes = java.util.List.of(
+                    com.hms.security.OtPermissions.OT_ASSIGN_TEAM,
+                    com.hms.security.OtPermissions.OT_RECOVERY,
+                    com.hms.security.OtPermissions.OT_TRANSFER);
+
+            int inserted = 0;
+            for (Long hospitalId : configuredHospitalIds) {
+                for (String code : orphanCodes) {
+                    Integer existing = jdbcTemplate.queryForObject(
+                            "SELECT COUNT(*) FROM role_permissions WHERE hospital_id = ? AND permission_code = ?",
+                            Integer.class, hospitalId, code);
+                    if (existing != null && existing > 0) continue; // this hospital has engaged with this code
+
+                    for (String role : com.hms.security.OtPermissions.ROLES) {
+                        if (!com.hms.security.OtPermissions.defaultsFor(role).contains(code)) continue;
+                        jdbcTemplate.update(
+                                "INSERT IGNORE INTO role_permissions (hospital_id, role, permission_code) "
+                                        + "VALUES (?, ?, ?)",
+                                hospitalId, role, code);
+                        inserted++;
+                    }
+                }
+            }
+            if (inserted > 0) {
+                log.info("DB migration applied: backfilled {} OT permission grant(s) for {} previously "
+                        + "configured hospital(s) (OT_ASSIGN_TEAM/OT_RECOVERY/OT_TRANSFER)",
+                        inserted, configuredHospitalIds.size());
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (OT permission reconciliation): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * OT-P0B — a recovery bay is the smallest additive representation of "where" a recovering
+     * patient is. Deliberately not an ot_room (theatres are turned over and freed the moment a
+     * case COMPLETEs; recovery is a separate resource so occupancy in one is never read as
+     * occupancy in the other) and not a Ward/Bed (recovery has its own tiny lifecycle -- a bay is
+     * simply named and active/inactive, occupancy is derived from whether an undischarged
+     * ot_recovery_episodes row currently references it).
+     */
+    private void ensureRecoveryBaysTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES "
+                    + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'recovery_bays'", Integer.class);
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                        "CREATE TABLE recovery_bays ("
+                        + "  id BIGINT NOT NULL AUTO_INCREMENT,"
+                        + "  public_id VARCHAR(36) NOT NULL,"
+                        + "  hospital_id BIGINT NOT NULL,"
+                        + "  name VARCHAR(100) NOT NULL,"
+                        + "  is_active TINYINT(1) NOT NULL DEFAULT 1,"
+                        + "  created_at DATETIME(6) NOT NULL,"
+                        + "  PRIMARY KEY (id),"
+                        + "  UNIQUE KEY uk_recovery_bay_public_id (public_id),"
+                        + "  UNIQUE KEY uk_recovery_bay_name (hospital_id, name),"
+                        + "  CONSTRAINT FK_recovery_bay_hospital FOREIGN KEY (hospital_id) "
+                        + "    REFERENCES hospitals (id) ON DELETE CASCADE"
+                        + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                log.info("DB migration applied: created recovery_bays table");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (recovery_bays): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * INV-2/INV-3 safety net for the batch + ledger tables (Flyway V14 is the authority).
+     * Creation only -- the legacy medicines.stock_quantity -> opening-batch conversion lives in
+     * V14 alone, because a data backfill that ran on every boot could double-post stock.
+     */
+    private void ensureMedicineStockTables() {
+        try {
+            Integer batches = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES "
+                    + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'medicine_stock_batches'", Integer.class);
+            if (batches != null && batches == 0) {
+                jdbcTemplate.execute(
+                        "CREATE TABLE medicine_stock_batches ("
+                        + "  id BIGINT NOT NULL AUTO_INCREMENT,"
+                        + "  public_id VARCHAR(36) NOT NULL,"
+                        + "  hospital_id BIGINT NOT NULL,"
+                        + "  medicine_id BIGINT NOT NULL,"
+                        + "  batch_number VARCHAR(100) NOT NULL,"
+                        + "  expiry_date DATE NOT NULL,"
+                        + "  received_quantity INT NOT NULL DEFAULT 0,"
+                        + "  current_quantity INT NOT NULL DEFAULT 0,"
+                        + "  unit_price DOUBLE NULL,"
+                        + "  is_active TINYINT(1) NOT NULL DEFAULT 1,"
+                        + "  received_at DATETIME(6) NOT NULL,"
+                        + "  created_at DATETIME(6) NOT NULL,"
+                        + "  PRIMARY KEY (id),"
+                        + "  UNIQUE KEY uk_medicine_stock_batch_public_id (public_id),"
+                        + "  UNIQUE KEY uk_medicine_batch (hospital_id, medicine_id, batch_number),"
+                        + "  KEY idx_medicine_batch_fefo (hospital_id, medicine_id, expiry_date),"
+                        + "  CONSTRAINT FK_medicine_batch_medicine FOREIGN KEY (medicine_id) "
+                        + "    REFERENCES medicines (id) ON DELETE CASCADE,"
+                        + "  CONSTRAINT ck_medicine_batch_qty_non_negative CHECK (current_quantity >= 0)"
+                        + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                log.info("DB migration applied: created medicine_stock_batches table");
+            }
+            Integer movements = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES "
+                    + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_movements'", Integer.class);
+            if (movements != null && movements == 0) {
+                jdbcTemplate.execute(
+                        "CREATE TABLE stock_movements ("
+                        + "  id BIGINT NOT NULL AUTO_INCREMENT,"
+                        + "  public_id VARCHAR(36) NOT NULL,"
+                        + "  hospital_id BIGINT NOT NULL,"
+                        + "  inventory_domain VARCHAR(20) NOT NULL,"
+                        + "  item_id BIGINT NOT NULL,"
+                        + "  batch_id BIGINT NULL,"
+                        + "  movement_type VARCHAR(30) NOT NULL,"
+                        + "  direction VARCHAR(3) NOT NULL,"
+                        + "  quantity INT NOT NULL,"
+                        + "  balance_after INT NULL,"
+                        + "  reference_type VARCHAR(40) NULL,"
+                        + "  reference_id BIGINT NULL,"
+                        + "  idempotency_key VARCHAR(100) NULL,"
+                        + "  performed_by_user_id BIGINT NULL,"
+                        + "  remarks VARCHAR(255) NULL,"
+                        + "  created_at DATETIME(6) NOT NULL,"
+                        + "  PRIMARY KEY (id),"
+                        + "  UNIQUE KEY uk_stock_movement_public_id (public_id),"
+                        + "  UNIQUE KEY uk_stock_movement_idempotency (hospital_id, idempotency_key, batch_id),"
+                        + "  KEY idx_stock_movement_item (hospital_id, inventory_domain, item_id, id),"
+                        + "  KEY idx_stock_movement_batch (hospital_id, batch_id, id),"
+                        + "  CONSTRAINT ck_stock_movement_qty_positive CHECK (quantity > 0),"
+                        + "  CONSTRAINT ck_stock_movement_direction CHECK (direction IN ('IN','OUT'))"
+                        + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                log.info("DB migration applied: created stock_movements table");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (medicine stock tables): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * V16 safety net. Creation only: the table holds request bookkeeping, never clinical data, so
+     * there is nothing to backfill and an empty table is the correct starting state.
+     */
+    private void ensureOpdIdempotencyTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES "
+                    + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'opd_idempotency'", Integer.class);
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                        "CREATE TABLE opd_idempotency ("
+                        + "  id BIGINT NOT NULL AUTO_INCREMENT,"
+                        + "  hospital_id BIGINT NOT NULL,"
+                        + "  idempotency_key VARCHAR(100) NOT NULL,"
+                        + "  opd_id BIGINT NULL,"
+                        + "  created_at DATETIME(6) NOT NULL,"
+                        + "  PRIMARY KEY (id),"
+                        + "  UNIQUE KEY uk_opd_idempotency (hospital_id, idempotency_key),"
+                        + "  KEY idx_opd_idempotency_opd (opd_id)"
+                        + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                log.info("DB migration applied: created opd_idempotency table");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (opd_idempotency): {}", e.getMessage());
+        }
+    }
+
     private void addColumnIfMissing(String table, String column, String definition) {
         try {
             Integer count = jdbcTemplate.queryForObject(
@@ -2243,4 +2781,539 @@ public class DatabaseMigrationRunner {
             log.warn("DB migration skipped ({}.{}): {}", table, column, e.getMessage());
         }
     }
+
+    /**
+     * ICU Phase 9 - alert thresholds.
+     *
+     * <p>One table, and it ships EMPTY: unlike the other ICU config tables there is no lazy
+     * default, because "no row" means no alert rather than a sensible one. A default threshold
+     * would be the system deciding what a normal MAP is.
+     *
+     * <p>Per hospital only. There is deliberately no alert-event table (D-4): the roadmap scopes
+     * this phase to threshold storage, so nothing records what fired and nothing de-duplicates.
+     */
+    private void ensureIcuAlertThresholdTable() {
+        createTableIfMissing("icu_alert_threshold",
+                "CREATE TABLE icu_alert_threshold ("
+                    + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                    + " public_id VARCHAR(255) NOT NULL,"
+                    + " hospital_id BIGINT NOT NULL,"
+                    + " source VARCHAR(20) NOT NULL,"
+                    + " metric_key VARCHAR(60) NOT NULL,"
+                    + " min_value DECIMAL(12,3) NULL,"
+                    + " max_value DECIMAL(12,3) NULL,"
+                    + " enabled TINYINT(1) NOT NULL DEFAULT 1,"
+                    + " updated_by_user_id BIGINT NULL,"
+                    + " is_active TINYINT(1) NOT NULL DEFAULT 1,"
+                    + " created_at DATETIME(6) NOT NULL,"
+                    + " PRIMARY KEY (id),"
+                    + " UNIQUE KEY uk_icu_alert_public_id (public_id),"
+                    + " UNIQUE KEY uk_icu_alert_metric (hospital_id, source, metric_key)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
+
+    /**
+     * ICU Phase 8 - severity scores and the small setting that says which ones a hospital uses.
+     *
+     * <p>The setting table is deliberately thinner than ICU-7's parameter catalogue: no display
+     * name, no unit, no custom rows. A hospital chooses whether it runs SOFA, not what SOFA is -
+     * a renamed component would no longer be comparable to anyone else's score.
+     *
+     * <p>Components live in components_json keyed by component key, and total_score is stored
+     * rather than recomputed: a total is part of what was charted at that moment, not a derived
+     * view of it.
+     */
+    private void ensureIcuSeverityScoreTables() {
+        createTableIfMissing("icu_score_type_setting",
+                "CREATE TABLE icu_score_type_setting ("
+                    + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                    + " public_id VARCHAR(255) NOT NULL,"
+                    + " hospital_id BIGINT NOT NULL,"
+                    + " score_type VARCHAR(20) NOT NULL,"
+                    + " enabled TINYINT(1) NOT NULL DEFAULT 1,"
+                    + " created_at DATETIME(6) NOT NULL,"
+                    + " PRIMARY KEY (id),"
+                    + " UNIQUE KEY uk_icu_score_type_public_id (public_id),"
+                    + " UNIQUE KEY uk_icu_score_type (hospital_id, score_type)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        createTableIfMissing("icu_severity_score",
+                "CREATE TABLE icu_severity_score ("
+                    + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                    + " public_id VARCHAR(255) NOT NULL,"
+                    + " hospital_id BIGINT NOT NULL,"
+                    + " ipd_admission_id BIGINT NOT NULL,"
+                    + " patient_id BIGINT NOT NULL,"
+                    + " icu_stay_id BIGINT NULL,"
+                    + " score_type VARCHAR(20) NOT NULL,"
+                    + " components_json TEXT NULL,"
+                    + " total_score INT NULL,"
+                    + " scored_at DATETIME(6) NOT NULL,"
+                    + " recorded_by_user_id BIGINT NULL,"
+                    + " performed_by_nurse_id BIGINT NULL,"
+                    + " supersedes_score_id BIGINT NULL,"
+                    + " note VARCHAR(255) NULL,"
+                    + " is_active TINYINT(1) NOT NULL DEFAULT 1,"
+                    + " created_at DATETIME(6) NOT NULL,"
+                    + " PRIMARY KEY (id),"
+                    + " UNIQUE KEY uk_icu_score_public_id (public_id),"
+                    + " KEY idx_icu_score_admission (ipd_admission_id, score_type, scored_at),"
+                    + " KEY idx_icu_score_hospital (hospital_id)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
+
+    /**
+     * ICU Phase 7 - the ventilator parameter catalogue and the timed snapshots that use it.
+     *
+     * <p>Two tables because they answer different questions. The parameter table answers "what may
+     * be charted?" and holds overrides only - a built-in with no row is enabled, so nothing is
+     * seeded here. The setting table answers "what was recorded at 04:00?" and stores values in
+     * values_json keyed by param_key, NOT one column per parameter: the catalogue is configurable,
+     * and a column per parameter would mean a migration every time a hospital wanted one of its
+     * own.
+     *
+     * <p>ventilation_status stays a typed NOT NULL column - it distinguishes a ventilated row from
+     * an extubation row and must be queryable without parsing JSON.
+     */
+    private void ensureIcuVentilatorTables() {
+        createTableIfMissing("icu_ventilator_parameter",
+                "CREATE TABLE icu_ventilator_parameter ("
+                    + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                    + " public_id VARCHAR(255) NOT NULL,"
+                    + " hospital_id BIGINT NOT NULL,"
+                    + " param_key VARCHAR(60) NOT NULL,"
+                    + " display_name VARCHAR(60) NOT NULL,"
+                    + " unit VARCHAR(20) NULL,"
+                    + " category VARCHAR(20) NOT NULL DEFAULT 'SETTING',"
+                    + " value_type VARCHAR(20) NOT NULL DEFAULT 'NUMBER',"
+                    + " enabled TINYINT(1) NOT NULL DEFAULT 1,"
+                    + " is_custom TINYINT(1) NOT NULL DEFAULT 0,"
+                    + " sort_order INT NULL,"
+                    + " created_at DATETIME(6) NOT NULL,"
+                    + " PRIMARY KEY (id),"
+                    + " UNIQUE KEY uk_icu_vent_param_public_id (public_id),"
+                    + " UNIQUE KEY uk_icu_vent_param_key (hospital_id, param_key)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        createTableIfMissing("icu_ventilator_setting",
+                "CREATE TABLE icu_ventilator_setting ("
+                    + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                    + " public_id VARCHAR(255) NOT NULL,"
+                    + " hospital_id BIGINT NOT NULL,"
+                    + " ipd_admission_id BIGINT NOT NULL,"
+                    + " patient_id BIGINT NOT NULL,"
+                    + " icu_stay_id BIGINT NULL,"
+                    + " ventilation_status VARCHAR(20) NOT NULL,"
+                    + " values_json TEXT NULL,"
+                    + " observed_at DATETIME(6) NOT NULL,"
+                    + " recorded_by_user_id BIGINT NULL,"
+                    + " performed_by_nurse_id BIGINT NULL,"
+                    + " supersedes_setting_id BIGINT NULL,"
+                    + " note VARCHAR(255) NULL,"
+                    + " is_active TINYINT(1) NOT NULL DEFAULT 1,"
+                    + " created_at DATETIME(6) NOT NULL,"
+                    + " PRIMARY KEY (id),"
+                    + " UNIQUE KEY uk_icu_vent_public_id (public_id),"
+                    + " KEY idx_icu_vent_admission (ipd_admission_id, observed_at),"
+                    + " KEY idx_icu_vent_hospital (hospital_id)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
+
+    /**
+     * ICU Phase 6 - continuous infusions and their rate history.
+     *
+     * <p>Two tables on purpose: the span is one row, but the rate changes repeatedly and every
+     * change must survive, so the current rate is NOT a column on the span. Separate from
+     * icu_io_entry by decision (D-1) - an infusion is drug delivery, not a fluid-balance event.
+     */
+    private void ensureIcuInfusionTables() {
+        createTableIfMissing("icu_infusion", "CREATE TABLE icu_infusion ("
+                    + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                    + " public_id VARCHAR(255) NOT NULL,"
+                    + " hospital_id BIGINT NOT NULL,"
+                    + " ipd_admission_id BIGINT NOT NULL,"
+                    + " patient_id BIGINT NOT NULL,"
+                    + " prescription_id BIGINT NULL,"
+                    + " medicine_name VARCHAR(255) NOT NULL,"
+                    + " started_at DATETIME(6) NOT NULL,"
+                    + " stopped_at DATETIME(6) NULL,"
+                    + " stop_reason VARCHAR(255) NULL,"
+                    + " started_by_user_id BIGINT NULL,"
+                    + " performed_by_nurse_id BIGINT NULL,"
+                    + " is_active TINYINT(1) NOT NULL DEFAULT 1,"
+                    + " created_at DATETIME(6) NOT NULL,"
+                    + " PRIMARY KEY (id),"
+                    + " UNIQUE KEY uk_icu_inf_public_id (public_id),"
+                    + " KEY idx_icu_inf_admission (ipd_admission_id),"
+                    + " KEY idx_icu_inf_hospital (hospital_id)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        createTableIfMissing("icu_infusion_rate", "CREATE TABLE icu_infusion_rate ("
+                    + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                    + " public_id VARCHAR(255) NOT NULL,"
+                    + " hospital_id BIGINT NOT NULL,"
+                    + " icu_infusion_id BIGINT NOT NULL,"
+                    + " rate_value DECIMAL(12,3) NOT NULL,"
+                    + " rate_unit VARCHAR(20) NOT NULL,"
+                    + " effective_from DATETIME(6) NOT NULL,"
+                    + " recorded_by_user_id BIGINT NULL,"
+                    + " performed_by_nurse_id BIGINT NULL,"
+                    + " supersedes_rate_id BIGINT NULL,"
+                    + " is_active TINYINT(1) NOT NULL DEFAULT 1,"
+                    + " created_at DATETIME(6) NOT NULL,"
+                    + " PRIMARY KEY (id),"
+                    + " UNIQUE KEY uk_icu_inf_rate_public_id (public_id),"
+                    + " KEY idx_icu_inf_rate_infusion (icu_infusion_id),"
+                    + " KEY idx_icu_inf_rate_effective (icu_infusion_id, effective_from)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
+
+    /**
+     * ICU Phase 5 - the fluid intake/output event stream.
+     *
+     * <p>Authoritative for ICU fluid balance and the NABH I/O chart (D-2).
+     * {@code vitals_records.urine_output_ml} is a separate point-in-time observation and is
+     * never copied in here.
+     */
+    private void ensureIcuIoEntryTable() {
+        try {
+            Integer exists = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES "
+              + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'icu_io_entry'", Integer.class);
+            if (exists != null && exists == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE icu_io_entry ("
+                    + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                    + " public_id VARCHAR(255) NOT NULL,"
+                    + " hospital_id BIGINT NOT NULL,"
+                    + " ipd_admission_id BIGINT NOT NULL,"
+                    + " patient_id BIGINT NOT NULL,"
+                    + " direction VARCHAR(6) NOT NULL,"
+                    + " route VARCHAR(30) NOT NULL,"
+                    + " volume_ml INT NOT NULL,"
+                    + " occurred_at DATETIME(6) NOT NULL,"
+                    + " notes VARCHAR(255) NULL,"
+                    + " recorded_by_user_id BIGINT NULL,"
+                    + " performed_by_nurse_id BIGINT NULL,"
+                    + " supersedes_io_entry_id BIGINT NULL,"
+                    + " is_active TINYINT(1) NOT NULL DEFAULT 1,"
+                    + " created_at DATETIME(6) NOT NULL,"
+                    + " PRIMARY KEY (id),"
+                    + " UNIQUE KEY uk_icu_io_public_id (public_id),"
+                    + " KEY idx_icu_io_admission (ipd_admission_id),"
+                    + " KEY idx_icu_io_hospital (hospital_id),"
+                    + " KEY idx_icu_io_occurred (ipd_admission_id, occurred_at)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                log.info("DB migration applied: created icu_io_entry");
+            }
+        } catch (Exception e) {
+            log.warn("ensureIcuIoEntryTable failed: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * ICU Phase 4 — critical-care observations plus the append-only correction link.
+     *
+     * <p>Every column is NULLABLE, which is the backward-compatibility guarantee: existing rows
+     * and every ward reading are untouched and no backfill is required. (ICU-2 learned the hard
+     * way that a NOT NULL column with only a Java default is added by ddl-auto BEFORE this
+     * runner, with no DB default — none of these take that path.)
+     */
+    private void ensureVitalsIcuColumns() {
+        addColumnIfMissing("vitals_records", "map_mmhg", "INT NULL");
+        addColumnIfMissing("vitals_records", "cvp_cmh2o", "INT NULL");
+        addColumnIfMissing("vitals_records", "urine_output_ml", "INT NULL");
+        addColumnIfMissing("vitals_records", "gcs_eye", "INT NULL");
+        addColumnIfMissing("vitals_records", "gcs_verbal", "INT NULL");
+        addColumnIfMissing("vitals_records", "gcs_motor", "INT NULL");
+        addColumnIfMissing("vitals_records", "gcs_total", "INT NULL");
+        addColumnIfMissing("vitals_records", "supersedes_vitals_id", "BIGINT NULL");
+    }
+
+    /** ICU Phase 3 — the ICU stay record. See IcuStay for why active_marker exists. */
+    private void ensureIcuStayTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES " +
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'icu_stay'", Integer.class);
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE icu_stay (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  public_id VARCHAR(255) NOT NULL," +
+                    "  hospital_id BIGINT NOT NULL," +
+                    "  ipd_admission_id BIGINT NOT NULL," +
+                    "  patient_id BIGINT NOT NULL," +
+                    "  ward_id BIGINT NOT NULL," +
+                    "  status VARCHAR(10) NOT NULL DEFAULT 'ACTIVE'," +
+                    "  source VARCHAR(20) NOT NULL," +
+                    "  source_ref_id BIGINT DEFAULT NULL," +
+                    "  admitted_at DATETIME(6) NOT NULL," +
+                    "  admission_reason VARCHAR(255) DEFAULT NULL," +
+                    "  intensivist_doctor_id BIGINT DEFAULT NULL," +
+                    "  admitted_by_user_id BIGINT DEFAULT NULL," +
+                    "  disposition VARCHAR(20) DEFAULT NULL," +
+                    "  discharged_at DATETIME(6) DEFAULT NULL," +
+                    "  discharged_by_user_id BIGINT DEFAULT NULL," +
+                    "  active_marker BIGINT DEFAULT NULL," +
+                    "  created_at DATETIME(6) NOT NULL," +
+                    "  PRIMARY KEY (id)," +
+                    "  UNIQUE KEY uk_icu_stay_public_id (public_id)," +
+                    "  UNIQUE KEY uk_icu_stay_active (hospital_id, active_marker)," +
+                    "  KEY idx_icu_stay_admission (ipd_admission_id)," +
+                    "  KEY idx_icu_stay_hospital (hospital_id)" +
+                    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                log.info("DB migration applied: created icu_stay");
+            }
+        } catch (Exception e) {
+            log.warn("ensureIcuStayTable skipped: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * ICU Phase 3 — gives every patient ALREADY lying in a critical-care bed an ACTIVE stay.
+     *
+     * <p>Without this the ICU board contradicts itself from the first minute: the bed is occupied
+     * and the admission is active, but no stay exists, so the biconditional the module rests on
+     * (ACTIVE stay ⟺ patient occupies a critical-care bed) is violated for every existing patient.
+     *
+     * <p>Deliberately honest about what it does NOT know. The moment critical care actually began
+     * was never recorded, so {@code admitted_at} reuses the admission's own timestamp rather than
+     * inventing one, the source is EXTERNAL_REFERRAL (the "arrived already in this state" value),
+     * and the reason says plainly that the row was backfilled. No clinical history is fabricated.
+     *
+     * <p>Idempotent: the WHERE clause excludes admissions that already have an ACTIVE stay, so
+     * running it on every startup is a no-op after the first.
+     */
+    private void backfillIcuStaysForCurrentOccupants() {
+        try {
+            int created = jdbcTemplate.update(
+                "INSERT INTO icu_stay (public_id, hospital_id, ipd_admission_id, patient_id, ward_id," +
+                "  status, source, admitted_at, admission_reason, admitted_by_user_id," +
+                "  active_marker, created_at) " +
+                "SELECT UUID(), a.hospital_id, a.id, a.patient_id, a.ward_id," +
+                "  'ACTIVE', 'EXTERNAL_REFERRAL', a.admission_datetime," +
+                "  'Backfilled at ICU-3: this patient already occupied a critical-care bed. " +
+                "The actual time critical care began was not recorded.', NULL," +
+                "  a.id, NOW(6) " +
+                "FROM ipd_admission a " +
+                "JOIN icu_wards iw ON iw.ward_id = a.ward_id AND iw.hospital_id = a.hospital_id " +
+                "WHERE a.status IN ('ADMITTED','DISCHARGE_PLANNED') " +
+                "  AND NOT EXISTS (SELECT 1 FROM icu_stay s " +
+                "                  WHERE s.ipd_admission_id = a.id AND s.status = 'ACTIVE')");
+            if (created > 0) {
+                log.info("DB migration applied: backfilled {} ACTIVE ICU stay(s) for current occupants", created);
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("ICU stay backfill failed; legacy classification retained", e);
+        }
+    }
+
+    /** CREATE TABLE when absent, matching the ensureXxx idiom used throughout this runner. */
+    private void createTableIfMissing(String table, String ddl) {
+        try {
+            Integer exists = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES "
+              + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?", Integer.class, table);
+            if (exists != null && exists == 0) {
+                jdbcTemplate.execute(ddl);
+                log.info("DB migration applied: created {}", table);
+            }
+        } catch (Exception e) {
+            log.warn("createTableIfMissing skipped ({}): {}", table, e.getMessage());
+        }
+    }
+
+    /**
+     * Patient duplicate prevention, Phase A — the acknowledgement columns only.
+     *
+     * <p>{@code duplicate_phone_ack_for} holds the phone number a member of staff confirmed this
+     * patient legitimately shares with another active patient of the same hospital. It is a value
+     * and not a flag so the exemption is bound to that number: change the patient's phone and the
+     * acknowledgement stops applying, because it was never a per-patient opt-out. The other two
+     * columns say who confirmed it and when.
+     *
+     * <p>Phase A deliberately stops here. The generated column and the unique index that make the
+     * database the concurrency backstop come later, once existing duplicates are reconciled —
+     * adding a unique index over unreconciled data would fail, and this runner's helpers swallow
+     * failures, so it would fail silently.
+     */
+    private void ensurePatientDuplicatePhoneAckColumns() {
+        addColumnIfMissing("patients", "duplicate_phone_ack_for", "VARCHAR(15) DEFAULT NULL");
+        addColumnIfMissing("patients", "duplicate_phone_ack_at", "DATETIME(6) DEFAULT NULL");
+        addColumnIfMissing("patients", "duplicate_phone_ack_by", "VARCHAR(100) DEFAULT NULL");
+        ensurePatientActivePhoneUniqueness();
+    }
+
+    /**
+     * Dedicated ICU wards table. Coordinates with base wards table so all bed, admission,
+     * billing, and nursing relationships remain intact.
+     */
+    private void ensureIcuWardsTable() {
+        createTableIfMissing("icu_wards",
+                "CREATE TABLE icu_wards ("
+                + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                + " public_id VARCHAR(255) NOT NULL,"
+                + " hospital_id BIGINT NOT NULL,"
+                + " ward_id BIGINT NOT NULL,"
+                + " ward_name VARCHAR(100) NOT NULL,"
+                + " unit_type VARCHAR(20) NOT NULL DEFAULT 'ICU',"
+                + " bed_price DECIMAL(10,2) NOT NULL,"
+                + " total_beds INT NOT NULL,"
+                + " floor_number INT NULL,"
+                + " incharge_nurse_id BIGINT NULL,"
+                + " created_at DATETIME(6) NOT NULL,"
+                + " updated_at DATETIME(6) NULL,"
+                + " PRIMARY KEY (id),"
+                + " UNIQUE KEY uk_icu_ward_public_id (public_id),"
+                + " UNIQUE KEY uk_icu_ward_ward_id (ward_id),"
+                + " UNIQUE KEY uk_icu_ward_hospital_name (hospital_id, ward_name),"
+                + " KEY idx_icu_wards_hospital (hospital_id)"
+                + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
+
+    /**
+     * Idempotently backfills existing critical care wards from base wards into icu_wards
+     * if the legacy unit_type column is still present in the wards table.
+     */
+    private void backfillExistingIcuWards() {
+        try {
+            Integer hasCol = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wards' AND COLUMN_NAME = 'unit_type'",
+                Integer.class);
+            if (hasCol != null && hasCol > 0) {
+                String criticalCare = com.hms.service.hospital.icu.CareUnitRegistry.criticalCareKeys()
+                        .stream().map(k -> "'" + k + "'").reduce((a, b) -> a + "," + b).orElse("''");
+                int backfilled = jdbcTemplate.update(
+                    "INSERT INTO icu_wards (public_id, hospital_id, ward_id, ward_name, unit_type, bed_price, total_beds, floor_number, incharge_nurse_id, created_at, updated_at) " +
+                    "SELECT UUID(), w.hospital_id, w.ward_id, w.ward_name, w.unit_type, w.bed_price, w.total_beds, w.floor_number, w.incharge_nurse_id, NOW(6), NOW(6) " +
+                    "FROM wards w " +
+                    "WHERE w.unit_type IN (" + criticalCare + ") " +
+                    "  AND NOT EXISTS (SELECT 1 FROM icu_wards iw WHERE iw.ward_id = w.ward_id)");
+                Integer incomplete = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM wards w LEFT JOIN icu_wards iw ON iw.ward_id = w.ward_id " +
+                    "WHERE w.unit_type IN (" + criticalCare + ") AND " +
+                    "(iw.id IS NULL OR iw.hospital_id <> w.hospital_id)",
+                    Integer.class);
+                if (incomplete == null || incomplete != 0) {
+                    throw new IllegalStateException("ICU ward backfill is incomplete or inconsistent");
+                }
+                if (backfilled > 0) {
+                    log.info("DB migration applied: backfilled {} ICU ward(s) into icu_wards", backfilled);
+                }
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("ICU ward backfill failed; legacy classification retained", e);
+        }
+    }
+
+    /**
+     * Additive migration: retain the legacy classification for recovery/rollback.
+     * A failed or incomplete copy must stop startup before stay backfill proceeds.
+     *
+     * <p><b>Lifecycle of {@code wards.unit_type} — legacy compatibility column.</b> ICU
+     * classification is owned by {@code icu_wards.unit_type}. The {@code Ward} entity no longer
+     * maps {@code unit_type} and {@code setup/schema-full.sql} does not declare it on
+     * {@code wards}, so a NEW database never has the column; an UPGRADED database keeps it, and
+     * nothing here will ever drop it. That asymmetry is deliberate, not an oversight:
+     *
+     * <ul>
+     *   <li>dropping it is destructive and irreversible — it is the only remaining record of how
+     *       a pre-ICU ward was classified, so it is retained as the rollback path if the copy
+     *       into {@code icu_wards} is ever found to be wrong;</li>
+     *   <li>re-adding it to fresh installs for symmetry would resurrect a second, writable source
+     *       of truth for classification that no runtime code reads.</li>
+     * </ul>
+     *
+     * <p>Because the backfill now fails closed, the missing-column case must stay explicitly
+     * guarded: {@link #backfillExistingIcuWards()} checks {@code information_schema} first and
+     * skips when the column is absent, and {@link #backfillIcuStaysForCurrentOccupants()} joins
+     * {@code icu_wards} rather than the legacy column. Both paths are proven by
+     * {@code IcuFreshInstallIT} (new database) and {@code IcuBackfillIT} (upgraded database).
+     */
+    private void migrateIcuWardsAndStays() {
+        ensureIcuWardsTable();
+        backfillExistingIcuWards();
+        backfillIcuStaysForCurrentOccupants();
+    }
+
+    private void ensureConsultationStatementsTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'consultation_statements'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE consultation_statements (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  hospital_type VARCHAR(20) NOT NULL DEFAULT 'ALL'," +
+                    "  category VARCHAR(30) NOT NULL," +
+                    "  english_text VARCHAR(500) NOT NULL," +
+                    "  marathi_text VARCHAR(500) NOT NULL," +
+                    "  hindi_text VARCHAR(500) NOT NULL," +
+                    "  display_order INT NOT NULL DEFAULT 0," +
+                    "  is_active TINYINT(1) NOT NULL DEFAULT 1," +
+                    "  created_at DATETIME(6) NOT NULL," +
+                    "  PRIMARY KEY (id)," +
+                    "  INDEX idx_stmt_type_cat (hospital_type, category)" +
+                    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+                );
+                log.info("DB migration applied: consultation_statements table created");
+
+                // Seed initial statements
+                String seedSql = "INSERT INTO consultation_statements (hospital_type, category, english_text, marathi_text, hindi_text, display_order, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, NOW(6))";
+                // Medicine Instructions
+                jdbcTemplate.update(seedSql, "ALL", "MEDICINE_INSTRUCTION", "Take with water", "पाण्यासोबत घ्या", "पानी के साथ लें", 1);
+                jdbcTemplate.update(seedSql, "ALL", "MEDICINE_INSTRUCTION", "At bedtime", "झोपण्यापूर्वी घ्या", "सोते समय लें", 2);
+                jdbcTemplate.update(seedSql, "ALL", "MEDICINE_INSTRUCTION", "In the morning", "सकाळी घ्या", "सुबह लें", 3);
+                jdbcTemplate.update(seedSql, "ALL", "MEDICINE_INSTRUCTION", "Apply externally", "फक्त बाह्य वापरासाठी", "केवल बाहरी उपयोग के लिए", 4);
+                jdbcTemplate.update(seedSql, "ALL", "MEDICINE_INSTRUCTION", "Before sleep", "झोपण्यापूर्वी", "सोने से पहले", 5);
+                jdbcTemplate.update(seedSql, "ALL", "MEDICINE_INSTRUCTION", "Take on an empty stomach", "उपाशीपोटी घ्या", "खाली पेट लें", 6);
+                jdbcTemplate.update(seedSql, "ALL", "MEDICINE_INSTRUCTION", "Chew properly before swallowing", "गिळण्यापूर्वी नीट चावून घ्या", "निगलने से पहले ठीक से चबाएं", 7);
+                // Doctor Advice
+                jdbcTemplate.update(seedSql, "ALL", "DOCTOR_ADVICE", "Drink more water.", "जास्त पाणी प्या.", "अधिक पानी पिएं।", 1);
+                jdbcTemplate.update(seedSql, "ALL", "DOCTOR_ADVICE", "Avoid oily food.", "तेलकट पदार्थ खाऊ नका.", "तैलीय भोजन से बचें।", 2);
+                jdbcTemplate.update(seedSql, "ALL", "DOCTOR_ADVICE", "Take adequate rest.", "पुरेशी विश्रांती घ्या.", "पर्याप्त आराम करें।", 3);
+                jdbcTemplate.update(seedSql, "ALL", "DOCTOR_ADVICE", "Avoid spicy food for 7 days.", "७ दिवस तिखट पदार्थ टाळा.", "७ दिनों तक मसालेदार भोजन से बचें।", 4);
+                jdbcTemplate.update(seedSql, "ALL", "DOCTOR_ADVICE", "Walk 30 minutes daily.", "दररोज ३० मिनिटे चाला.", "प्रतिदिन ३० मिनट टहलें।", 5);
+                log.info("DB migration applied: consultation_statements initial seeds inserted");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (consultation_statements): {}", e.getMessage());
+        }
+    }
+
+
+    private void ensureIcuCleaningTasksTable() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'icu_cleaning_tasks'",
+                Integer.class
+            );
+            if (count != null && count == 0) {
+                jdbcTemplate.execute(
+                    "CREATE TABLE icu_cleaning_tasks (" +
+                    "  id BIGINT NOT NULL AUTO_INCREMENT," +
+                    "  hospital_id BIGINT NOT NULL," +
+                    "  ward_id BIGINT NULL," +
+                    "  bed_id BIGINT NULL," +
+                    "  ward_name VARCHAR(255) NULL," +
+                    "  bed_number VARCHAR(100) NULL," +
+                    "  task_description VARCHAR(500) NOT NULL," +
+                    "  priority VARCHAR(20) NOT NULL DEFAULT 'MEDIUM'," +
+                    "  status VARCHAR(20) NOT NULL DEFAULT 'PENDING'," +
+                    "  assigned_to VARCHAR(255) NULL," +
+                    "  created_by VARCHAR(255) NOT NULL," +
+                    "  created_at DATETIME(6) NULL," +
+                    "  PRIMARY KEY (id)," +
+                    "  INDEX idx_icu_cleaning_hosp_status (hospital_id, status)" +
+                    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+                );
+                log.info("DB migration applied: icu_cleaning_tasks table created");
+            }
+        } catch (Exception e) {
+            log.warn("DB migration skipped (icu_cleaning_tasks): {}", e.getMessage());
+        }
+    }
+
 }

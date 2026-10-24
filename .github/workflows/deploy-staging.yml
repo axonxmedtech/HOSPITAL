@@ -39,12 +39,16 @@ jobs:
       - name: Check Sonar Token
         id: check
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_VAR: ${{ vars.SONAR_TOKEN }}
+          # Presence only. The expression evaluates to 'true' or 'false', so the token itself never
+          # enters this step's environment, whose values GitHub prints in the log. The token is a
+          # secret and nothing else: a variable fallback once printed it in plain text.
+          SONAR_TOKEN_PRESENT: ${{ secrets.SONAR_TOKEN != '' }}
           SONAR_ORG: ${{ vars.SONAR_ORGANIZATION }}
           SONAR_KEY: ${{ vars.SONAR_PROJECT_KEY }}
         run: |
-          if { [ -n "$SONAR_TOKEN" ] || [ -n "$SONAR_VAR" ]; } && [ -n "$SONAR_ORG" ] && [ -n "$SONAR_KEY" ]; then
+          if [ "$SONAR_TOKEN_PRESENT" = "true" ]; then token=PRESENT; else token=MISSING; fi
+          echo "Sonar token secret: $token"
+          if [ "$token" = PRESENT ] && [ -n "$SONAR_ORG" ] && [ -n "$SONAR_KEY" ]; then
             echo "has_sonar_token=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_sonar_token=false" >> "$GITHUB_OUTPUT"
@@ -98,8 +102,12 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+      - name: Test the migration validator
+        run: bash scripts/db/test-validate-migrations.sh
       - name: Validate Flyway migrations
         run: bash scripts/db/validate-migrations.sh
+      - name: Validate schema bootstrap
+        run: bash scripts/db/validate-schema-bootstrap.sh
       - name: Summary
         if: always()
         run: |
@@ -164,7 +172,7 @@ jobs:
         continue-on-error: true
         uses: sonarsource/sonarqube-scan-action@v6
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN || vars.SONAR_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
         with:
           args: >
@@ -252,23 +260,38 @@ jobs:
       git_branch: staging
       ssh_host: ${{ vars.STAGING_SSH_HOST }}
       ssh_port: ${{ vars.STAGING_SSH_PORT || '22' }}
-      health_port: ${{ vars.STAGING_HEALTH_PORT || '8080' }}
+      # No health_port here: this caller job has no environment scope, so vars.STAGING_HEALTH_PORT
+      # would be empty. _deploy.yml resolves it inside the Staging environment, no fallback.
       app_url: ${{ vars.STAGING_APP_URL }}
       enable_rollback: true
       notify_slack: false
-    secrets:
-      ssh_key: ${{ secrets.SSH_PRIVATE_KEY }}
-      ssh_user: ${{ secrets.SSH_USERNAME }}
+    # inherit: _deploy.yml's job runs in the Staging environment and reads DEPLOY_SSH_KEY /
+    # DEPLOY_SSH_USER from it; the environment releases them only to the branches it allows.
+    secrets: inherit
 
   # ── Staging smoke tests — post-deploy verification against the live site ───
   staging-smoke:
     name: Staging — Smoke Tests
     needs: [deploy-staging]
-    if: needs.deploy-staging.result == 'success' && vars.STAGING_APP_URL != ''
+    if: needs.deploy-staging.result == 'success'
     runs-on: ubuntu-latest
+    environment: Staging
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Validate live smoke configuration
+        env:
+          STAGING_APP_URL: ${{ vars.STAGING_APP_URL }}
+          STAGING_API_URL: ${{ vars.STAGING_API_URL }}
+        run: |
+          missing=0
+          for name in STAGING_APP_URL STAGING_API_URL; do
+            if [ -z "${!name//[[:space:]]/}" ]; then
+              echo "::error::$name must be configured as a Staging environment variable."
+              missing=1
+            fi
+          done
+          exit "$missing"
       - name: Setup Node.js
         uses: ./.github/actions/setup-node
         with:
@@ -283,6 +306,7 @@ jobs:
       - name: Smoke test the deployed staging site
         env:
           E2E_BASE_URL: ${{ vars.STAGING_APP_URL }}
+          E2E_API_BASE_URL: ${{ vars.STAGING_API_URL }}
         run: npx playwright test --config e2e/playwright.config.js smoke.spec.js
       - name: Upload smoke report
         if: always()

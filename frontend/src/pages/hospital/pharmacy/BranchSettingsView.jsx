@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from '../../../context/ToastContext';
 import branchesApi from '../../../services/pharmacy/branchesApi';
+import { extractApiError } from '../../../utils/apiError';
 
 const BranchSettingsView = () => {
   const { success, error: toastError } = useToast();
@@ -59,7 +60,7 @@ const BranchSettingsView = () => {
       success('Branch settings updated successfully');
     } catch (err) {
       console.error('Failed to save settings:', err);
-      toastError(err.response?.data?.message || 'Failed to save settings');
+      toastError(extractApiError(err, 'Failed to save settings'));
     } finally {
       setSaving(false);
     }

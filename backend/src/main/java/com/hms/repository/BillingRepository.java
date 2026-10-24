@@ -11,6 +11,35 @@ import java.util.List;
 
 @Repository
 public interface BillingRepository extends JpaRepository<Billing, Long> {
+    boolean existsByHospitalIdAndCustomId(Long hospitalId, String customId);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Query("UPDATE Billing b SET b.customId = :customId WHERE b.id = :id AND b.hospitalId = :hospitalId")
+    int updateCustomId(@org.springframework.data.repository.query.Param("hospitalId") Long hospitalId,
+                       @org.springframework.data.repository.query.Param("id") Long id,
+                       @org.springframework.data.repository.query.Param("customId") String customId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT MAX(b.id) FROM Billing b WHERE b.hospitalId = :hospitalId")
+    Long findMaxIdByHospitalId(@org.springframework.data.repository.query.Param("hospitalId") Long hospitalId);
+
+
+    /**
+     * Tenant-scoped, row-locked read of one bill.
+     *
+     * <p>Used by the payment path so that reading the collected total and inserting the new
+     * payment happen under a lock on the bill. Without it two concurrent /pay calls -- a
+     * double-clicked "Paid" button, or a client retry after a timeout -- both read the same
+     * "already paid" figure, both conclude the amount fits inside the outstanding balance, and
+     * both insert. The patient is then charged twice.
+     *
+     * <p>hospital_id is part of the predicate so a foreign bill is not merely rejected later but
+     * never loaded at all.
+     */
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT b FROM Billing b WHERE b.id = :id AND b.hospitalId = :hospitalId")
+    java.util.Optional<Billing> findByIdAndHospitalIdForUpdate(
+            @org.springframework.data.repository.query.Param("id") Long id,
+            @org.springframework.data.repository.query.Param("hospitalId") Long hospitalId);
     Page<Billing> findByHospitalId(Long hospitalId, Pageable pageable);
 
     List<Billing> findByHospitalId(Long hospitalId);
@@ -26,6 +55,18 @@ public interface BillingRepository extends JpaRepository<Billing, Long> {
                 ORDER BY b.createdAt DESC
             """)
     Page<Billing> searchBillings(Long hospitalId, String search, Pageable pageable);
+
+    /** searchBillings with the payment-status filter applied in the query, so paging is correct. */
+    @Query("""
+                SELECT b FROM Billing b
+                JOIN Patient p ON b.patientId = p.id
+                WHERE b.hospitalId = :hospitalId
+                  AND UPPER(b.paymentStatus) = UPPER(:status)
+                  AND (LOWER(p.name) LIKE LOWER(CONCAT('%', :search, '%'))
+                       OR LOWER(b.customId) LIKE LOWER(CONCAT('%', :search, '%')))
+                ORDER BY b.createdAt DESC
+            """)
+    Page<Billing> searchBillingsByStatus(Long hospitalId, String search, String status, Pageable pageable);
 
     java.util.Optional<Billing> findTopByPatientIdOrderByCreatedAtDesc(Long patientId);
 
@@ -51,6 +92,10 @@ public interface BillingRepository extends JpaRepository<Billing, Long> {
     java.util.Optional<Billing> findByAppointmentId(Long appointmentId);
 
     java.util.Optional<Billing> findByOpdId(Long opdId);
+
+    java.util.Optional<Billing> findFirstByAppointmentIdOrderByIdDesc(Long appointmentId);
+
+    java.util.Optional<Billing> findFirstByOpdIdOrderByIdDesc(Long opdId);
 
     java.util.List<Billing> findByHospitalIdAndCreatedAtAfter(Long hospitalId, java.time.LocalDateTime createdAt);
 }

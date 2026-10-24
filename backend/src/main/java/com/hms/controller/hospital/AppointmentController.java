@@ -29,20 +29,65 @@ import org.springframework.data.domain.Pageable;
  */
 @RestController
 @RequestMapping({"/hospital/appointments", "/clinic/appointments", "/pharmacy/appointments"})
-@RequireModule("APPOINTMENTS")
 public class AppointmentController {
+
+    // Module gating is per-method, deliberately, and NOT on the class.
+    //
+    // Appointments are an optional tenant capability: a hospital that works walk-in only has the
+    // APPOINTMENTS module withheld from its plan. The rule for that tenant is "gate writes,
+    // preserve historical reads":
+    //
+    //   * every MUTATION (create, update, status, delete) carries @RequireModule("APPOINTMENTS")
+    //     and 403s, so no new appointment can be booked or altered once the module is withdrawn;
+    //   * every READ stays open, so a tenant that used appointments before the module was removed
+    //     can still open a past appointment, a patient's history and the bill that references it.
+    //     Historical clinical information must never disappear because a plan changed.
+    //
+    // The class-level gate this replaces 403'd the reads too — including /stats, /today and
+    // /my-appointments, which the admin, receptionist and doctor dashboards call while loading
+    // unrelated tabs. One optional module thereby took down three whole dashboards.
+    //
+    // ModuleAccessAspect resolves the method annotation before the class one, so if a class-level
+    // gate is ever reintroduced here it would be overridden on these methods but would silently
+    // re-close the reads. Add new mutations with the annotation; do not move it back up.
 
     @Autowired
     private AppointmentService appointmentService;
+
+    @Autowired
+    private com.hms.service.hospital.DuplicatePhoneRaceTranslator duplicatePhoneRaceTranslator;
+
+    @Autowired
+    private com.hms.security.SecurityContextHelper securityHelper;
+
+    @Autowired
+    private com.hms.security.FrontDeskAccessGuard frontDeskAccessGuard;
 
     /**
      * Create a new appointment
      * Accessible by Hospital Admin and Receptionist
      */
     @PostMapping
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
-    public ResponseEntity<?> createAppointment(@Valid @RequestBody Appointment appointment) {
-        Appointment createdAppointment = appointmentService.createAppointment(appointment);
+    @RequireModule("APPOINTMENTS")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
+    public ResponseEntity<?> createAppointment(@Valid @RequestBody Appointment appointment,
+            @RequestParam(name = "acknowledgeDuplicatePhone", defaultValue = "false")
+            boolean acknowledgeDuplicatePhone) {
+        frontDeskAccessGuard.require();
+        Appointment createdAppointment;
+        try {
+            createdAppointment = appointmentService.createAppointment(appointment,
+                    acknowledgeDuplicatePhone);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            // Booking an appointment can create the patient, so it can lose the same duplicate-phone
+            // race registration can. It is translated HERE rather than inside the service because
+            // createAppointment is @Transactional: catching in there would leave a rollback-only
+            // transaction and the re-read would run inside it. By this line that transaction has
+            // already rolled back and closed.
+            throw duplicatePhoneRaceTranslator.translate(e, securityHelper.getCurrentHospitalId(),
+                    appointment.getPatientPhone(), null,
+                    com.hms.service.hospital.PatientService.DUPLICATE_PHONE_MESSAGE);
+        }
         return ResponseEntity.ok(createdAppointment);
     }
 
@@ -131,6 +176,7 @@ public class AppointmentController {
      * Only Hospital Admin can delete appointments
      */
     @DeleteMapping("/{id}")
+    @RequireModule("APPOINTMENTS")
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     public ResponseEntity<?> deleteAppointment(@PathVariable String id, @RequestParam(required = false) String reason) {
         appointmentService.deleteAppointment(id, reason);
@@ -154,20 +200,47 @@ public class AppointmentController {
      * Update appointment details (Status & Notes)
      */
     @PutMapping("/{id}")
+    @RequireModule("APPOINTMENTS")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> updateAppointment(@PathVariable String id,
             @RequestBody java.util.Map<String, String> payload) {
         String status = payload.get("status");
         String notes = payload.get("notes");
 
-        Appointment updatedAppointment = appointmentService.updateDetails(id, status, notes);
+        // Date and time used to be read off this payload by nobody at all: a reschedule was
+        // accepted with 200 and quietly discarded. They are parsed here in the wire format the
+        // entity itself declares (yyyy-MM-dd and HH:mm), so a value the UI can produce is a value
+        // this endpoint accepts, and anything else is reported instead of ignored.
+        java.time.LocalDate newDate = parseDate(payload.get("appointmentDate"));
+        java.time.LocalTime newTime = parseTime(payload.get("appointmentTime"));
+
+        Appointment updatedAppointment = appointmentService.updateDetails(id, status, notes, newDate, newTime);
         return ResponseEntity.ok(updatedAppointment);
+    }
+
+    private java.time.LocalDate parseDate(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        try {
+            return java.time.LocalDate.parse(raw.trim());
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new IllegalArgumentException("Appointment date must be in yyyy-MM-dd format");
+        }
+    }
+
+    private java.time.LocalTime parseTime(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        try {
+            return java.time.LocalTime.parse(raw.trim());
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new IllegalArgumentException("Appointment time must be in HH:mm format");
+        }
     }
 
     /**
      * Update appointment status (Legacy/Specific)
      */
     @PutMapping("/{id}/status")
+    @RequireModule("APPOINTMENTS")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> updateAppointmentStatus(@PathVariable String id,
             @RequestBody java.util.Map<String, String> payload) {

@@ -8,12 +8,14 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import com.hms.security.RequireModule;
 
 import java.util.Map;
 
 @RestController
 @RequestMapping({"/hospital/pharmacists", "/clinic/pharmacists", "/pharmacy/pharmacists"})
 @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
+@RequireModule("PHARMACY")
 public class PharmacistController {
 
     @Autowired

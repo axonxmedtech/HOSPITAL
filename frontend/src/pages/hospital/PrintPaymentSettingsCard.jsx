@@ -32,6 +32,7 @@ const PrintPaymentSettingsCard = () => {
         printPrescription: data.printPrescription !== false,
         printInClinic: data.printInClinic !== false,
         billPaymentTiming: data.billPaymentTiming === 'FIRST' ? 'FIRST' : 'LAST',
+        defaultConsultationLanguage: data.defaultConsultationLanguage || 'EN',
       });
     } catch (e) {
       toastError(e?.response?.data?.error || 'Failed to load settings');
@@ -91,6 +92,53 @@ const PrintPaymentSettingsCard = () => {
                 />
               </button>
             </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Consultation Print Language */}
+      <div>
+        <h3 className="text-lg font-bold text-gray-900 mb-1">Consultation Print Language</h3>
+        <p className="text-sm text-gray-500 mb-4">
+          Default language for patient-facing consultation documents (Prescription, Case Paper).
+          Doctors can still switch this per consultation in the consultation window.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {[
+            { value: 'EN', title: 'English', desc: 'Standard English instructions only' },
+            {
+              value: 'EN_MR',
+              title: 'English + Marathi',
+              desc: 'Bilingual instructions with Marathi (मराठी Devanagari)',
+            },
+            {
+              value: 'EN_HI',
+              title: 'English + Hindi',
+              desc: 'Bilingual instructions with Hindi (हिंदी Devanagari)',
+            },
+          ].map((opt) => (
+            <label
+              key={opt.value}
+              htmlFor={`printlang-${opt.value}`}
+              className={`flex flex-col p-3 rounded-xl border cursor-pointer transition-colors ${
+                s.defaultConsultationLanguage === opt.value
+                  ? 'border-gray-900 bg-gray-50 ring-1 ring-gray-900'
+                  : 'border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <input
+                  id={`printlang-${opt.value}`}
+                  type="radio"
+                  name="defaultConsultationLanguage"
+                  checked={s.defaultConsultationLanguage === opt.value}
+                  onChange={() => save({ defaultConsultationLanguage: opt.value })}
+                  className="text-gray-900 focus:ring-gray-900"
+                />
+                <span className="text-sm font-semibold text-gray-900">{opt.title}</span>
+              </div>
+              <span className="text-xs text-gray-500 ml-6">{opt.desc}</span>
+            </label>
           ))}
         </div>
       </div>

@@ -98,7 +98,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
    * UPCOMING: Active appointments AFTER a specific date
    * Sorted by Date ASC, then Time ASC
    */
-  List<Appointment> findByDoctorIdAndAppointmentDateAfterAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
+  List<Appointment> findByDoctorIdAndAppointmentDateGreaterThanEqualAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
       Long doctorId, java.time.LocalDate appointmentDate);
 
   /**
@@ -125,7 +125,17 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
    * UPCOMING: Active appointments AFTER a specific date
    * Sorted by Date ASC, then Time ASC
    */
-  org.springframework.data.domain.Page<Appointment> findByHospitalIdAndAppointmentDateAfterAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
+  /**
+   * UPCOMING is from today onwards, inclusive.
+   *
+   * <p>It used to be strictly after today, which quietly dropped every patient due later the
+   * same day: a booking taken this morning for this afternoon appeared under Today and under
+   * nothing else, so a doctor who had switched to Upcoming saw an empty list and concluded the
+   * appointment had never been made. Overlapping with Today is the correct behaviour -- the two
+   * views answer different questions ("what is my day" and "what is still to come") and a
+   * patient can legitimately belong to both.
+   */
+  org.springframework.data.domain.Page<Appointment> findByHospitalIdAndAppointmentDateGreaterThanEqualAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
       Long hospitalId, java.time.LocalDate appointmentDate,
       org.springframework.data.domain.Pageable pageable);
 
@@ -189,7 +199,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
           JOIN Doctor d ON a.doctorId = d.id
           WHERE a.hospitalId = :hospitalId
             AND a.isActive = true
-            AND a.appointmentDate > :date
+            AND a.appointmentDate >= :date
             AND (LOWER(p.name) LIKE LOWER(CONCAT('%', :search, '%'))
                  OR LOWER(d.name) LIKE LOWER(CONCAT('%', :search, '%'))
                  OR LOWER(a.customId) LIKE LOWER(CONCAT('%', :search, '%')))
@@ -264,7 +274,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
           WHERE a.doctorId = :doctorId
             AND a.hospitalId = :hospitalId
             AND a.isActive = true
-            AND a.appointmentDate > :date
+            AND a.appointmentDate >= :date
             AND (LOWER(p.name) LIKE LOWER(CONCAT('%', :search, '%'))
                  OR LOWER(d.name) LIKE LOWER(CONCAT('%', :search, '%'))
                  OR LOWER(a.customId) LIKE LOWER(CONCAT('%', :search, '%')))
@@ -302,7 +312,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
   /**
    * Find paginated UPCOMING appointments by doctor
    */
-  org.springframework.data.domain.Page<Appointment> findByDoctorIdAndAppointmentDateAfterAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
+  org.springframework.data.domain.Page<Appointment> findByDoctorIdAndAppointmentDateGreaterThanEqualAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
       Long doctorId, java.time.LocalDate appointmentDate,
       org.springframework.data.domain.Pageable pageable);
 
