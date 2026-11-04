@@ -244,9 +244,10 @@ const ProfileModal = ({ isOpen, onClose }) => {
 
     // Only validate detailed fields for non-Super Admin
     if (profile.role !== 'SUPER_ADMIN') {
-      if (!profile.phone.trim()) {
+      // HOSPITAL_ADMIN phone is optional (seeded as "" at creation; not required to update)
+      if (profile.role !== 'HOSPITAL_ADMIN' && !profile.phone.trim()) {
         errors.phone = 'Phone number is required';
-      } else if (!/^\+?[0-9\s-]{8,15}$/.test(profile.phone)) {
+      } else if (profile.phone.trim() && !/^\+?[0-9\s-]{8,15}$/.test(profile.phone)) {
         errors.phone = 'Invalid phone number format';
       }
 
@@ -546,7 +547,10 @@ const ProfileModal = ({ isOpen, onClose }) => {
                             htmlFor="fld-10018"
                             className="block text-xs font-bold text-gray-700 mb-1.5"
                           >
-                            Phone Number <span className="text-red-500">*</span>
+                            Phone Number{' '}
+                            {profile.role !== 'HOSPITAL_ADMIN' && (
+                              <span className="text-red-500">*</span>
+                            )}
                           </label>
                           <input
                             id="fld-10018"
@@ -555,7 +559,7 @@ const ProfileModal = ({ isOpen, onClose }) => {
                             onChange={(e) => handleInputChange('phone', e.target.value)}
                             className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-neutral-800 text-sm ${formErrors.phone ? 'border-red-500 ring-2 ring-red-100' : 'border-gray-300'}`}
                             placeholder="e.g. +1 555-0199"
-                            required
+                            required={profile.role !== 'HOSPITAL_ADMIN'}
                           />
                           {formErrors.phone && (
                             <p className="text-xs text-red-500 mt-1">{formErrors.phone}</p>

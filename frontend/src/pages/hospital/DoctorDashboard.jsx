@@ -10,6 +10,7 @@ import DateSelect from '../../components/DateSelect';
 import EmptyState from '../../components/EmptyState';
 import FollowUpPanel from '../../components/FollowUpPanel';
 import HospitalInventoryTab from '../../components/HospitalInventoryTab';
+import IpdAdmitModal from '../../components/IpdAdmitModal';
 import LowStockBanner from '../../components/LowStockBanner';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
 import Navbar from '../../components/Navbar';
@@ -194,6 +195,7 @@ const DoctorDashboard = () => {
   const [patientDetailsModal, setPatientDetailsModal] = useState({ isOpen: false, patient: null });
   const [isIpdAdmitOpen, setIsIpdAdmitOpen] = useState(false);
   const [ipdOpdForAdmit, setIpdOpdForAdmit] = useState(null);
+  const [ipdSubTab, setIpdSubTab] = useState('current'); // 'current' | 'requested'
   // State for admit-to-IPD directly from appointment action
   const [ipdFromAppointment, setIpdFromAppointment] = useState({
     isOpen: false,
@@ -409,6 +411,7 @@ const DoctorDashboard = () => {
     patientTabView,
     patientDateFilter,
     page,
+    ipdSubTab,
   ]);
 
   // WebSocket connection will be initialized below loadData definition to avoid ReferenceError
@@ -588,47 +591,71 @@ const DoctorDashboard = () => {
         }
       }
 
-      // IPD list for doctor (their own admissions)
+      // IPD list for doctor (their own admissions or requested admissions if self-handler)
       if (activeTab === 'ipd') {
         try {
-          // use role-aware admitted list (server will filter to current doctor)
-          const list = await hospitalService.getAdmittedIpdAdmissions();
-          let arr = Array.isArray(list) ? list : list.content || [];
-          if (searchTerm && searchTerm.trim()) {
-            const q = searchTerm.trim().toLowerCase();
-            arr = arr.filter((item) => {
-              const row = item.ipd || item;
-              const ipdNumber = (row.ipdNumber || row.ipd?.ipdNumber || '')
-                .toString()
-                .toLowerCase();
-              const patient = (item.patient?.name || row.patient?.name || item.patientName || '')
-                .toString()
-                .toLowerCase();
-              const doctor = (item.doctor?.name || row.doctor?.name || item.doctorName || '')
-                .toString()
-                .toLowerCase();
-              const ward = (item.ward?.wardName || row.wardName || row.ward || '')
-                .toString()
-                .toLowerCase();
-              const bed = (item.bed?.bedCode || row.bedNumber || row.bed?.bedCode || '')
-                .toString()
-                .toLowerCase();
-              const status = (row.status || '').toString().toLowerCase();
-              return (
-                ipdNumber.includes(q) ||
-                patient.includes(q) ||
-                doctor.includes(q) ||
-                ward.includes(q) ||
-                bed.includes(q) ||
-                status.includes(q)
-              );
-            });
+          if (canDoctorManageReception && ipdSubTab === 'requested') {
+            const pending = await hospitalService.getPendingIpdRequests(page - 1, ITEMS_PER_PAGE);
+            let arr = pending.content || pending || [];
+            if (searchTerm && searchTerm.trim()) {
+              const q = searchTerm.trim().toLowerCase();
+              arr = arr.filter((o) => {
+                const patient = (o.patient?.name || o.patientName || '').toString().toLowerCase();
+                const doctor = (o.doctor?.name || o.doctorName || '').toString().toLowerCase();
+                const caseId = (o.caseId || '').toString().toLowerCase();
+                return patient.includes(q) || doctor.includes(q) || caseId.includes(q);
+              });
+            }
+            setOpds(arr);
+            setTotalElements(pending.totalElements || arr.length);
+            setTotalPages(pending.totalPages || 1);
+          } else {
+            // use role-aware admitted list (server will filter to current doctor)
+            const list = await hospitalService.getAdmittedIpdAdmissions();
+            let arr = Array.isArray(list) ? list : list.content || [];
+            if (searchTerm && searchTerm.trim()) {
+              const q = searchTerm.trim().toLowerCase();
+              arr = arr.filter((item) => {
+                const row = item.ipd || item;
+                const ipdNumber = (row.ipdNumber || row.ipd?.ipdNumber || '')
+                  .toString()
+                  .toLowerCase();
+                const patient = (item.patient?.name || row.patient?.name || item.patientName || '')
+                  .toString()
+                  .toLowerCase();
+                const doctor = (item.doctor?.name || row.doctor?.name || item.doctorName || '')
+                  .toString()
+                  .toLowerCase();
+                const ward = (item.ward?.wardName || row.wardName || row.ward || '')
+                  .toString()
+                  .toLowerCase();
+                const bed = (item.bed?.bedCode || row.bedNumber || row.bed?.bedCode || '')
+                  .toString()
+                  .toLowerCase();
+                const status = (row.status || '').toString().toLowerCase();
+                return (
+                  ipdNumber.includes(q) ||
+                  patient.includes(q) ||
+                  doctor.includes(q) ||
+                  ward.includes(q) ||
+                  bed.includes(q) ||
+                  status.includes(q)
+                );
+              });
+            }
+            setOpds(arr);
+            setTotalElements(arr.length);
+            setTotalPages(1);
           }
-          setOpds(arr);
-          setTotalElements(arr.length);
-          setTotalPages(1);
         } catch (err) {
-          setLoadError(safeLoadMessage(err, 'Could not load your admitted patients.'));
+          setLoadError(
+            safeLoadMessage(
+              err,
+              canDoctorManageReception && ipdSubTab === 'requested'
+                ? 'Could not load pending IPD requests.'
+                : 'Could not load your admitted patients.'
+            )
+          );
         }
       }
     } catch (err) {
@@ -1509,7 +1536,9 @@ const DoctorDashboard = () => {
                         ? 'Patient Queue'
                         : activeTab === 'billing'
                           ? 'Billing Records'
-                          : 'My Patients'
+                          : activeTab === 'ipd'
+                            ? 'IPD Admissions'
+                            : 'My Patients'
                 }
                 subtitle={`Manage your ${
                   activeTab === 'appointments'
@@ -1520,7 +1549,11 @@ const DoctorDashboard = () => {
                         ? 'patient queue'
                         : activeTab === 'billing'
                           ? 'bills'
-                          : 'patients'
+                          : activeTab === 'ipd'
+                            ? canDoctorManageReception && ipdSubTab === 'requested'
+                              ? 'pending admission requests'
+                              : 'admitted patients'
+                            : 'patients'
                 } here.`}
                 onSearch={(e) => setSearchInput(e.target.value)}
                 searchValue={searchInput}
@@ -1691,6 +1724,30 @@ const DoctorDashboard = () => {
                         <span>Download PDF</span>
                       </button>
                     </div>
+                  ) : activeTab === 'ipd' && canDoctorManageReception ? (
+                    <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
+                      {[
+                        { value: 'current', label: 'Current Patients' },
+                        { value: 'requested', label: 'Requested Patients' },
+                      ].map((sub) => (
+                        <button
+                          key={sub.value}
+                          type="button"
+                          onClick={() => {
+                            setIpdSubTab(sub.value);
+                            setPage(1);
+                            setSearchInput('');
+                          }}
+                          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
+                            ipdSubTab === sub.value
+                              ? 'bg-white text-primary-600 shadow-sm border border-gray-100 font-semibold'
+                              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                          }`}
+                        >
+                          {sub.label}
+                        </button>
+                      ))}
+                    </div>
                   ) : null
                 }
               />
@@ -1774,7 +1831,57 @@ const DoctorDashboard = () => {
                 ))}
 
               {activeTab === 'ipd' &&
-                (opds.length > 0 ? (
+                (canDoctorManageReception && ipdSubTab === 'requested' ? (
+                  opds.length > 0 ? (
+                    <div className="p-4 overflow-x-auto">
+                      <table className="w-full text-sm text-left">
+                        <thead>
+                          <tr>
+                            <th className="px-4 py-2">S.No.</th>
+                            <th className="px-4 py-2">OPD Case No.</th>
+                            <th className="px-4 py-2">Patient</th>
+                            <th className="px-4 py-2">Doctor</th>
+                            <th className="px-4 py-2">Problem / Diagnosis</th>
+                            <th className="px-4 py-2">Date Recommended</th>
+                            <th className="px-4 py-2">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {opds.map((o, idx) => (
+                            <tr key={o.id} className="border-t">
+                              <td className="px-4 py-3">{(page - 1) * ITEMS_PER_PAGE + idx + 1}</td>
+                              <td className="px-4 py-3">{o.caseId}</td>
+                              <td className="px-4 py-3">{o.patient?.name}</td>
+                              <td className="px-4 py-3">{o.doctor?.name || '-'}</td>
+                              <td className="px-4 py-3">{o.problem || '-'}</td>
+                              <td className="px-4 py-3">
+                                {o.createdAt ? new Date(o.createdAt).toLocaleString() : '-'}
+                              </td>
+                              <td className="px-4 py-3">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setIpdOpdForAdmit(o);
+                                    setIsIpdAdmitOpen(true);
+                                  }}
+                                  className="px-3 py-1 bg-green-600 text-white rounded text-xs font-semibold hover:bg-green-700 transition"
+                                >
+                                  Admit to IPD
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <EmptyState
+                      icon={null}
+                      title="No Admission Requests"
+                      message="No pending IPD admission requests found."
+                    />
+                  )
+                ) : opds.length > 0 ? (
                   <div className="p-4 overflow-x-auto">
                     <table className="w-full text-sm text-left">
                       <thead>
@@ -2067,6 +2174,23 @@ const DoctorDashboard = () => {
 
         {/* Admit to IPD directly from Appointment - opens consultation modal so doctor fills data first */}
         {/* (ipdFromAppointment state opens the existing consultationModal with the appointment) */}
+
+        {/* IPD Admit Modal */}
+        {isIpdAdmitOpen && (
+          <IpdAdmitModal
+            isOpen={isIpdAdmitOpen}
+            onClose={() => {
+              setIsIpdAdmitOpen(false);
+              setIpdOpdForAdmit(null);
+            }}
+            onSuccess={() => {
+              setIsIpdAdmitOpen(false);
+              setIpdOpdForAdmit(null);
+              loadData();
+            }}
+            opd={ipdOpdForAdmit}
+          />
+        )}
 
         {isOpdModalOpen && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
