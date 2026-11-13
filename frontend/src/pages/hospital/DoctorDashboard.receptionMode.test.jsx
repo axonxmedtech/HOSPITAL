@@ -23,6 +23,10 @@ vi.mock('../../components/ConsultationModal', () => ({
   default: () => null,
 }));
 
+vi.mock('../../components/IpdAdmitModal', () => ({
+  default: ({ isOpen }) => (isOpen ? <div data-testid="ipd-admit-modal">IpdAdmitModal</div> : null),
+}));
+
 let currentUser = {
   modules: ['OPD', 'APPOINTMENTS'],
   name: 'Dr Mandal',
@@ -61,6 +65,20 @@ const hospitalService = {
   }),
   getDoctors: vi.fn().mockResolvedValue({ content: [] }),
   getIpdAdmissions: vi.fn().mockResolvedValue({ content: [] }),
+  getAdmittedIpdAdmissions: vi.fn().mockResolvedValue([]),
+  getPendingIpdRequests: vi.fn().mockResolvedValue({
+    content: [
+      {
+        id: 101,
+        caseId: 'OPD-101',
+        patient: { id: 8, name: 'Sita Devi' },
+        doctor: { id: 1, name: 'Dr Mandal' },
+        diagnosis: 'Fever',
+        createdAt: '2026-09-05T09:00:00.000Z',
+      },
+    ],
+    totalElements: 1,
+  }),
   getDoctorProfile: vi.fn().mockResolvedValue({ id: 1, name: 'Dr Mandal' }),
 };
 vi.mock('../../services/hospitalService', () => ({ default: hospitalService }));
@@ -158,5 +176,47 @@ describe('DoctorDashboard — OPD row admit-to-IPD action by reception mode', ()
     // The menu opened with its other actions; only the front-desk one is absent.
     expect(screen.getByRole('menuitem', { name: /View Prescription/ })).toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: /Admit to IPD/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('DoctorDashboard — IPD requested admissions tab by reception mode', () => {
+  it('does not show requested patients subtab when receptionMode is HAS_RECEPTIONIST', async () => {
+    currentUser = { ...currentUser, modules: ['OPD', 'IPD'], receptionMode: 'HAS_RECEPTIONIST' };
+    const { default: DoctorDashboard } = await import('./DoctorDashboard');
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <DoctorDashboard />
+      </MemoryRouter>
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'IPD' }));
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /IPD Admissions/i })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('button', { name: 'Requested Patients' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Current Patients' })).not.toBeInTheDocument();
+  });
+
+  it('shows requested patients subtab and opens admit modal when receptionMode is SOLO', async () => {
+    currentUser = { ...currentUser, modules: ['OPD', 'IPD'], receptionMode: 'SOLO' };
+    const { default: DoctorDashboard } = await import('./DoctorDashboard');
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <DoctorDashboard />
+      </MemoryRouter>
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'IPD' }));
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /IPD Admissions/i })).toBeInTheDocument();
+    });
+    const requestedBtn = screen.getByRole('button', { name: 'Requested Patients' });
+    expect(requestedBtn).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Current Patients' })).toBeInTheDocument();
+
+    fireEvent.click(requestedBtn);
+    expect(await screen.findByText('Sita Devi')).toBeInTheDocument();
+
+    const admitBtn = screen.getByRole('button', { name: /Admit to IPD/i });
+    fireEvent.click(admitBtn);
+    expect(await screen.findByTestId('ipd-admit-modal')).toBeInTheDocument();
   });
 });
