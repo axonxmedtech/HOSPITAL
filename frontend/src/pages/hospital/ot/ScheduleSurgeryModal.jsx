@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useToast } from '../../../context/ToastContext';
+import useOtPermissions from '../../../hooks/useOtPermissions';
 import otService from '../../../services/otService';
 import wardService from '../../../services/wardService';
-import { backdropProps } from '../../../utils/modalA11y';
-import useOtPermissions from '../../../hooks/useOtPermissions';
 import { extractApiError } from '../../../utils/apiError';
+import { backdropProps } from '../../../utils/modalA11y';
 
 /**
  * ScheduleSurgeryModal - assign a surgeon + date/time + theatre to a surgery.

@@ -5,8 +5,8 @@ import authService from '../../../services/authService';
 import hospitalService from '../../../services/hospitalService';
 import inventoryApi from '../../../services/pharmacy/inventoryApi';
 import salesApi from '../../../services/pharmacy/salesApi';
-import { printBlob } from '../../../utils/printPdf';
 import { extractApiError } from '../../../utils/apiError';
+import { printBlob } from '../../../utils/printPdf';
 
 const BillingCounterView = ({ initialData }) => {
   const user = authService.getCurrentUser();

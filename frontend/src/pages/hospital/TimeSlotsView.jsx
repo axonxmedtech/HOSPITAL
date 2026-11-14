@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../../context/ToastContext';
 import timeSlotService from '../../services/timeSlotService';
-import { backdropProps } from '../../utils/modalA11y';
 import { extractApiError } from '../../utils/apiError';
+import { backdropProps } from '../../utils/modalA11y';
 
 /**
  * TimeSlotsView - Nursing Management Phase B1: Shift Templates + Appointment Slots.

@@ -3,8 +3,8 @@ import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
 import nurseService from '../../../services/nurseService';
-import { describeFoodTiming } from '../../../utils/foodTiming';
 import { extractApiError } from '../../../utils/apiError';
+import { describeFoodTiming } from '../../../utils/foodTiming';
 
 /**
  * MedicationPanel - the nurse's medication chart + administration recording.

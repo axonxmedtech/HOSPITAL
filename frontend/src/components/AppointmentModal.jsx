@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from '../context/ToastContext';
 import hospitalService from '../services/hospitalService';
+import { extractApiError } from '../utils/apiError';
 import { availableSlotsFor } from '../utils/appointmentSlots';
 import { extractPhoneConflicts } from '../utils/duplicatePhone';
 import { validateForm } from '../utils/validation';
 import DateSelect from './DateSelect';
 import DobPicker from './DobPicker';
 import DuplicatePhoneConflictModal from './DuplicatePhoneConflictModal';
-import { extractApiError } from '../utils/apiError';
 
 /**
  * AppointmentModal - Shared modal for creating appointments

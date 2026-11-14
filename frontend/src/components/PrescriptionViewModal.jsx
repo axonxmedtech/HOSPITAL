@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import hospitalService from '../services/hospitalService';
-import { printHtml } from '../utils/printHtml';
 import { extractApiError } from '../utils/apiError';
+import { printHtml } from '../utils/printHtml';
 
 const PrescriptionViewModal = ({ isOpen, onClose, patient }) => {
   const [loading, setLoading] = useState(false);

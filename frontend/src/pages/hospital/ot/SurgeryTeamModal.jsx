@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useToast } from '../../../context/ToastContext';
-import otService from '../../../services/otService';
-import { backdropProps } from '../../../utils/modalA11y';
 import useOtPermissions from '../../../hooks/useOtPermissions';
+import otService from '../../../services/otService';
 import { extractApiError } from '../../../utils/apiError';
+import { backdropProps } from '../../../utils/modalA11y';
 
 /**
  * SurgeryTeamModal - the surgical team on one case.

@@ -4,9 +4,9 @@ import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
 import icuService from '../../../services/icuService';
 import nurseService from '../../../services/nurseService';
+import { extractApiError } from '../../../utils/apiError';
 import escapeHtml from '../../../utils/escapeHtml';
 import { titleCase } from '../../../utils/text';
-import { extractApiError } from '../../../utils/apiError';
 
 const esch = escapeHtml;
 

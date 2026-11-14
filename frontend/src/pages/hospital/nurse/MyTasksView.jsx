@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
 import nurseService from '../../../services/nurseService';
-import { backdropProps } from '../../../utils/modalA11y';
 import { extractApiError } from '../../../utils/apiError';
+import { backdropProps } from '../../../utils/modalA11y';
 
 /**
  * MyTasksView - lists tasks assigned to the logged-in nurse (Phase 1 Nurse module, M7).

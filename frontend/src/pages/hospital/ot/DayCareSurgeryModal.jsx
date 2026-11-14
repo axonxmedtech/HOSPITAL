@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import DateSelect from '../../../components/DateSelect';
 import { useToast } from '../../../context/ToastContext';
+import useOtPermissions from '../../../hooks/useOtPermissions';
 import hospitalService from '../../../services/hospitalService';
 import otService from '../../../services/otService';
-import { backdropProps } from '../../../utils/modalA11y';
-import useOtPermissions from '../../../hooks/useOtPermissions';
 import { extractApiError } from '../../../utils/apiError';
+import { backdropProps } from '../../../utils/modalA11y';
 
 /**
  * DayCareSurgeryModal - request a procedure for a patient who is NOT admitted.

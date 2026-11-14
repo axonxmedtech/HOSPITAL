@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useToast } from '../context/ToastContext';
 import icuService from '../services/icuService';
 import icuWardService from '../services/icuWardService';
-import Button from './Button';
 import { extractApiError } from '../utils/apiError';
+import Button from './Button';
 
 const IcuWardModal = ({ open, initial, onClose, onSaved }) => {
   const { error: toastError, success } = useToast();

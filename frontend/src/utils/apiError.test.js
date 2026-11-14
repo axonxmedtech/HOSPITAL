@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
 import { AxiosError, CanceledError } from 'axios';
+import { describe, expect, it } from 'vitest';
 import {
   extractApiError,
   isRequestCancelled,

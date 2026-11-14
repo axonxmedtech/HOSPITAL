@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import DateSelect from '../../components/DateSelect';
 import { useToast } from '../../context/ToastContext';
 import calendarService from '../../services/calendarService';
-import { backdropProps } from '../../utils/modalA11y';
 import { extractApiError } from '../../utils/apiError';
+import { backdropProps } from '../../utils/modalA11y';
 
 const MONTHS = [
   'January',

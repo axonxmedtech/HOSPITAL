@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../context/ToastContext';
 import hospitalService from '../services/hospitalService';
+import { extractApiError } from '../utils/apiError';
 import ConfirmationModal from './ConfirmationModal';
 import FrequencyInput, { isFrequencyValid } from './FrequencyInput';
 import MedicineAutocomplete from './MedicineAutocomplete';
-import { extractApiError } from '../utils/apiError';
 
 /**
  * InClinicPresetsManager — the in-clinic twin of PrescriptionPresetsManager.

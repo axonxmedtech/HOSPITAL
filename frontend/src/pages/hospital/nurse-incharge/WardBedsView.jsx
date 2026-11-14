@@ -3,8 +3,8 @@ import EmptyState from '../../../components/EmptyState';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
 import nurseService from '../../../services/nurseService';
-import { backdropProps } from '../../../utils/modalA11y';
 import { extractApiError } from '../../../utils/apiError';
+import { backdropProps } from '../../../utils/modalA11y';
 
 const STATUS_META = {
   available: { label: 'Available', badge: 'bg-green-100 text-green-700' },

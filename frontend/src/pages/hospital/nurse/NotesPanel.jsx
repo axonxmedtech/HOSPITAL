@@ -3,10 +3,10 @@ import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
 import nurseService from '../../../services/nurseService';
+import { extractApiError } from '../../../utils/apiError';
 import escapeHtml from '../../../utils/escapeHtml';
 import { printHtml } from '../../../utils/printHtml';
 import { titleCase } from '../../../utils/text';
-import { extractApiError } from '../../../utils/apiError';
 
 /**
  * NotesPanel - running nursing observation notes for one admission (Phase 1

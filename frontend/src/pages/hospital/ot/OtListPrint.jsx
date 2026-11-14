@@ -3,9 +3,9 @@ import DateSelect from '../../../components/DateSelect';
 import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
 import otService from '../../../services/otService';
+import { extractApiError } from '../../../utils/apiError';
 import { backdropProps } from '../../../utils/modalA11y';
 import { printHtml } from '../../../utils/printHtml';
-import { extractApiError } from '../../../utils/apiError';
 
 /**
  * OtListPrint - today's OT List: patient, age, procedure, theatre, time, surgeon.

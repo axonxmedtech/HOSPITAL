@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import DateSelect from '../../../components/DateSelect';
 import { useToast } from '../../../context/ToastContext';
-import otService from '../../../services/otService';
-import { backdropProps } from '../../../utils/modalA11y';
 import useOtPermissions from '../../../hooks/useOtPermissions';
+import otService from '../../../services/otService';
 import { extractApiError } from '../../../utils/apiError';
+import { backdropProps } from '../../../utils/modalA11y';
 
 /**
  * SurgeryRequestModal - doctor creates an OT request from the IPD case.

@@ -2,8 +2,8 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useToast } from '../../../context/ToastContext';
 import useOtPermissions from '../../../hooks/useOtPermissions';
 import otService from '../../../services/otService';
-import { backdropProps } from '../../../utils/modalA11y';
 import { extractApiError } from '../../../utils/apiError';
+import { backdropProps } from '../../../utils/modalA11y';
 
 /**
  * SurgeryExecutionModal - the theatre-side of a case: WHO checklist, clinical milestones

@@ -4,8 +4,8 @@ import EmptyState from '../../../components/EmptyState';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
 import icuService from '../../../services/icuService';
-import { bedStatusMeta, respiratorySummary, since } from './icuBoardShared';
 import { extractApiError } from '../../../utils/apiError';
+import { bedStatusMeta, respiratorySummary, since } from './icuBoardShared';
 
 /**
  * IcuBedBoard - the ICU bed grid (ICU Phase 2).

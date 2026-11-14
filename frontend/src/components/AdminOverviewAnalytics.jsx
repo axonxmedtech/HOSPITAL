@@ -11,8 +11,8 @@ import {
   YAxis,
 } from 'recharts';
 import hospitalService from '../services/hospitalService';
-import { SkeletonRect, SkeletonStatsGrid } from './Skeleton';
 import { extractApiError } from '../utils/apiError';
+import { SkeletonRect, SkeletonStatsGrid } from './Skeleton';
 
 /**
  * The Hospital Admin's operational overview.
