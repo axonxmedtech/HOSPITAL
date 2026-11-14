@@ -107,6 +107,7 @@ function PatientImportWorkflow() {
     } catch (err) {
       setHeaders([]);
       setChoices([]);
+      // api-error-guard-ignore: local header validation error, not an API response
       setError(err.message);
     }
   };
@@ -139,6 +140,7 @@ function PatientImportWorkflow() {
       setSheets(nextSheets);
       selectSheet(nextSheets, 0);
     } catch (err) {
+      // api-error-guard-ignore: local spreadsheet parsing error (readImportHeaders), not an API response
       if (generation.current === current && err.name !== 'AbortError') setError(err.message);
     } finally {
       if (generation.current === current) setBusy('');
@@ -172,6 +174,7 @@ function PatientImportWorkflow() {
     try {
       payload = request();
     } catch (err) {
+      // api-error-guard-ignore: client-side payload validation error, not an API response
       setError(err.message);
       return;
     }

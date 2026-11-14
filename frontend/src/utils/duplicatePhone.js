@@ -20,6 +20,7 @@
  */
 export const extractPhoneConflicts = (err) => {
   if (err?.response?.status !== 409) return null;
+  // api-error-guard-ignore: reads the structured duplicate-phone conflicts list for the merge dialog, not a display message
   const conflicts = err?.response?.data?.conflicts;
   if (!Array.isArray(conflicts) || conflicts.length === 0) return null;
   return conflicts;

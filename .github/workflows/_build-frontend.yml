@@ -30,6 +30,24 @@ jobs:
           node-version: ${{ inputs.node-version }}
           working-directory: frontend
 
+      # ── API error-handling gate ───────────────────────────────────────────────
+      # Runs before the build so an unsafe change fails fast. This reusable workflow is
+      # called by Build & Test (PRs), Deploy — Staging and Deploy — Production, and both
+      # deploy jobs need it to succeed — so nothing below can ship to any environment.
+      - name: API error guard (static check)
+        run: |
+          node ../scripts/ci/check-api-error-handling.mjs --self-test
+          node ../scripts/ci/check-api-error-handling.mjs
+
+      - name: API error handling tests
+        run: >
+          npx vitest run
+          src/services/apiService.test.js
+          src/utils/apiError.test.js
+          src/utils/loadErrorSafety.test.js
+          src/pages/loginErrors.test.jsx
+          src/components/PrescriptionViewModal.test.jsx
+
       - name: TypeScript type check
         run: npx tsc --noEmit
 
@@ -51,8 +69,9 @@ jobs:
             npm install --no-save vitest @vitest/coverage-v8
           fi
 
-      - name: Run tests with coverage
-        continue-on-error: true
+      # Blocking: a failing frontend test fails the build, and with it every deploy. (This step
+      # used to carry continue-on-error: true, so test failures never stopped a deploy.)
+      - name: Run all frontend tests with coverage
         run: >
           npx vitest run
           --coverage
