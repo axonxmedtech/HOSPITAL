@@ -1,16 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../context/ToastContext';
 import platformService from '../services/platformService';
-
-const extractError = (err, fallback) => {
-  const d = err?.response?.data;
-  if (!d) return fallback;
-  if (typeof d === 'string') return d;
-  if (d.errors && typeof d.errors === 'object') {
-    return Object.values(d.errors).join(', ');
-  }
-  return d.message || d.error || d.detail || fallback;
-};
+import { extractApiError } from '../utils/apiError';
 
 export default function PlatformStatementsTab({ hospitalType = 'HOSPITAL' }) {
   const { success, error: toastError } = useToast();
@@ -43,7 +34,7 @@ export default function PlatformStatementsTab({ hospitalType = 'HOSPITAL' }) {
       const data = await platformService.getStatements(hospitalType || 'HOSPITAL');
       setStatements(Array.isArray(data) ? data : []);
     } catch (err) {
-      toastError(extractError(err, 'Failed to load consultation statements.'));
+      toastError(extractApiError(err, 'Failed to load consultation statements.'));
     } finally {
       setLoading(false);
     }
@@ -118,7 +109,7 @@ export default function PlatformStatementsTab({ hospitalType = 'HOSPITAL' }) {
       setShowModal(false);
       loadStatements();
     } catch (err) {
-      setError(extractError(err, 'Failed to save statement.'));
+      setError(extractApiError(err, 'Failed to save statement.'));
     } finally {
       setSubmitting(false);
     }
@@ -133,7 +124,7 @@ export default function PlatformStatementsTab({ hospitalType = 'HOSPITAL' }) {
       setDeleteTarget(null);
       loadStatements();
     } catch (err) {
-      toastError(extractError(err, 'Failed to delete statement.'));
+      toastError(extractApiError(err, 'Failed to delete statement.'));
     } finally {
       setDeleting(false);
     }

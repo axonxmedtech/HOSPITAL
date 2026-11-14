@@ -1,18 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useToast } from '../context/ToastContext';
 import platformService from '../services/platformService';
+import { extractApiError } from '../utils/apiError';
 
 const PAGE_SIZE = 10;
-
-const extractError = (err, fallback) => {
-  const d = err?.response?.data;
-  if (!d) return fallback;
-  if (typeof d === 'string') return d;
-  if (d.errors && typeof d.errors === 'object') {
-    return Object.values(d.errors).join(', ');
-  }
-  return d.message || d.error || d.detail || fallback;
-};
 
 export default function PlatformInventoryItemsTab({ hospitalType = null }) {
   const { success, error: toastError } = useToast();
@@ -59,7 +50,7 @@ export default function PlatformInventoryItemsTab({ hospitalType = null }) {
       setTotalElements(data.totalElements || 0);
       setPage(pageNum);
     } catch (err) {
-      toastError(extractError(err, 'Failed to load master items list.'));
+      toastError(extractApiError(err, 'Failed to load master items list.'));
     } finally {
       setLoading(false);
     }
@@ -106,7 +97,7 @@ export default function PlatformInventoryItemsTab({ hospitalType = null }) {
       setShowModal(false);
       loadItems(page);
     } catch (err) {
-      setError(extractError(err, 'Failed to save master item.'));
+      setError(extractApiError(err, 'Failed to save master item.'));
     } finally {
       setSubmitting(false);
     }
@@ -126,7 +117,7 @@ export default function PlatformInventoryItemsTab({ hospitalType = null }) {
       success('Master item deleted successfully');
       loadItems(page);
     } catch (err) {
-      toastError(extractError(err, 'Failed to delete master item.'));
+      toastError(extractApiError(err, 'Failed to delete master item.'));
     }
   };
 
@@ -141,7 +132,7 @@ export default function PlatformInventoryItemsTab({ hospitalType = null }) {
       loadItems(0);
     } catch (err) {
       toastError(
-        extractError(err, 'Failed to import CSV file. Make sure file formatting is correct.')
+        extractApiError(err, 'Failed to import CSV file. Make sure file formatting is correct.')
       );
     } finally {
       setCsvImporting(false);
