@@ -7,6 +7,7 @@ import escapeHtml from '../../../utils/escapeHtml';
 import { backdropProps } from '../../../utils/modalA11y';
 import { printHtml } from '../../../utils/printHtml';
 import { titleCase } from '../../../utils/text';
+import { extractApiError } from '../../../utils/apiError';
 
 /**
  * AdmissionFormModal - reception/admin (at the desk) or the ward nurse fills the IPD admission form to complete a
@@ -297,8 +298,7 @@ const AdmissionFormModal = ({ admissionId, onClose, onConfirmed }) => {
       setSavedOnce(true);
       success('Admission form saved');
     } catch (err) {
-      const data = err.response?.data;
-      toastError(data?.error || data?.message || 'Failed to save admission form');
+      toastError(extractApiError(err, 'Failed to save admission form'));
     } finally {
       setSaving(false);
     }
@@ -337,12 +337,8 @@ const AdmissionFormModal = ({ admissionId, onClose, onConfirmed }) => {
       onConfirmed && onConfirmed();
       onClose();
     } catch (err) {
-      const msg =
-        err.response?.data?.error ||
-        err.response?.data?.message ||
-        err.response?.data ||
-        'Failed to mark admitted';
-      toastError(typeof msg === 'string' ? msg : 'Failed to mark admitted');
+      const msg = extractApiError(err, 'Failed to mark admitted');
+      toastError(msg);
     } finally {
       setConfirming(false);
     }

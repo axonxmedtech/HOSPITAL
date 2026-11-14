@@ -6,6 +6,7 @@ import nurseService from '../../../services/nurseService';
 import escapeHtml from '../../../utils/escapeHtml';
 import { printHtml } from '../../../utils/printHtml';
 import { titleCase } from '../../../utils/text';
+import { extractApiError } from '../../../utils/apiError';
 
 /**
  * NotesPanel - running nursing observation notes for one admission (Phase 1
@@ -224,12 +225,8 @@ const NotesPanel = ({ admissionId, category = 'NURSE', readOnly = false, refresh
       setPerformedByNurseId('');
       load();
     } catch (err) {
-      const msg =
-        err.response?.data?.error ||
-        err.response?.data?.message ||
-        err.response?.data ||
-        'Failed to add note';
-      toastError(typeof msg === 'string' ? msg : 'Failed to add note');
+      const msg = extractApiError(err, 'Failed to add note');
+      toastError(msg);
     } finally {
       setSubmitting(false);
     }
@@ -246,12 +243,8 @@ const NotesPanel = ({ admissionId, category = 'NURSE', readOnly = false, refresh
       setEditingId(null);
       load();
     } catch (err) {
-      const msg =
-        err.response?.data?.error ||
-        err.response?.data?.message ||
-        err.response?.data ||
-        'Failed to update note';
-      toastError(typeof msg === 'string' ? msg : 'Failed to update note');
+      const msg = extractApiError(err, 'Failed to update note');
+      toastError(msg);
     }
   };
 
@@ -261,12 +254,8 @@ const NotesPanel = ({ admissionId, category = 'NURSE', readOnly = false, refresh
       success('Note deleted');
       load();
     } catch (err) {
-      const msg =
-        err.response?.data?.error ||
-        err.response?.data?.message ||
-        err.response?.data ||
-        'Failed to delete note';
-      toastError(typeof msg === 'string' ? msg : 'Failed to delete note');
+      const msg = extractApiError(err, 'Failed to delete note');
+      toastError(msg);
     }
   };
 

@@ -6,6 +6,7 @@ import nurseService from '../../../services/nurseService';
 import escapeHtml from '../../../utils/escapeHtml';
 import { printHtml } from '../../../utils/printHtml';
 import { titleCase } from '../../../utils/text';
+import { extractApiError } from '../../../utils/apiError';
 
 /**
  * InitialAssessmentPanel - NABH "Admission History & Initial Assessment"
@@ -319,8 +320,7 @@ const InitialAssessmentPanel = ({ admissionId, readOnly = false }) => {
       setA(saved || payload);
       success('Initial assessment saved');
     } catch (err) {
-      const d = err.response?.data;
-      toastError(d?.error || d?.message || 'Failed to save initial assessment');
+      toastError(extractApiError(err, 'Failed to save initial assessment'));
     } finally {
       setSaving(false);
     }

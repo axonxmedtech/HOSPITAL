@@ -30,9 +30,7 @@ const IcuWardModal = ({ open, initial, onClose, onSaved }) => {
       })
       .catch((e) => {
         setUnitTypes([]);
-        setUnitTypesError(
-          extractApiError(e, 'Could not load ICU unit types. Please try again.')
-        );
+        setUnitTypesError(extractApiError(e, 'Could not load ICU unit types. Please try again.'));
       });
   }, [open]);
 

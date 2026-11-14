@@ -4,6 +4,7 @@ import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
 import icuService from '../../../services/icuService';
+import { extractApiError } from '../../../utils/apiError';
 
 /**
  * InfusionPanel - continuous infusions and their rate history (ICU Phase 6).
@@ -147,7 +148,7 @@ const InfusionPanel = ({ admissionId, readOnly = false, refreshKey = 0 }) => {
       setForm(emptyStart);
       load();
     } catch (err) {
-      toastError(err?.response?.data?.error || 'Failed to start the infusion');
+      toastError(extractApiError(err, 'Failed to start the infusion'));
     } finally {
       setSubmitting(false);
     }
@@ -168,7 +169,7 @@ const InfusionPanel = ({ admissionId, readOnly = false, refreshKey = 0 }) => {
       setTitrating(null);
       load();
     } catch (err) {
-      toastError(err?.response?.data?.error || 'Failed to record the rate change');
+      toastError(extractApiError(err, 'Failed to record the rate change'));
     } finally {
       setSubmitting(false);
     }
@@ -183,7 +184,7 @@ const InfusionPanel = ({ admissionId, readOnly = false, refreshKey = 0 }) => {
       setStopReason('');
       load();
     } catch (err) {
-      toastError(err?.response?.data?.error || 'Failed to stop the infusion');
+      toastError(extractApiError(err, 'Failed to stop the infusion'));
     } finally {
       setSubmitting(false);
     }
@@ -204,7 +205,7 @@ const InfusionPanel = ({ admissionId, readOnly = false, refreshKey = 0 }) => {
       setCorrecting(null);
       load();
     } catch (err) {
-      toastError(err?.response?.data?.error || 'Failed to record the correction');
+      toastError(extractApiError(err, 'Failed to record the correction'));
     } finally {
       setSubmitting(false);
     }

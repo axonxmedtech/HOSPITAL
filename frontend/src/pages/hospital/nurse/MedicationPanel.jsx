@@ -4,6 +4,7 @@ import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
 import nurseService from '../../../services/nurseService';
 import { describeFoodTiming } from '../../../utils/foodTiming';
+import { extractApiError } from '../../../utils/apiError';
 
 /**
  * MedicationPanel - the nurse's medication chart + administration recording.
@@ -135,12 +136,8 @@ const MedicationPanel = ({ admissionId, readOnly = false }) => {
       setPerformedByNurseId('');
       loadData();
     } catch (err) {
-      const msg =
-        err.response?.data?.error ||
-        err.response?.data?.message ||
-        err.response?.data ||
-        'Failed to record medication';
-      toastError(typeof msg === 'string' ? msg : 'Failed to record medication');
+      const msg = extractApiError(err, 'Failed to record medication');
+      toastError(msg);
     } finally {
       setSubmitting(false);
     }
