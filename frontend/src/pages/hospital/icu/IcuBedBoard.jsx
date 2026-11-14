@@ -5,6 +5,7 @@ import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
 import icuService from '../../../services/icuService';
 import { bedStatusMeta, respiratorySummary, since } from './icuBoardShared';
+import { extractApiError } from '../../../utils/apiError';
 
 /**
  * IcuBedBoard - the ICU bed grid (ICU Phase 2).
@@ -88,7 +89,7 @@ const IcuBedBoard = ({ refreshKey = 0, initialWardId = null }) => {
     icuService
       .getBoard()
       .then(setData)
-      .catch((e) => toastError(e?.response?.data?.error || 'Failed to load the ICU bed board'))
+      .catch((e) => toastError(extractApiError(e, 'Failed to load the ICU bed board')))
       .finally(() => setLoading(false));
   }, [toastError]);
 

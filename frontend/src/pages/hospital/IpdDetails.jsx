@@ -16,6 +16,7 @@ import useWebSocket from '../../hooks/useWebSocket';
 import authService from '../../services/authService';
 import formAccessService from '../../services/formAccessService';
 import hospitalService from '../../services/hospitalService';
+import { extractApiError } from '../../utils/apiError';
 import icuService from '../../services/icuService';
 import otService from '../../services/otService';
 import wardService from '../../services/wardService';
@@ -136,17 +137,8 @@ const IpdDetails = () => {
     };
   }, [hasOT, isDoctor, id, otModalOpen]);
 
-  const parseError = (err, fallback) => {
-    if (!err) return fallback;
-    if (err.response?.data) {
-      const data = err.response.data;
-      if (typeof data === 'object') {
-        return data.error || data.message || JSON.stringify(data);
-      }
-      return data;
-    }
-    return err.message || fallback;
-  };
+  // Never JSON.stringify a body or show axios's transport text — see utils/apiError.
+  const parseError = extractApiError;
 
   // Layout States
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);

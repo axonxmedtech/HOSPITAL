@@ -3,6 +3,7 @@ import { useToast } from '../context/ToastContext';
 import hospitalService from '../services/hospitalService';
 import icuService from '../services/icuService';
 import wardService from '../services/wardService';
+import { extractApiError } from '../utils/apiError';
 
 /**
  * IcuDischargeToIpdModal
@@ -165,11 +166,7 @@ const IcuDischargeToIpdModal = ({ isOpen, onClose, onSuccess, initialIcuPatient 
       onClose();
     } catch (err) {
       console.error('Discharge to IPD failed', err);
-      const data = err.response?.data;
-      const msg =
-        typeof data === 'string'
-          ? data
-          : data?.error || data?.message || 'Failed to discharge patient to IPD';
+      const msg = extractApiError(err, 'Failed to discharge patient to IPD');
       toastError(msg);
     } finally {
       setSubmitting(false);

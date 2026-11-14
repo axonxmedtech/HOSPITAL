@@ -3,6 +3,7 @@ import { useToast } from '../context/ToastContext';
 import hospitalService from '../services/hospitalService';
 import icuWardService from '../services/icuWardService';
 import wardService from '../services/wardService';
+import { extractApiError } from '../utils/apiError';
 
 /**
  * IcuAdmitModal
@@ -228,11 +229,7 @@ const IcuAdmitModal = ({ isOpen, onClose, onSuccess, initialPatient = null }) =>
       onClose();
     } catch (err) {
       console.error('ICU admission failed', err);
-      const data = err.response?.data;
-      const msg =
-        typeof data === 'string'
-          ? data
-          : data?.error || data?.message || 'Failed to admit patient to ICU';
+      const msg = extractApiError(err, 'Failed to admit patient to ICU');
       toastError(msg);
     } finally {
       setSubmitting(false);
