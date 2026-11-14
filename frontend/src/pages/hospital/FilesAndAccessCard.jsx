@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../../context/ToastContext';
 import formAccessService from '../../services/formAccessService';
+import { extractApiError } from '../../utils/apiError';
 
 // The "other" editor depends on the hospital: a nursing hospital edits with nurses; a
 // non-nursing hospital (the IPD Forms setting) edits with reception. BOTH means "doctor + that
@@ -37,7 +38,7 @@ const FilesAndAccessCard = ({ category = null, title, description, accessContext
     try {
       setForms(await formAccessService.list());
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to load forms');
+      toastError(extractApiError(e, 'Failed to load forms'));
     } finally {
       setLoading(false);
     }
@@ -64,7 +65,7 @@ const FilesAndAccessCard = ({ category = null, title, description, accessContext
       });
       success('Form access updated');
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to update');
+      toastError(extractApiError(e, 'Failed to update'));
       setForms((list) => list.map((f) => (f.key === form.key ? prev : f)));
     }
   };

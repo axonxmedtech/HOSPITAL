@@ -2262,7 +2262,7 @@ const ReceptionistDashboard = () => {
                                 await otService.cancel(r.publicId);
                                 loadOt();
                               } catch (e) {
-                                toastError(e?.response?.data?.error || 'Failed to cancel');
+                                toastError(extractApiError(e, 'Failed to cancel'));
                               }
                             }
                           : undefined
@@ -2274,7 +2274,7 @@ const ReceptionistDashboard = () => {
                                 await otService.start(r.publicId);
                                 loadOt();
                               } catch (e) {
-                                toastError(e?.response?.data?.error || 'Failed to start');
+                                toastError(extractApiError(e, 'Failed to start'));
                               }
                             }
                           : undefined
@@ -2286,7 +2286,7 @@ const ReceptionistDashboard = () => {
                                 await otService.complete(r.publicId);
                                 loadOt();
                               } catch (e) {
-                                toastError(e?.response?.data?.error || 'Failed to complete');
+                                toastError(extractApiError(e, 'Failed to complete'));
                               }
                             }
                           : undefined
@@ -2305,7 +2305,7 @@ const ReceptionistDashboard = () => {
                                 await otService.close(r.publicId);
                                 loadOt();
                               } catch (e) {
-                                toastError(e?.response?.data?.error || 'Failed to close');
+                                toastError(extractApiError(e, 'Failed to close'));
                               }
                             }
                           : undefined
@@ -2317,7 +2317,7 @@ const ReceptionistDashboard = () => {
                                 await otService.approve(r.publicId);
                                 loadOt();
                               } catch (e) {
-                                toastError(e?.response?.data?.error || 'Failed to approve');
+                                toastError(extractApiError(e, 'Failed to approve'));
                               }
                             }
                           : undefined
@@ -2329,7 +2329,7 @@ const ReceptionistDashboard = () => {
                                 await otService.preOp(r.publicId);
                                 loadOt();
                               } catch (e) {
-                                toastError(e?.response?.data?.error || 'Failed to enter pre-op');
+                                toastError(extractApiError(e, 'Failed to enter pre-op'));
                               }
                             }
                           : undefined
@@ -2346,7 +2346,7 @@ const ReceptionistDashboard = () => {
                                 await otService.postpone(r.publicId);
                                 loadOt();
                               } catch (e) {
-                                toastError(e?.response?.data?.error || 'Failed to postpone');
+                                toastError(extractApiError(e, 'Failed to postpone'));
                               }
                             }
                           : undefined

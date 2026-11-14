@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../../context/ToastContext';
 import timeSlotService from '../../services/timeSlotService';
 import { backdropProps } from '../../utils/modalA11y';
+import { extractApiError } from '../../utils/apiError';
 
 /**
  * TimeSlotsView - Nursing Management Phase B1: Shift Templates + Appointment Slots.
@@ -168,7 +169,7 @@ const TimeSlotsView = () => {
       const data = await timeSlotService.listShiftTemplates(false);
       setShiftTemplates(data || []);
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to load shift templates');
+      toastError(extractApiError(e, 'Failed to load shift templates'));
     }
   }, [toastError]);
 
@@ -177,7 +178,7 @@ const TimeSlotsView = () => {
       const data = await timeSlotService.listAppointmentSlots(false);
       setAppointmentSlots(data || []);
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to load appointment slots');
+      toastError(extractApiError(e, 'Failed to load appointment slots'));
     }
   }, [toastError]);
 
@@ -230,7 +231,7 @@ const TimeSlotsView = () => {
       }
       setModalOpen(false);
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to save');
+      toastError(extractApiError(e, 'Failed to save'));
     } finally {
       setIsSubmitting(false);
     }
@@ -242,7 +243,7 @@ const TimeSlotsView = () => {
       success('Shift template activated');
       await fetchShiftTemplates();
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to activate');
+      toastError(extractApiError(e, 'Failed to activate'));
     }
   };
 
@@ -258,7 +259,7 @@ const TimeSlotsView = () => {
         await fetchAppointmentSlots();
       }
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to deactivate');
+      toastError(extractApiError(e, 'Failed to deactivate'));
     }
   };
 

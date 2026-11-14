@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useToast } from '../context/ToastContext';
 import WardService from '../services/wardService';
 import Button from './Button';
+import { extractApiError } from '../utils/apiError';
 
 const WardModal = ({ open, initial, onClose, onSaved }) => {
   const { error: toastError } = useToast();
@@ -66,7 +67,7 @@ const WardModal = ({ open, initial, onClose, onSaved }) => {
       onClose && onClose();
     } catch (err) {
       console.error(err);
-      toastError(err.response?.data?.error || 'Save failed');
+      toastError(extractApiError(err, 'Save failed'));
     } finally {
       setSaving(false);
     }

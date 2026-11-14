@@ -12,6 +12,7 @@ import {
 } from 'recharts';
 import hospitalService from '../services/hospitalService';
 import { SkeletonRect, SkeletonStatsGrid } from './Skeleton';
+import { extractApiError } from '../utils/apiError';
 
 /**
  * The Hospital Admin's operational overview.
@@ -225,7 +226,7 @@ const AdminOverviewAnalytics = () => {
       // Deliberately no partial data: a failed load must not leave the previous range's numbers
       // on screen under a new label, and must never be mistaken for a quiet day.
       setData(null);
-      setError(err?.response?.data?.error || 'Could not load the overview.');
+      setError(extractApiError(err, 'Could not load the overview.'));
     } finally {
       if (isCurrent()) setLoading(false);
     }

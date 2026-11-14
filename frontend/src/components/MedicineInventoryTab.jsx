@@ -183,7 +183,7 @@ const MedicineInventoryTab = ({ hidePrescribingColumns = false }) => {
       setStockModal({ isOpen: false, isEdit: false, data: null });
       loadData();
     } catch (err) {
-      toastError(err.response?.data?.error || 'Failed to record medicine purchase.');
+      toastError(extractApiError(err, 'Failed to record medicine purchase.'));
     } finally {
       setLoading(false);
     }

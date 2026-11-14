@@ -777,11 +777,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
       onClose();
     } catch (err) {
       console.error('Consultation failed', err);
-      const errorMsg =
-        err.response?.data?.error ||
-        err.response?.data?.message ||
-        (typeof err.response?.data === 'string' ? err.response.data : null) ||
-        'Failed to submit consultation';
+      const errorMsg = extractApiError(err, 'Failed to submit consultation');
       toastError(errorMsg);
     } finally {
       setSubmitting(false);
@@ -838,11 +834,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
       onClose();
     } catch (err) {
       console.error('Consultation submit for IPD failed', err);
-      const errorMsg =
-        err.response?.data?.error ||
-        err.response?.data?.message ||
-        (typeof err.response?.data === 'string' ? err.response.data : null) ||
-        'Failed to submit consultation';
+      const errorMsg = extractApiError(err, 'Failed to submit consultation');
       toastError(errorMsg);
     } finally {
       setSubmitting(false);

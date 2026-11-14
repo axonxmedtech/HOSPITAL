@@ -7,6 +7,7 @@ import { validateForm } from '../utils/validation';
 import DateSelect from './DateSelect';
 import DobPicker from './DobPicker';
 import DuplicatePhoneConflictModal from './DuplicatePhoneConflictModal';
+import { extractApiError } from '../utils/apiError';
 
 /**
  * AppointmentModal - Shared modal for creating appointments
@@ -213,14 +214,7 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
       }
       // Never pass an object to the toast: validation failures come back as { errors: {field: msg} }
       // and rendering that object crashes React (#31). Extract a plain string in every shape.
-      const data = err.response?.data;
-      let errorMsg = 'Failed to create appointment';
-      if (typeof data === 'string') errorMsg = data;
-      else if (data?.error) errorMsg = data.error;
-      else if (data?.message) errorMsg = data.message;
-      else if (data?.errors && typeof data.errors === 'object')
-        errorMsg = Object.values(data.errors).join(', ');
-      toastError(errorMsg);
+      toastError(extractApiError(err, 'Failed to create appointment'));
     } finally {
       setSubmitting(false);
     }

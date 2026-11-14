@@ -4,6 +4,7 @@ import hospitalService from '../services/hospitalService';
 import ConfirmationModal from './ConfirmationModal';
 import FrequencyInput, { isFrequencyValid } from './FrequencyInput';
 import MedicineAutocomplete from './MedicineAutocomplete';
+import { extractApiError } from '../utils/apiError';
 
 const EMPTY_ITEM = {
   medicineName: '',
@@ -167,7 +168,7 @@ const PrescriptionPresetsManager = ({ isAdmin = false }) => {
       }
       closeForm();
     } catch (err) {
-      toastError(err?.response?.data || 'Failed to save preset');
+      toastError(extractApiError(err, 'Failed to save preset'));
     } finally {
       setSaving(false);
     }

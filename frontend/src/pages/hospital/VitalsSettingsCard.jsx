@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../../context/ToastContext';
 import vitalsService from '../../services/vitalsService';
+import { extractApiError } from '../../utils/apiError';
 
 /**
  * VitalsSettingsCard - admin control over which vitals are captured at OPD entry.
@@ -21,7 +22,7 @@ const VitalsSettingsCard = () => {
     try {
       setVitals(await vitalsService.list());
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to load vitals');
+      toastError(extractApiError(e, 'Failed to load vitals'));
     } finally {
       setLoading(false);
     }
@@ -39,7 +40,7 @@ const VitalsSettingsCard = () => {
       await vitalsService.toggle(v.key, next);
       success('Vitals updated');
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to update');
+      toastError(extractApiError(e, 'Failed to update'));
       setVitals((list) => list.map((x) => (x.key === v.key ? { ...x, enabled: v.enabled } : x)));
     }
   };
@@ -68,7 +69,7 @@ const VitalsSettingsCard = () => {
       setUnit('');
       success('Vital added');
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to add vital');
+      toastError(extractApiError(e, 'Failed to add vital'));
     } finally {
       setAdding(false);
     }
@@ -81,7 +82,7 @@ const VitalsSettingsCard = () => {
       await vitalsService.deleteCustom(v.publicId);
       success('Vital deleted');
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to delete');
+      toastError(extractApiError(e, 'Failed to delete'));
       setVitals(prev);
     }
   };
