@@ -4,7 +4,13 @@ import { titleCase } from '../utils/text';
 // Icon mapping for sidebar menu items
 const menuIcons = {
   Dashboard: (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -14,7 +20,13 @@ const menuIcons = {
     </svg>
   ),
   Patients: (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -24,7 +36,13 @@ const menuIcons = {
     </svg>
   ),
   Doctors: (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -34,7 +52,13 @@ const menuIcons = {
     </svg>
   ),
   Appointments: (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -44,7 +68,13 @@ const menuIcons = {
     </svg>
   ),
   OPD: (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -54,7 +84,13 @@ const menuIcons = {
     </svg>
   ),
   Queue: (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -64,7 +100,13 @@ const menuIcons = {
     </svg>
   ),
   Billing: (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -74,7 +116,13 @@ const menuIcons = {
     </svg>
   ),
   Pharmacy: (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -84,7 +132,13 @@ const menuIcons = {
     </svg>
   ),
   Receptionists: (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -94,7 +148,13 @@ const menuIcons = {
     </svg>
   ),
   Pharmacists: (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -104,7 +164,13 @@ const menuIcons = {
     </svg>
   ),
   'Audit Logs': (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -114,7 +180,13 @@ const menuIcons = {
     </svg>
   ),
   Hospitals: (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -124,7 +196,13 @@ const menuIcons = {
     </svg>
   ),
   Users: (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -134,7 +212,13 @@ const menuIcons = {
     </svg>
   ),
   Pathology: (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -144,7 +228,13 @@ const menuIcons = {
     </svg>
   ),
   IPD: (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -154,7 +244,13 @@ const menuIcons = {
     </svg>
   ),
   ICU: (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -164,7 +260,13 @@ const menuIcons = {
     </svg>
   ),
   'Operation Theatre': (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -174,7 +276,13 @@ const menuIcons = {
     </svg>
   ),
   Dispense: (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -184,7 +292,13 @@ const menuIcons = {
     </svg>
   ),
   'Wards & Beds': (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -194,7 +308,13 @@ const menuIcons = {
     </svg>
   ),
   'Medicine Master': (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -204,7 +324,13 @@ const menuIcons = {
     </svg>
   ),
   'Billing Counter': (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -214,7 +340,13 @@ const menuIcons = {
     </svg>
   ),
   Prescriptions: (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -224,7 +356,13 @@ const menuIcons = {
     </svg>
   ),
   'Purchase Management': (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -234,7 +372,13 @@ const menuIcons = {
     </svg>
   ),
   Suppliers: (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -244,7 +388,13 @@ const menuIcons = {
     </svg>
   ),
   'Returns & Refunds': (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -254,7 +404,13 @@ const menuIcons = {
     </svg>
   ),
   'Expiry Management': (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -264,7 +420,13 @@ const menuIcons = {
     </svg>
   ),
   'Reports & Analytics': (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -274,7 +436,13 @@ const menuIcons = {
     </svg>
   ),
   Settings: (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -290,7 +458,13 @@ const menuIcons = {
     </svg>
   ),
   Inventory: (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -300,7 +474,13 @@ const menuIcons = {
     </svg>
   ),
   'Medicine Inventory': (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -310,7 +490,13 @@ const menuIcons = {
     </svg>
   ),
   'Hospital Inventory': (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -320,7 +506,13 @@ const menuIcons = {
     </svg>
   ),
   'OPD Cases': (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -331,7 +523,13 @@ const menuIcons = {
   ),
   // Hospital Admin grouped-sidebar section headers
   'Patient Management': (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -341,7 +539,13 @@ const menuIcons = {
     </svg>
   ),
   Rooms: (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -352,7 +556,13 @@ const menuIcons = {
     </svg>
   ),
   Staff: (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -362,7 +572,13 @@ const menuIcons = {
     </svg>
   ),
   Finance: (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -372,7 +588,13 @@ const menuIcons = {
     </svg>
   ),
   Reports: (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -382,7 +604,13 @@ const menuIcons = {
     </svg>
   ),
   Communication: (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -392,7 +620,13 @@ const menuIcons = {
     </svg>
   ),
   Administration: (
-    <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -404,6 +638,198 @@ const menuIcons = {
         strokeLinejoin="round"
         strokeWidth={2}
         d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+      />
+    </svg>
+  ),
+  'Critical Care': (
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+      />
+    </svg>
+  ),
+  'Pharmacy & Inventory': (
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
+      />
+    </svg>
+  ),
+  'Follow-ups': (
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+      />
+    </svg>
+  ),
+  'Clinic Inventory': (
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+      />
+    </svg>
+  ),
+  'ICU Dashboard': (
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M13 10V3L4 14h7v7l9-11h-7z"
+      />
+    </svg>
+  ),
+  'ICU Bed Board': (
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M3 12h4l3-9 4 18 3-9h4"
+      />
+    </svg>
+  ),
+  'ICU Beds': (
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M3 12h4l3-9 4 18 3-9h4"
+      />
+    </svg>
+  ),
+  'ICU Wards & Beds': (
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M3 7h18v10H3V7zm2 2v6h14V9H5zM7 11h2v2H7v-2z"
+      />
+    </svg>
+  ),
+  Nurses: (
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+      />
+    </svg>
+  ),
+  'Nurse Tasks': (
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+      />
+    </svg>
+  ),
+  'Support Tickets': (
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z"
+      />
+    </svg>
+  ),
+  Fees: (
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V6m0 10v2m9-8a9 9 0 11-18 0 9 9 0 0118 0z"
       />
     </svg>
   ),
@@ -491,7 +917,13 @@ const Sidebar = ({
                       className: `w-5 h-5 ${isCollapsed ? '' : 'mr-0'}`,
                     })
                   ) : (
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg
+                      className="w-5 h-5"
+                      aria-hidden="true"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -507,6 +939,7 @@ const Sidebar = ({
                 {!isCollapsed && hasSubItems && (
                   <svg
                     className={`w-4 h-4 transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                    aria-hidden="true"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
