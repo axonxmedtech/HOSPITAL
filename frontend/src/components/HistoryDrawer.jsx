@@ -13,7 +13,7 @@ const HistoryDrawer = ({ isOpen, onClose, entityType, entityId, entityName }) =>
 
   useEffect(() => {
     if (isOpen && entityType && entityId) {
-      fetchHistory();
+      void fetchHistory();
     }
   }, [isOpen, entityType, entityId]);
 

@@ -67,7 +67,7 @@ const IcuDischargeToIpdModal = ({ isOpen, onClose, onSuccess, initialIcuPatient 
       }
     };
 
-    loadData();
+    void loadData();
     return () => {
       isMounted = false;
     };
@@ -111,7 +111,7 @@ const IcuDischargeToIpdModal = ({ isOpen, onClose, onSuccess, initialIcuPatient 
       }
     };
 
-    loadBeds();
+    void loadBeds();
     return () => {
       isMounted = false;
     };

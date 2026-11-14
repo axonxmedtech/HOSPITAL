@@ -35,7 +35,7 @@ export default function PlatformMedicinesTab({ hospitalType = null }) {
   // Effect 1: fires on search change (with debounce). Also fires once on mount.
   useEffect(() => {
     const delayDebounce = setTimeout(() => {
-      loadMedicines(0);
+      void loadMedicines(0);
     }, 300);
     return () => clearTimeout(delayDebounce);
   }, [search, hospitalType]);
@@ -47,7 +47,7 @@ export default function PlatformMedicinesTab({ hospitalType = null }) {
       isMountedRef.current = true;
       return; // skip first render
     }
-    loadMedicines(page);
+    void loadMedicines(page);
   }, [page]);
 
   // BUG-015: use PAGE_SIZE constant
@@ -111,7 +111,7 @@ export default function PlatformMedicinesTab({ hospitalType = null }) {
         success('Medicine registered successfully');
       }
       setShowModal(false);
-      loadMedicines(editingMedicine ? page : 0);
+      void loadMedicines(editingMedicine ? page : 0);
     } catch (err) {
       // BUG-013: use extractError for consistent server message
       setError(extractApiError(err, 'Failed to save medicine'));
@@ -132,7 +132,7 @@ export default function PlatformMedicinesTab({ hospitalType = null }) {
       success('Medicine deleted successfully');
       // If deleting the last item on the page, go to previous page
       const newPage = medicines.length === 1 && page > 0 ? page - 1 : page;
-      loadMedicines(newPage);
+      void loadMedicines(newPage);
     } catch (err) {
       // BUG-013: use extractError for consistent server message
       toastError(extractApiError(err, 'Failed to delete medicine'));
@@ -155,7 +155,7 @@ export default function PlatformMedicinesTab({ hospitalType = null }) {
       } else {
         success(msg);
       }
-      loadMedicines(0);
+      void loadMedicines(0);
     } catch (err) {
       toastError(extractApiError(err, 'CSV import failed. Please verify format.'));
     } finally {

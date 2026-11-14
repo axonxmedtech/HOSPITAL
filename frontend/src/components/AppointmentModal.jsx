@@ -92,7 +92,7 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
       }
     };
 
-    fetchSlots();
+    void fetchSlots();
   }, [formData.doctorId, formData.appointmentDate]);
 
   const handleSlotSelect = (time) => {

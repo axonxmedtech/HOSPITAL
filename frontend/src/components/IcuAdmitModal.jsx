@@ -92,7 +92,7 @@ const IcuAdmitModal = ({ isOpen, onClose, onSuccess, initialPatient = null }) =>
       }
     };
 
-    loadInitialData();
+    void loadInitialData();
     return () => {
       isMounted = false;
     };
@@ -136,7 +136,7 @@ const IcuAdmitModal = ({ isOpen, onClose, onSuccess, initialPatient = null }) =>
       }
     };
 
-    loadBeds();
+    void loadBeds();
     return () => {
       isMounted = false;
     };

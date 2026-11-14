@@ -142,7 +142,7 @@ const MedicineInventoryTab = ({ hidePrescribingColumns = false }) => {
   };
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [subTab]);
 
   // Handle Stock Intake / Purchase Save
@@ -181,7 +181,7 @@ const MedicineInventoryTab = ({ hidePrescribingColumns = false }) => {
       await hospitalService.addMedicinePurchase(payload);
       success('Purchase recorded and stock inventory updated.');
       setStockModal({ isOpen: false, isEdit: false, data: null });
-      loadData();
+      void loadData();
     } catch (err) {
       toastError(extractApiError(err, 'Failed to record medicine purchase.'));
     } finally {

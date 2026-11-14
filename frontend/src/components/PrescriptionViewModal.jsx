@@ -10,7 +10,7 @@ const PrescriptionViewModal = ({ isOpen, onClose, patient }) => {
 
   useEffect(() => {
     if (isOpen && patient) {
-      fetchPrescription();
+      void fetchPrescription();
     } else {
       setData(null);
       setError(null);

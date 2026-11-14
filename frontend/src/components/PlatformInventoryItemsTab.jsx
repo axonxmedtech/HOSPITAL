@@ -28,7 +28,7 @@ export default function PlatformInventoryItemsTab({ hospitalType = null }) {
 
   useEffect(() => {
     const delayDebounce = setTimeout(() => {
-      loadItems(0);
+      void loadItems(0);
     }, 300);
     return () => clearTimeout(delayDebounce);
   }, [search, hospitalType]);
@@ -38,7 +38,7 @@ export default function PlatformInventoryItemsTab({ hospitalType = null }) {
       isMountedRef.current = true;
       return;
     }
-    loadItems(page);
+    void loadItems(page);
   }, [page]);
 
   const loadItems = async (pageNum) => {
@@ -95,7 +95,7 @@ export default function PlatformInventoryItemsTab({ hospitalType = null }) {
         success('Master item added successfully');
       }
       setShowModal(false);
-      loadItems(page);
+      void loadItems(page);
     } catch (err) {
       setError(extractApiError(err, 'Failed to save master item.'));
     } finally {
@@ -115,7 +115,7 @@ export default function PlatformInventoryItemsTab({ hospitalType = null }) {
     try {
       await platformService.deleteMasterItem(item.id, hospitalType);
       success('Master item deleted successfully');
-      loadItems(page);
+      void loadItems(page);
     } catch (err) {
       toastError(extractApiError(err, 'Failed to delete master item.'));
     }
@@ -129,7 +129,7 @@ export default function PlatformInventoryItemsTab({ hospitalType = null }) {
     try {
       await platformService.importMasterItemsCsv(file);
       success('CSV imported successfully');
-      loadItems(0);
+      void loadItems(0);
     } catch (err) {
       toastError(
         extractApiError(err, 'Failed to import CSV file. Make sure file formatting is correct.')
