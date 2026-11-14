@@ -6,6 +6,7 @@ import hospitalService from '../../../services/hospitalService';
 import inventoryApi from '../../../services/pharmacy/inventoryApi';
 import salesApi from '../../../services/pharmacy/salesApi';
 import { printBlob } from '../../../utils/printPdf';
+import { extractApiError } from '../../../utils/apiError';
 
 const BillingCounterView = ({ initialData }) => {
   const user = authService.getCurrentUser();
@@ -315,7 +316,7 @@ const BillingCounterView = ({ initialData }) => {
       setBillDiscount(0);
       setTotals({ subtotal: 0, tax: 0, discount: 0, net: 0 });
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to complete sale');
+      toast.error(extractApiError(err, 'Failed to complete sale'));
     } finally {
       setIsSubmitting(false);
     }
