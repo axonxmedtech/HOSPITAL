@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { TIMEOUT_MESSAGE } from '../utils/apiError';
 
 /**
  * API Service - Axios wrapper for making HTTP requests
@@ -99,7 +100,7 @@ const clearSessionAndRedirect = () => {
   globalThis.location.href = loginUrlForType(hospitalType);
 };
 
-export const TIMEOUT_MESSAGE = 'Request timed out. Please try again.';
+export { TIMEOUT_MESSAGE };
 export const MAX_GET_RETRIES = 3;
 // Gateway/unavailable responses are what a backend restart (deploy) produces behind nginx; they
 // are transient. A plain 500 is a deterministic server error — retrying only delays the message.
