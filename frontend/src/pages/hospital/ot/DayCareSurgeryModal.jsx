@@ -5,6 +5,7 @@ import hospitalService from '../../../services/hospitalService';
 import otService from '../../../services/otService';
 import { backdropProps } from '../../../utils/modalA11y';
 import useOtPermissions from '../../../hooks/useOtPermissions';
+import { extractApiError } from '../../../utils/apiError';
 
 /**
  * DayCareSurgeryModal - request a procedure for a patient who is NOT admitted.
@@ -84,7 +85,7 @@ const DayCareSurgeryModal = ({ isOpen, onClose, onSuccess }) => {
       onSuccess?.();
       onClose();
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to request day-care surgery');
+      toastError(extractApiError(e, 'Failed to request day-care surgery'));
     } finally {
       setSubmitting(false);
     }

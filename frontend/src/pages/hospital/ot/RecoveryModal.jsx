@@ -3,6 +3,7 @@ import { useToast } from '../../../context/ToastContext';
 import useOtPermissions from '../../../hooks/useOtPermissions';
 import otService from '../../../services/otService';
 import { backdropProps } from '../../../utils/modalA11y';
+import { extractApiError } from '../../../utils/apiError';
 
 /**
  * RecoveryModal - PACU recovery for a completed case.
@@ -60,7 +61,7 @@ const RecoveryModal = ({ surgery, onClose }) => {
       setEpisode(await otService.admitRecovery(sid, selectedBay));
       success('Admitted to recovery');
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to admit to recovery');
+      toastError(extractApiError(e, 'Failed to admit to recovery'));
       // The bay may have just been taken by another admission; refresh the list rather
       // than leave a selection the server has already rejected.
       load();
@@ -76,7 +77,7 @@ const RecoveryModal = ({ surgery, onClose }) => {
       setAldrete('');
       success('Observation recorded');
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to record observation');
+      toastError(extractApiError(e, 'Failed to record observation'));
     } finally {
       setBusy(false);
     }
@@ -88,7 +89,7 @@ const RecoveryModal = ({ surgery, onClose }) => {
       setEpisode(await otService.dischargeRecovery(sid, destination));
       success(`Discharged to ${destination}`);
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to discharge');
+      toastError(extractApiError(e, 'Failed to discharge'));
     } finally {
       setBusy(false);
     }

@@ -5,6 +5,7 @@ import nurseService from '../../../services/nurseService';
 import otService from '../../../services/otService';
 import { backdropProps } from '../../../utils/modalA11y';
 import { printHtml } from '../../../utils/printHtml';
+import { extractApiError } from '../../../utils/apiError';
 
 /**
  * SurgeryFormFrame - shared shell for every OT/NABH surgery form.
@@ -137,7 +138,7 @@ const SurgeryFormFrame = ({
       setVersion(res?.version || 1);
       success('Form saved');
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to save form');
+      toastError(extractApiError(e, 'Failed to save form'));
     } finally {
       setSaving(false);
     }
@@ -159,7 +160,7 @@ const SurgeryFormFrame = ({
       setSignedAt(res?.signedAt || null);
       success('Form signed');
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to sign form');
+      toastError(extractApiError(e, 'Failed to sign form'));
     } finally {
       setSaving(false);
     }
