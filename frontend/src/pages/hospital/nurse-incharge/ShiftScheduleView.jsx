@@ -7,6 +7,7 @@ import nurseScheduleService from '../../../services/nurseScheduleService';
 import nurseService from '../../../services/nurseService';
 import timeSlotService from '../../../services/timeSlotService';
 import { backdropProps } from '../../../utils/modalA11y';
+import { extractApiError } from '../../../utils/apiError';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -83,7 +84,7 @@ const ShiftScheduleView = () => {
         setSelectedWardId((prev) => prev ?? wardList[0]?.wardId ?? null);
       })
       .catch((e) => {
-        if (active) toastError(e?.response?.data?.error || 'Failed to load wards');
+        if (active) toastError(extractApiError(e, 'Failed to load wards'));
       })
       .finally(() => {
         if (active) setWardsLoading(false);
@@ -102,7 +103,7 @@ const ShiftScheduleView = () => {
         if (active) setTemplates(Array.isArray(data) ? data : []);
       })
       .catch((e) => {
-        if (active) toastError(e?.response?.data?.error || 'Failed to load shift templates');
+        if (active) toastError(extractApiError(e, 'Failed to load shift templates'));
       });
     return () => {
       active = false;
@@ -120,7 +121,7 @@ const ShiftScheduleView = () => {
       setNurses(Array.isArray(nurseList) ? nurseList : []);
       setSchedules(Array.isArray(scheduleList) ? scheduleList : []);
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to load schedule');
+      toastError(extractApiError(e, 'Failed to load schedule'));
     } finally {
       setGridLoading(false);
     }
@@ -158,7 +159,7 @@ const ShiftScheduleView = () => {
       setEditingCell(null);
       await loadGrid();
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to update shift');
+      toastError(extractApiError(e, 'Failed to update shift'));
     } finally {
       setSaving(false);
     }
@@ -357,7 +358,7 @@ const RangeFillModal = ({ nurses, templates, onClose, onDone }) => {
       success(`Created ${result?.created ?? 0} shifts`);
       onDone();
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to range-fill schedule');
+      toastError(extractApiError(e, 'Failed to range-fill schedule'));
     } finally {
       setSubmitting(false);
     }
