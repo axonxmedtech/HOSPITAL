@@ -25,28 +25,38 @@ const NGINX_502 =
 
 describe('extractApiError', () => {
   it('returns canonical API errors before generic fallback messages', () => {
-    expect(extractApiError({ response: { data: { error: 'Duplicate patient phone number' } } }))
-      .toBe('Duplicate patient phone number');
+    expect(
+      extractApiError({ response: { data: { error: 'Duplicate patient phone number' } } })
+    ).toBe('Duplicate patient phone number');
   });
 
   it('normalizes validation error maps into a safe toast message', () => {
-    expect(extractApiError({ response: { data: { errors: { name: 'Name is required' } } } }))
-      .toBe('Name is required');
+    expect(extractApiError({ response: { data: { errors: { name: 'Name is required' } } } })).toBe(
+      'Name is required'
+    );
   });
 
   it('joins several validation messages', () => {
-    const err = axiosError({ status: 400, data: { errors: { name: 'Name is required', age: 'Age must be positive' } } });
+    const err = axiosError({
+      status: 400,
+      data: { errors: { name: 'Name is required', age: 'Age must be positive' } },
+    });
     expect(extractApiError(err, FALLBACK)).toBe('Name is required, Age must be positive');
   });
 
   it('uses the message field when there is no error field', () => {
-    expect(extractApiError(axiosError({ status: 409, data: { message: 'Bed already occupied' } }), FALLBACK))
-      .toBe('Bed already occupied');
+    expect(
+      extractApiError(
+        axiosError({ status: 409, data: { message: 'Bed already occupied' } }),
+        FALLBACK
+      )
+    ).toBe('Bed already occupied');
   });
 
   it('accepts a plain-text body', () => {
-    expect(extractApiError(axiosError({ status: 400, data: 'Invalid date range' }), FALLBACK))
-      .toBe('Invalid date range');
+    expect(extractApiError(axiosError({ status: 400, data: 'Invalid date range' }), FALLBACK)).toBe(
+      'Invalid date range'
+    );
   });
 
   describe('never shows axios transport text', () => {
@@ -55,8 +65,9 @@ describe('extractApiError', () => {
     });
 
     it('uses the fallback for a 404 with an unusable body', () => {
-      expect(extractApiError(axiosError({ status: 404, data: { error: { code: 404 } } }), FALLBACK))
-        .toBe(FALLBACK);
+      expect(
+        extractApiError(axiosError({ status: 404, data: { error: { code: 404 } } }), FALLBACK)
+      ).toBe(FALLBACK);
     });
 
     it('never renders an nginx HTML error page', () => {
@@ -88,8 +99,12 @@ describe('extractApiError', () => {
     });
 
     it('still prefers what the API said over a status message', () => {
-      expect(extractApiError(axiosError({ status: 503, data: { error: 'Pharmacy module is disabled' } }), FALLBACK))
-        .toBe('Pharmacy module is disabled');
+      expect(
+        extractApiError(
+          axiosError({ status: 503, data: { error: 'Pharmacy module is disabled' } }),
+          FALLBACK
+        )
+      ).toBe('Pharmacy module is disabled');
     });
   });
 
@@ -100,7 +115,9 @@ describe('extractApiError', () => {
   it('survives null, undefined and blank bodies', () => {
     expect(extractApiError(null, FALLBACK)).toBe(FALLBACK);
     expect(extractApiError(undefined, FALLBACK)).toBe(FALLBACK);
-    expect(extractApiError({ response: { data: { error: '  ', errors: { a: '' } } } }, FALLBACK)).toBe(FALLBACK);
+    expect(
+      extractApiError({ response: { data: { error: '  ', errors: { a: '' } } } }, FALLBACK)
+    ).toBe(FALLBACK);
   });
 
   it('always returns a string', () => {
@@ -129,7 +146,8 @@ describe('isRequestCancelled', () => {
 
 describe('safeLoadMessage with an HTML body', () => {
   it('uses the fallback instead of rendering an nginx error page', () => {
-    expect(safeLoadMessage({ response: { data: NGINX_502 } }, "Couldn't load patients."))
-      .toBe("Couldn't load patients.");
+    expect(safeLoadMessage({ response: { data: NGINX_502 } }, "Couldn't load patients.")).toBe(
+      "Couldn't load patients."
+    );
   });
 });

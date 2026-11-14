@@ -38,10 +38,16 @@ describe.each(pages)('%s error messages', (_name, page, loginFn) => {
 
   it('shows what the API said for bad credentials', async () => {
     authService[loginFn].mockRejectedValue(
-      new AxiosError('Request failed with status code 401', 'ERR_BAD_REQUEST', {}, {}, response(401, {
-        error: 'Invalid email or password',
-        message: 'Invalid email or password',
-      }))
+      new AxiosError(
+        'Request failed with status code 401',
+        'ERR_BAD_REQUEST',
+        {},
+        {},
+        response(401, {
+          error: 'Invalid email or password',
+          message: 'Invalid email or password',
+        })
+      )
     );
     render(<MemoryRouter>{page}</MemoryRouter>);
     submit();
@@ -58,7 +64,13 @@ describe.each(pages)('%s error messages', (_name, page, loginFn) => {
 
   it('never renders an nginx HTML page during a backend restart', async () => {
     authService[loginFn].mockRejectedValue(
-      new AxiosError('Request failed with status code 502', 'ERR_BAD_RESPONSE', {}, {}, response(502, NGINX_502))
+      new AxiosError(
+        'Request failed with status code 502',
+        'ERR_BAD_RESPONSE',
+        {},
+        {},
+        response(502, NGINX_502)
+      )
     );
     const { container } = render(<MemoryRouter>{page}</MemoryRouter>);
     submit();

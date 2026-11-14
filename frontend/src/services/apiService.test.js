@@ -4,12 +4,18 @@ import apiClient, { MAX_GET_RETRIES, TIMEOUT_MESSAGE } from './apiService';
 
 // Drive the real interceptors through a fake transport: no network, full axios pipeline.
 const httpError = (config, status, data = {}) =>
-  new AxiosError(`Request failed with status code ${status}`, 'ERR_BAD_RESPONSE', config, {}, {
-    status,
-    data,
-    headers: {},
+  new AxiosError(
+    `Request failed with status code ${status}`,
+    'ERR_BAD_RESPONSE',
     config,
-  });
+    {},
+    {
+      status,
+      data,
+      headers: {},
+      config,
+    }
+  );
 const networkError = (config) => new AxiosError('Network Error', 'ERR_NETWORK', config, {});
 const timeoutError = (config) =>
   new AxiosError('timeout of 30000ms exceeded', 'ECONNABORTED', config, {});
@@ -96,7 +102,9 @@ describe('apiService retry policy', () => {
 
   it('does not retry a request the caller cancelled', async () => {
     // CanceledError(message, config, request) — config must be attached, as axios does.
-    adapter.mockImplementation((config) => Promise.reject(new CanceledError(undefined, config, {})));
+    adapter.mockImplementation((config) =>
+      Promise.reject(new CanceledError(undefined, config, {}))
+    );
 
     const { error } = await settle(apiClient.get('/hospital/patients'));
 
