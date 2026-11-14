@@ -562,7 +562,7 @@ const IpdDetails = () => {
       printBlob(blob); // print on this page (hidden iframe), not a new tab
     } catch (err) {
       console.error(err);
-      toastError(err.message || 'Failed to load bill for printing');
+      toastError(extractApiError(err, 'Failed to load bill for printing'));
     } finally {
       setPrintingBill(false);
     }
