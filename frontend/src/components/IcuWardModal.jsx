@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useToast } from '../context/ToastContext';
 import icuService from '../services/icuService';
 import icuWardService from '../services/icuWardService';
+import { extractApiError } from '../utils/apiError';
 import Button from './Button';
 
 const IcuWardModal = ({ open, initial, onClose, onSaved }) => {
@@ -29,9 +30,7 @@ const IcuWardModal = ({ open, initial, onClose, onSaved }) => {
       })
       .catch((e) => {
         setUnitTypes([]);
-        setUnitTypesError(
-          e?.response?.data?.error || 'Could not load ICU unit types. Please try again.'
-        );
+        setUnitTypesError(extractApiError(e, 'Could not load ICU unit types. Please try again.'));
       });
   }, [open]);
 
@@ -89,7 +88,7 @@ const IcuWardModal = ({ open, initial, onClose, onSaved }) => {
       onClose && onClose();
     } catch (err) {
       console.error(err);
-      toastError(err.response?.data?.error || err.response?.data?.message || 'Save failed');
+      toastError(extractApiError(err, 'Save failed'));
     } finally {
       setSaving(false);
     }

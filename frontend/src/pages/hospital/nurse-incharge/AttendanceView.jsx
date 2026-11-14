@@ -3,6 +3,7 @@ import DateSelect from '../../../components/DateSelect';
 import { useToast } from '../../../context/ToastContext';
 import attendanceService from '../../../services/attendanceService';
 import nurseService from '../../../services/nurseService';
+import { extractApiError } from '../../../utils/apiError';
 
 /**
  * AttendanceView - the Nurse Incharge's daily attendance sheet for a ward.
@@ -97,7 +98,7 @@ const AttendanceView = () => {
       success('Attendance saved');
       load();
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to save attendance');
+      toastError(extractApiError(e, 'Failed to save attendance'));
     } finally {
       setSavingId(null);
     }

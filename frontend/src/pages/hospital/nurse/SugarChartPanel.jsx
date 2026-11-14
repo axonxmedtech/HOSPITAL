@@ -3,6 +3,7 @@ import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
 import nurseService from '../../../services/nurseService';
+import { extractApiError } from '../../../utils/apiError';
 import escapeHtml from '../../../utils/escapeHtml';
 import { printHtml } from '../../../utils/printHtml';
 import { titleCase } from '../../../utils/text';
@@ -176,10 +177,7 @@ const SugarChartPanel = ({ admissionId, readOnly = false }) => {
     }
   }, [isNurse, separateLogin, f.wardId]);
 
-  const errMsg = (err, fb) => {
-    const data = err.response?.data;
-    return data?.error || data?.message || (typeof data === 'string' ? data : null) || fb;
-  };
+  const errMsg = extractApiError;
 
   const add = async () => {
     if (!bloodSugar.trim() && !treatment.trim()) {

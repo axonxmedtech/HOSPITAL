@@ -11,6 +11,7 @@ import { useToast } from '../../../context/ToastContext';
 import { useViewManager } from '../../../hooks/pharmacy/useViewManager';
 import authService from '../../../services/authService';
 import suppliersApi from '../../../services/pharmacy/suppliersApi';
+import { extractApiError } from '../../../utils/apiError';
 
 const SuppliersView = () => {
   const toast = useToast();
@@ -51,7 +52,7 @@ const SuppliersView = () => {
       refresh();
     } catch (err) {
       toast.error(
-        err.response?.data?.message || 'Failed to delete supplier (it may be linked to purchases)'
+        extractApiError(err, 'Failed to delete supplier (it may be linked to purchases)')
       );
     }
   };

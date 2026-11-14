@@ -3,6 +3,7 @@ import EmptyState from '../../../components/EmptyState';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
 import icuService from '../../../services/icuService';
+import { extractApiError } from '../../../utils/apiError';
 
 /**
  * IcuDashboard - ICU capacity at a glance (ICU Phase 2).
@@ -40,7 +41,7 @@ const IcuDashboard = ({ refreshKey = 0, onOpenBedBoard }) => {
     icuService
       .getUnits()
       .then(setData)
-      .catch((e) => toastError(e?.response?.data?.error || 'Failed to load the ICU dashboard'))
+      .catch((e) => toastError(extractApiError(e, 'Failed to load the ICU dashboard')))
       .finally(() => setLoading(false));
   }, [toastError]);
 

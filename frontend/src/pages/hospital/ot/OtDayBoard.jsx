@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useToast } from '../../../context/ToastContext';
 import otService from '../../../services/otService';
+import { extractApiError } from '../../../utils/apiError';
 
 /**
  * OtDayBoard - the theatres × time grid for one day.
@@ -37,7 +38,7 @@ const OtDayBoard = ({ date, onSelect }) => {
       setRooms(Array.isArray(r) ? r : []);
       setCases(Array.isArray(list) ? list : []);
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to load day board');
+      toastError(extractApiError(e, 'Failed to load day board'));
     } finally {
       setLoading(false);
     }

@@ -188,7 +188,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
           console.error('Failed to fetch fees', e);
         }
       };
-      fetchFees();
+      void fetchFees();
     }
   }, [isOpen, opd, hasBilling]);
 
@@ -384,9 +384,9 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
           console.error('Failed to load in-clinic presets', err);
         }
       };
-      fetchInventory();
-      fetchHospitalInventory();
-      fetchInClinicPresets();
+      void fetchInventory();
+      void fetchHospitalInventory();
+      void fetchInClinicPresets();
     }
     if (!isOpen) {
       setAdministeredList([]);
@@ -530,7 +530,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
         setPatientDetails(null);
       }
     };
-    fetchPatientDetails();
+    void fetchPatientDetails();
   }, [isOpen, appointment?.patientId, patient?.publicId, patient?.id, opd]);
 
   if (!isOpen || (!appointment && !patient)) return null;
@@ -777,11 +777,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
       onClose();
     } catch (err) {
       console.error('Consultation failed', err);
-      const errorMsg =
-        err.response?.data?.error ||
-        err.response?.data?.message ||
-        (typeof err.response?.data === 'string' ? err.response.data : null) ||
-        'Failed to submit consultation';
+      const errorMsg = extractApiError(err, 'Failed to submit consultation');
       toastError(errorMsg);
     } finally {
       setSubmitting(false);
@@ -838,11 +834,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
       onClose();
     } catch (err) {
       console.error('Consultation submit for IPD failed', err);
-      const errorMsg =
-        err.response?.data?.error ||
-        err.response?.data?.message ||
-        (typeof err.response?.data === 'string' ? err.response.data : null) ||
-        'Failed to submit consultation';
+      const errorMsg = extractApiError(err, 'Failed to submit consultation');
       toastError(errorMsg);
     } finally {
       setSubmitting(false);

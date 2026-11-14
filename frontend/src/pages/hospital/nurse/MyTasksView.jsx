@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
 import nurseService from '../../../services/nurseService';
+import { extractApiError } from '../../../utils/apiError';
 import { backdropProps } from '../../../utils/modalA11y';
 
 /**
@@ -39,12 +40,8 @@ const MyTasksView = ({ refreshKey }) => {
       success('Task started');
       loadTasks();
     } catch (err) {
-      const msg =
-        err.response?.data?.error ||
-        err.response?.data?.message ||
-        err.response?.data ||
-        'Failed to start task';
-      toastError(typeof msg === 'string' ? msg : 'Failed to start task');
+      const msg = extractApiError(err, 'Failed to start task');
+      toastError(msg);
     } finally {
       setSubmittingId(null);
     }
@@ -69,12 +66,8 @@ const MyTasksView = ({ refreshKey }) => {
       setCompletionModal({ isOpen: false, taskPublicId: null });
       loadTasks();
     } catch (err) {
-      const msg =
-        err.response?.data?.error ||
-        err.response?.data?.message ||
-        err.response?.data ||
-        'Failed to complete task';
-      toastError(typeof msg === 'string' ? msg : 'Failed to complete task');
+      const msg = extractApiError(err, 'Failed to complete task');
+      toastError(msg);
     } finally {
       setSubmittingId(null);
     }

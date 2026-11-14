@@ -3,6 +3,7 @@ import EmptyState from '../../../components/EmptyState';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
 import nurseService from '../../../services/nurseService';
+import { extractApiError } from '../../../utils/apiError';
 import { backdropProps } from '../../../utils/modalA11y';
 
 const STATUS_META = {
@@ -57,7 +58,7 @@ const WardBedsView = () => {
           return list[0]?.wardId ?? null;
         });
       })
-      .catch((e) => toastError(e?.response?.data?.error || 'Failed to load wards'))
+      .catch((e) => toastError(extractApiError(e, 'Failed to load wards')))
       .finally(() => setLoading(false));
   }, [toastError]);
 
@@ -226,7 +227,7 @@ const BedActionModal = ({ bed, action, onClose, onDone, onError }) => {
       await meta.call(bed.bedId, remarks.trim() || undefined);
       onDone();
     } catch (e) {
-      onError(e?.response?.data?.error || 'Failed to update bed status');
+      onError(extractApiError(e, 'Failed to update bed status'));
     } finally {
       setSubmitting(false);
     }
@@ -287,7 +288,7 @@ const BedHistoryModal = ({ bed, onClose, onError }) => {
         if (active) setRows(Array.isArray(data) ? data : []);
       })
       .catch((e) => {
-        if (active) onError(e?.response?.data?.error || 'Failed to load bed history');
+        if (active) onError(extractApiError(e, 'Failed to load bed history'));
       })
       .finally(() => {
         if (active) setLoading(false);

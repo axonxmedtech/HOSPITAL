@@ -10,6 +10,7 @@ import { useToast } from '../../context/ToastContext';
 import useWebSocket from '../../hooks/useWebSocket';
 import authService from '../../services/authService';
 import nurseService from '../../services/nurseService';
+import { extractApiError } from '../../utils/apiError';
 import HospitalCalendar from './HospitalCalendar';
 import IcuBedBoard from './icu/IcuBedBoard';
 import NursePatientDetail from './nurse/NursePatientDetail';
@@ -186,7 +187,7 @@ const WardPatientsView = ({ refreshKey, onOpenPatient }) => {
         if (active) setPatients(Array.isArray(d) ? d : []);
       })
       .catch((e) => {
-        if (active) toastError(e?.response?.data?.error || 'Failed to load ward patients');
+        if (active) toastError(extractApiError(e, 'Failed to load ward patients'));
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -204,7 +205,7 @@ const WardPatientsView = ({ refreshKey, onOpenPatient }) => {
         const list = await nurseService.getWardStaffNurses(patient.wardId);
         setWardNurses((prev) => ({ ...prev, [patient.wardId]: Array.isArray(list) ? list : [] }));
       } catch (e) {
-        toastError(e?.response?.data?.error || 'Failed to load nurses for this ward');
+        toastError(extractApiError(e, 'Failed to load nurses for this ward'));
       } finally {
         setNursesLoading(false);
       }
@@ -220,7 +221,7 @@ const WardPatientsView = ({ refreshKey, onOpenPatient }) => {
       setAssigningFor(null);
       setLocalRefresh((k) => k + 1);
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to assign nurse');
+      toastError(extractApiError(e, 'Failed to assign nurse'));
     } finally {
       setSaving(false);
     }
@@ -332,7 +333,7 @@ export const UnassignedPatientsView = ({ refreshKey }) => {
     nurseService.getUnassignedPatients().then((data) => {
       if (active) setPatients(Array.isArray(data) ? data : []);
     }).catch((error) => {
-      if (active) toastError(error?.response?.data?.error || 'Failed to load unassigned patients');
+      if (active) toastError(extractApiError(error, 'Failed to load unassigned patients'));
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [refreshKey, refresh, toastError]);
@@ -344,7 +345,7 @@ export const UnassignedPatientsView = ({ refreshKey }) => {
       const data = await nurseService.getWardStaffNurses(patient.wardId);
       setNurses(Array.isArray(data) ? data : []);
     } catch (error) {
-      toastError(error?.response?.data?.error || 'Failed to load nurses for this ward');
+      toastError(extractApiError(error, 'Failed to load nurses for this ward'));
     }
   };
 
@@ -358,7 +359,7 @@ export const UnassignedPatientsView = ({ refreshKey }) => {
       setRefresh((value) => value + 1);
     } catch (error) {
       // Preserve the dialog and selection so an operator can correct/retry the action.
-      toastError(error?.response?.data?.error || 'Failed to assign nurse');
+      toastError(extractApiError(error, 'Failed to assign nurse'));
     } finally { setSaving(false); }
   };
 

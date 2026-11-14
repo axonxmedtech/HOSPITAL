@@ -5,6 +5,7 @@ import { useToast } from '../../../context/ToastContext';
 import useEnabledVentilatorParams from '../../../hooks/useEnabledVentilatorParams';
 import authService from '../../../services/authService';
 import icuService from '../../../services/icuService';
+import { extractApiError } from '../../../utils/apiError';
 
 /**
  * VentilatorPanel - timed ventilator snapshots (ICU Phase 7).
@@ -105,7 +106,7 @@ const VentilatorPanel = ({ admissionId, readOnly = false, refreshKey = 0 }) => {
       setValues({});
       load();
     } catch (err) {
-      toastError(err?.response?.data?.error || 'Failed to record the ventilator entry');
+      toastError(extractApiError(err, 'Failed to record the ventilator entry'));
     } finally {
       setSubmitting(false);
     }
@@ -122,7 +123,7 @@ const VentilatorPanel = ({ admissionId, readOnly = false, refreshKey = 0 }) => {
       setCorrecting(null);
       load();
     } catch (err) {
-      toastError(err?.response?.data?.error || 'Failed to record the correction');
+      toastError(extractApiError(err, 'Failed to record the correction'));
     } finally {
       setSubmitting(false);
     }

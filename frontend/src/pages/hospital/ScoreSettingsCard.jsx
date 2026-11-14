@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useToast } from '../../context/ToastContext';
 import icuService from '../../services/icuService';
+import { extractApiError } from '../../utils/apiError';
 
 /**
  * ScoreSettingsCard - which severity scores this hospital uses (ICU Phase 8, D-2).
@@ -45,7 +46,7 @@ const ScoreSettingsCard = ({ refreshKey = 0 }) => {
       success(next ? `${t.label} enabled` : `${t.label} disabled — recorded scores are kept`);
     } catch (err) {
       setTypes((list) => list.map((x) => (x.key === t.key ? { ...x, enabled: t.enabled } : x)));
-      toastError(err?.response?.data?.error || 'Could not update the score');
+      toastError(extractApiError(err, 'Could not update the score'));
     }
   };
 

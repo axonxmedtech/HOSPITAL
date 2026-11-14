@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../context/ToastContext';
 import hospitalService from '../services/hospitalService';
+import { extractApiError } from '../utils/apiError';
 import ConfirmationModal from './ConfirmationModal';
 import FrequencyInput, { isFrequencyValid } from './FrequencyInput';
 import MedicineAutocomplete from './MedicineAutocomplete';
@@ -157,7 +158,7 @@ const InClinicPresetsManager = () => {
       closeForm();
       await load();
     } catch (err) {
-      toastError(err?.response?.data?.error || err?.response?.data || 'Failed to save preset.');
+      toastError(extractApiError(err, 'Failed to save preset.'));
     } finally {
       setSaving(false);
     }
@@ -169,7 +170,7 @@ const InClinicPresetsManager = () => {
       success('In-clinic preset deleted.');
       await load();
     } catch (err) {
-      toastError(err?.response?.data?.error || 'Failed to delete preset.');
+      toastError(extractApiError(err, 'Failed to delete preset.'));
     } finally {
       setDeleteConfirm({ isOpen: false, id: null });
     }

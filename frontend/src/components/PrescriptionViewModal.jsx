@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import hospitalService from '../services/hospitalService';
+import { extractApiError } from '../utils/apiError';
 import { printHtml } from '../utils/printHtml';
 
 const PrescriptionViewModal = ({ isOpen, onClose, patient }) => {
@@ -9,7 +10,7 @@ const PrescriptionViewModal = ({ isOpen, onClose, patient }) => {
 
   useEffect(() => {
     if (isOpen && patient) {
-      fetchPrescription();
+      void fetchPrescription();
     } else {
       setData(null);
       setError(null);
@@ -24,7 +25,7 @@ const PrescriptionViewModal = ({ isOpen, onClose, patient }) => {
       setData(result);
     } catch (err) {
       console.error('Failed to fetch prescription', err);
-      setError(err.response?.data || 'No prescription records found for this patient.');
+      setError(extractApiError(err, 'No prescription records found for this patient.'));
     } finally {
       setLoading(false);
     }

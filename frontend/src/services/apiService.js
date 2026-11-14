@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { TIMEOUT_MESSAGE } from '../utils/apiError';
 
 /**
  * API Service - Axios wrapper for making HTTP requests
@@ -99,11 +100,32 @@ const clearSessionAndRedirect = () => {
   globalThis.location.href = loginUrlForType(hospitalType);
 };
 
-// Helper to handle standard response errors (such as unauthorized session redirect)
+export { TIMEOUT_MESSAGE };
+export const MAX_GET_RETRIES = 3;
+// Gateway/unavailable responses are what a backend restart (deploy) produces behind nginx; they
+// are transient. A plain 500 is a deterministic server error — retrying only delays the message.
+const RETRYABLE_STATUSES = new Set([502, 503, 504]);
+
+export const isTimeoutError = (error) =>
+  error?.code === 'ECONNABORTED' || error?.code === 'ETIMEDOUT';
+
+// Retry only idempotent GETs, and only for failures a second attempt can fix: the network
+// dropped (no response) or the gateway reported the backend unavailable. Never retry a request
+// the caller cancelled, and never retry a timeout — the server is already slow, and three more
+// 30 s attempts would leave the user waiting two minutes for an error.
+const shouldRetry = (error) => {
+  const config = error.config;
+  if (!config || config.method?.toLowerCase() !== 'get') return false;
+  if (axios.isCancel(error) || isTimeoutError(error)) return false;
+  if ((config.__retryCount || 0) >= MAX_GET_RETRIES) return false;
+  return !error.response || RETRYABLE_STATUSES.has(error.response.status);
+};
+
+// Helper to handle standard response errors (such as unauthorized session redirect).
+// Always rejects with the original AxiosError so callers keep code, status and response.
 const handleResponseError = (error) => {
-  // Timeout error — surface a clean message instead of network error
-  if (error.code === 'ECONNABORTED') {
-    return Promise.reject(new Error('Request timed out. Please try again.'));
+  if (isTimeoutError(error)) {
+    error.message = TIMEOUT_MESSAGE;
   }
 
   // If 401 Unauthorized (token expired/missing) on a non-login call, redirect to login
@@ -119,31 +141,15 @@ const handleResponseError = (error) => {
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
+    if (!shouldRetry(error)) {
+      return handleResponseError(error);
+    }
+
     const config = error.config;
-    // Only retry safe GET requests on network errors, timeout errors, or 5xx server errors
-    if (!config || !config.method || config.method.toLowerCase() !== 'get') {
-      return handleResponseError(error);
-    }
-
-    config.__retryCount = config.__retryCount || 0;
-
-    if (config.__retryCount >= 3) {
-      return handleResponseError(error);
-    }
-
-    const shouldRetry =
-      !error.response ||
-      (error.response.status >= 500 && error.response.status <= 599) ||
-      error.code === 'ECONNABORTED';
-
-    if (shouldRetry) {
-      config.__retryCount += 1;
-      const delay = 1000 * config.__retryCount;
-      await new Promise((resolve) => setTimeout(resolve, delay));
-      return apiClient(config);
-    }
-
-    return handleResponseError(error);
+    config.__retryCount = (config.__retryCount || 0) + 1;
+    const delay = 1000 * config.__retryCount;
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    return apiClient(config);
   }
 );
 

@@ -4,6 +4,7 @@ import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
 import icuService from '../../../services/icuService';
+import { extractApiError } from '../../../utils/apiError';
 
 /**
  * IoChartPanel - fluid intake and output (ICU Phase 5).
@@ -128,7 +129,7 @@ const IoChartPanel = ({ admissionId, readOnly = false, refreshKey = 0 }) => {
       setForm(emptyForm);
       load();
     } catch (err) {
-      toastError(err?.response?.data?.error || 'Failed to record I/O entry');
+      toastError(extractApiError(err, 'Failed to record I/O entry'));
     } finally {
       setSubmitting(false);
     }
@@ -153,7 +154,7 @@ const IoChartPanel = ({ admissionId, readOnly = false, refreshKey = 0 }) => {
       setCorrection({ volumeMl: '', notes: '' });
       load();
     } catch (err) {
-      toastError(err?.response?.data?.error || 'Failed to record the correction');
+      toastError(extractApiError(err, 'Failed to record the correction'));
     } finally {
       setSubmitting(false);
     }

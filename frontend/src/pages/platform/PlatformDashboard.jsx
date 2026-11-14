@@ -159,15 +159,7 @@ const PlatformDashboard = () => {
   };
 
   // BUG-013: Centralised error extractor – all catch blocks must use this.
-  const extractError = (err, fallback) => {
-    const d = err?.response?.data;
-    if (!d) return fallback;
-    if (typeof d === 'string') return d;
-    if (d.errors && typeof d.errors === 'object') {
-      return Object.values(d.errors).join(', ');
-    }
-    return d.message || d.error || d.detail || fallback;
-  };
+  const extractError = extractApiError;
 
   const [hospitals, setHospitals] = useState([]);
   const [hospitalPage, setHospitalPage] = useState({
@@ -1021,7 +1013,7 @@ const PlatformDashboard = () => {
                 </div>
                 <div className="ml-3">
                   <p className="text-sm text-red-700">
-                    {typeof error === 'string' ? error : JSON.stringify(error)}
+                    {typeof error === 'string' ? error : 'Something went wrong. Please try again.'}
                   </p>
                 </div>
                 <div className="ml-auto pl-3">
@@ -2326,8 +2318,7 @@ const SuperAdminProfileModal = ({ user, onClose }) => {
       setMsg({ type: 'success', text: 'Profile updated successfully.' });
       setTimeout(onClose, 1200);
     } catch (err) {
-      const text = err?.response?.data?.error || err?.response?.data || 'Failed to save changes.';
-      setMsg({ type: 'error', text: typeof text === 'string' ? text : 'Failed to save changes.' });
+      setMsg({ type: 'error', text: extractApiError(err, 'Failed to save changes.') });
     } finally {
       setSaving(false);
     }

@@ -3,6 +3,7 @@ import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
 import nurseService from '../../../services/nurseService';
+import { extractApiError } from '../../../utils/apiError';
 import { describeFoodTiming } from '../../../utils/foodTiming';
 
 /**
@@ -135,12 +136,8 @@ const MedicationPanel = ({ admissionId, readOnly = false }) => {
       setPerformedByNurseId('');
       loadData();
     } catch (err) {
-      const msg =
-        err.response?.data?.error ||
-        err.response?.data?.message ||
-        err.response?.data ||
-        'Failed to record medication';
-      toastError(typeof msg === 'string' ? msg : 'Failed to record medication');
+      const msg = extractApiError(err, 'Failed to record medication');
+      toastError(msg);
     } finally {
       setSubmitting(false);
     }

@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import DateSelect from '../../../components/DateSelect';
 import { useToast } from '../../../context/ToastContext';
+import useOtPermissions from '../../../hooks/useOtPermissions';
 import hospitalService from '../../../services/hospitalService';
 import otService from '../../../services/otService';
+import { extractApiError } from '../../../utils/apiError';
 import { backdropProps } from '../../../utils/modalA11y';
-import useOtPermissions from '../../../hooks/useOtPermissions';
 
 /**
  * DayCareSurgeryModal - request a procedure for a patient who is NOT admitted.
@@ -84,7 +85,7 @@ const DayCareSurgeryModal = ({ isOpen, onClose, onSuccess }) => {
       onSuccess?.();
       onClose();
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to request day-care surgery');
+      toastError(extractApiError(e, 'Failed to request day-care surgery'));
     } finally {
       setSubmitting(false);
     }
