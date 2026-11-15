@@ -64,11 +64,9 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
       if (isEdit) {
         saved = await hospitalService.updatePatient(formData.id, savePayload, options);
         success('Patient updated successfully');
-        console.log('[PatientModal] Patient updated');
       } else {
         saved = await hospitalService.addPatient(savePayload, options);
         success('Patient added successfully');
-        console.log('[PatientModal] Patient added, calling onSuccess');
       }
       // The saved patient is handed to the caller so a flow that needs it (the OPD
       // modal's "New Patient" option) can select it straight away. Callers that do

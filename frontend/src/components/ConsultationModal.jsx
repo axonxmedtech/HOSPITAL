@@ -53,7 +53,6 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
     }
   }, [opd?.customVitals]);
 
-  console.log('ConsultationModal render:', { isOpen, appointment, patient, opd });
   const [activeTab, setActiveTab] = useState('clinical'); // 'clinical' or 'prescription'
   const [patientDetails, setPatientDetails] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
@@ -762,8 +761,6 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
         : printLanguage?.toUpperCase() === 'HI' || printLanguage?.toUpperCase() === 'EN_HI'
           ? 'EN_HI'
           : 'EN';
-
-    console.log('Submitting Consultation Data:', JSON.stringify(payload, null, 2));
 
     setSubmitting(true);
     try {

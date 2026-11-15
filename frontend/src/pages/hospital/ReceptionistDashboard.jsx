@@ -3415,7 +3415,6 @@ const AppointmentsTable = ({
 
   // DEBUG: Log first appointment structure to verify publicId
   if (appointments.length > 0) {
-    // console.log("DEBUG: First Appointment Record:", appointments[0]);
     const corruptAppointments = appointments.filter((a) => !a.publicId);
     if (corruptAppointments.length > 0) {
       console.error(
