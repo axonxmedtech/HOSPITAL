@@ -3,6 +3,7 @@ import ConfirmationModal from '../../../components/ConfirmationModal';
 import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
 import inventoryApi from '../../../services/pharmacy/inventoryApi';
+import { extractApiError } from '../../../utils/apiError';
 
 const ExpiryView = () => {
   const { success, error: toastError } = useToast();
@@ -215,7 +216,7 @@ const ExpiryView = () => {
       fetchExpiryAlerts();
     } catch (err) {
       console.error('Supplier return failed', err);
-      toastError(err.response?.data?.message || 'Failed to dispatch stock back to supplier.');
+      toastError(extractApiError(err, 'Failed to dispatch stock back to supplier.'));
     } finally {
       setProcessingReturn(false);
     }

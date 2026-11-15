@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import authService from '../../services/authService';
+import { extractApiError } from '../../utils/apiError';
 import { validateForm } from '../../utils/validation';
 
 /**
@@ -48,23 +49,9 @@ const PlatformLogin = () => {
       navigate('/platform/dashboard');
     } catch (err) {
       console.error('Login error:', err);
-      // Extract error message from various possible error formats
-      let errorMessage = 'Login failed. Please check your credentials.';
-
-      if (err.response?.data) {
-        // If backend returns a string message
-        if (typeof err.response.data === 'string') {
-          errorMessage = err.response.data;
-        }
-        // If backend returns an object with message property
-        else if (err.response.data.message) {
-          errorMessage = err.response.data.message;
-        }
-      } else if (err.message) {
-        errorMessage = err.message;
-      }
-
-      setErrors({ submit: errorMessage });
+      setErrors({
+        submit: extractApiError(err, 'Login failed. Please check your credentials.'),
+      });
     } finally {
       setLoading(false);
     }

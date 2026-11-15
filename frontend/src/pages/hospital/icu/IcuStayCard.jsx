@@ -4,6 +4,7 @@ import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
 import hospitalService from '../../../services/hospitalService';
 import icuService from '../../../services/icuService';
+import { extractApiError } from '../../../utils/apiError';
 
 /**
  * IcuStayCard - the ICU stay and who is consulting on it (ICU Phase 10, D-1 option c).
@@ -84,7 +85,7 @@ const IcuStayCard = ({ admissionId, refreshKey = 0 }) => {
       setEditing(false);
       load();
     } catch (err) {
-      toastError(err?.response?.data?.error || 'Could not update the intensivist');
+      toastError(extractApiError(err, 'Could not update the intensivist'));
     } finally {
       setSaving(false);
     }

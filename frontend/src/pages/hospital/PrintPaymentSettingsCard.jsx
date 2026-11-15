@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../../context/ToastContext';
 import hospitalService from '../../services/hospitalService';
+import { extractApiError } from '../../utils/apiError';
 
 /**
  * PrintPaymentSettingsCard — two related admin controls:
@@ -35,7 +36,7 @@ const PrintPaymentSettingsCard = () => {
         defaultConsultationLanguage: data.defaultConsultationLanguage || 'EN',
       });
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to load settings');
+      toastError(extractApiError(e, 'Failed to load settings'));
     } finally {
       setLoading(false);
     }
@@ -55,7 +56,7 @@ const PrintPaymentSettingsCard = () => {
       success('Settings updated');
     } catch (e) {
       setS(prev);
-      toastError(e?.response?.data?.error || 'Failed to update');
+      toastError(extractApiError(e, 'Failed to update'));
     }
   };
 

@@ -58,6 +58,7 @@ export const importErrorMessage = (error, committing = false) => {
 };
 
 export const errorBatchId = (error) => {
+  // api-error-guard-ignore: reads the batch id the import API returns for recovery, not a display message
   const id = error.response?.data?.errors?.batchPublicId;
   return typeof id === 'string' && /^[a-f0-9-]{36}$/i.test(id) ? id : null;
 };

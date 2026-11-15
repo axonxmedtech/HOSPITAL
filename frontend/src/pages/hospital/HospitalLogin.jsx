@@ -2,6 +2,7 @@ import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import authService from '../../services/authService';
+import { extractApiError } from '../../utils/apiError';
 import { validateForm } from '../../utils/validation';
 
 const PORTAL_CONFIG = {
@@ -133,21 +134,9 @@ const HospitalLogin = ({ portalType = 'HOSPITAL' }) => {
       }
     } catch (err) {
       console.error('Login error:', err);
-      let errorMessage = 'Login failed. Please check your credentials.';
-
-      if (err.response?.data) {
-        if (typeof err.response.data === 'string') {
-          errorMessage = err.response.data;
-        } else if (err.response.data.message) {
-          errorMessage = err.response.data.message;
-        } else if (err.response.data.error) {
-          errorMessage = err.response.data.error;
-        }
-      } else if (err.message) {
-        errorMessage = err.message;
-      }
-
-      setErrors({ submit: errorMessage });
+      setErrors({
+        submit: extractApiError(err, 'Login failed. Please check your credentials.'),
+      });
     } finally {
       setLoading(false);
     }

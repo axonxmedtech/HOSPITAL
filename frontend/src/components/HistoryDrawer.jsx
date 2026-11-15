@@ -3,6 +3,7 @@ import classNames from 'classnames';
 import React, { Fragment, useEffect, useState } from 'react';
 import { useToast } from '../context/ToastContext';
 import hospitalService from '../services/hospitalService';
+import { extractApiError } from '../utils/apiError';
 
 const HistoryDrawer = ({ isOpen, onClose, entityType, entityId, entityName }) => {
   const [clinicalLogs, setClinicalLogs] = useState([]);
@@ -12,7 +13,7 @@ const HistoryDrawer = ({ isOpen, onClose, entityType, entityId, entityName }) =>
 
   useEffect(() => {
     if (isOpen && entityType && entityId) {
-      fetchHistory();
+      void fetchHistory();
     }
   }, [isOpen, entityType, entityId]);
 
@@ -33,7 +34,7 @@ const HistoryDrawer = ({ isOpen, onClose, entityType, entityId, entityName }) =>
       }
     } catch (error) {
       console.error('Failed to load history', error);
-      toastError(error.response?.data?.message || 'Failed to load history');
+      toastError(extractApiError(error, 'Failed to load history'));
     } finally {
       setLoading(false);
     }

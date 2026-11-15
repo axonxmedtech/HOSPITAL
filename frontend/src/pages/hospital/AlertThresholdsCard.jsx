@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useToast } from '../../context/ToastContext';
 import icuService from '../../services/icuService';
+import { extractApiError } from '../../utils/apiError';
 
 /**
  * AlertThresholdsCard - alert thresholds for ICU vitals (ICU Phase 9).
@@ -59,7 +60,7 @@ const AlertThresholdsCard = ({ refreshKey = 0 }) => {
       success(enabled ? `${m.label} alert saved` : `${m.label} alert turned off`);
       load();
     } catch (err) {
-      toastError(err?.response?.data?.error || 'Could not save the threshold');
+      toastError(extractApiError(err, 'Could not save the threshold'));
     } finally {
       setSavingKey(null);
     }

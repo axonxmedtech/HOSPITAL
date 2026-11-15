@@ -1028,14 +1028,7 @@ const HospitalAdminDashboard = () => {
       authService.updateCurrentUser(profile);
       setUser(profile);
     } catch (err) {
-      const errData = err.response?.data;
-      const msg =
-        typeof errData === 'string'
-          ? errData
-          : errData?.message || errData?.error || errData?.billingHandler
-            ? errData.message || errData.error || JSON.stringify(errData)
-            : 'Failed to update billing responsibility';
-      toastError(msg);
+      toastError(extractApiError(err, 'Failed to update billing responsibility'));
     } finally {
       setSettingsLoading(false);
     }
@@ -1668,7 +1661,7 @@ const HospitalAdminDashboard = () => {
           success('Doctor restored successfully');
           loadData();
         } catch (err) {
-          toastError(err?.response?.data?.error || 'Failed to restore doctor');
+          toastError(extractApiError(err, 'Failed to restore doctor'));
         }
       },
       false
@@ -1758,7 +1751,7 @@ const HospitalAdminDashboard = () => {
           success('Nurse promoted to incharge');
           loadData();
         } catch (err) {
-          toastError(err?.response?.data?.error || 'Failed to promote nurse');
+          toastError(extractApiError(err, 'Failed to promote nurse'));
         }
       }
     );
@@ -1775,7 +1768,7 @@ const HospitalAdminDashboard = () => {
           success('Incharge demoted to nurse');
           loadData();
         } catch (err) {
-          toastError(err?.response?.data?.error || 'Failed to demote nurse');
+          toastError(extractApiError(err, 'Failed to demote nurse'));
         }
       }
     );
@@ -1795,7 +1788,7 @@ const HospitalAdminDashboard = () => {
           success(nextActive ? 'Nurse activated' : 'Nurse deactivated');
           loadData();
         } catch (err) {
-          toastError(err?.response?.data?.error || 'Failed to update nurse status');
+          toastError(extractApiError(err, 'Failed to update nurse status'));
         }
       }
     );
@@ -1824,8 +1817,8 @@ const HospitalAdminDashboard = () => {
       setCreateTaskModal(false);
       loadData();
     } catch (err) {
-      const msg = err.response?.data?.message || err.response?.data || 'Failed to create task';
-      toastError(typeof msg === 'string' ? msg : 'Failed to create task');
+      const msg = extractApiError(err, 'Failed to create task');
+      toastError(msg);
     }
   };
 
@@ -1836,8 +1829,8 @@ const HospitalAdminDashboard = () => {
         success('Task cancelled');
         loadData();
       } catch (err) {
-        const msg = err.response?.data?.message || err.response?.data || 'Failed to cancel task';
-        toastError(typeof msg === 'string' ? msg : 'Failed to cancel task');
+        const msg = extractApiError(err, 'Failed to cancel task');
+        toastError(msg);
       }
     });
   };
@@ -1860,8 +1853,8 @@ const HospitalAdminDashboard = () => {
       setAssignNurseModal({ isOpen: false, row: null });
       loadData();
     } catch (err) {
-      const msg = err.response?.data?.message || err.response?.data || 'Failed to assign nurse';
-      toastError(typeof msg === 'string' ? msg : 'Failed to assign nurse');
+      const msg = extractApiError(err, 'Failed to assign nurse');
+      toastError(msg);
     }
   };
 
@@ -2035,10 +2028,7 @@ const HospitalAdminDashboard = () => {
       setResetPasswordModal({ isOpen: false, staff: null, role: '' });
     } catch (err) {
       const errorMsg =
-        err.response?.data?.message ||
-        err.response?.data?.error ||
-        err.response?.data ||
-        'Failed to reset password';
+        extractApiError(err, 'Failed to reset password');
       setResetPasswordForm((f) => ({
         ...f,
         submitting: false,
@@ -10193,7 +10183,7 @@ const PharmaciesTab = () => {
       await branchesApi.resetPassword(branch.id, pw);
       success('Branch password reset');
     } catch (e) {
-      toastError(e.response?.data?.message || 'Failed to reset password');
+      toastError(extractApiError(e, 'Failed to reset password'));
     }
   };
 
@@ -10204,7 +10194,7 @@ const PharmaciesTab = () => {
       success('Branch deleted');
       load();
     } catch (e) {
-      toastError(e.response?.data?.message || 'Failed to delete branch');
+      toastError(extractApiError(e, 'Failed to delete branch'));
     }
   };
 

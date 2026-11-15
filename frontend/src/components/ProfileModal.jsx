@@ -195,6 +195,7 @@ const ProfileModal = ({ isOpen, onClose }) => {
     formData.append('upload_preset', uploadPreset);
 
     try {
+      // api-error-guard-ignore: direct upload to Cloudinary; apiClient would leak the user's JWT to a third party
       const axios = (await import('axios')).default;
       const res = await axios.post(
         `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
@@ -214,6 +215,7 @@ const ProfileModal = ({ isOpen, onClose }) => {
       }
     } catch (err) {
       console.error('Cloudinary upload error:', err);
+      // api-error-guard-ignore: Cloudinary's own error shape { error: { message } }, not our API
       toastError(err.response?.data?.error?.message || 'Failed to upload logo to Cloudinary.');
     } finally {
       setUploadingLogo(false);

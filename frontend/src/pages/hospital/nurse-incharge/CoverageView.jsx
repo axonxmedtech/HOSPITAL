@@ -4,6 +4,7 @@ import EmptyState from '../../../components/EmptyState';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
 import nurseService from '../../../services/nurseService';
+import { extractApiError } from '../../../utils/apiError';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const fmtDate = (v) => {
@@ -87,7 +88,7 @@ const CoverageView = () => {
       setTempAssignments(Array.isArray(temps) ? temps : []);
       setSubstitutions(Array.isArray(subs) ? subs : []);
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to load coverage');
+      toastError(extractApiError(e, 'Failed to load coverage'));
     } finally {
       setLoading(false);
     }
@@ -108,7 +109,7 @@ const CoverageView = () => {
       success('Temporary assignment removed');
       reload();
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to remove');
+      toastError(extractApiError(e, 'Failed to remove'));
     }
   };
   const removeSub = async (publicId) => {
@@ -117,7 +118,7 @@ const CoverageView = () => {
       success('Substitution removed');
       reload();
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to remove');
+      toastError(extractApiError(e, 'Failed to remove'));
     }
   };
 
@@ -312,7 +313,7 @@ const TempAssignmentForm = ({ nurses, wards, onDone, onError }) => {
       setReason('');
       onDone();
     } catch (err) {
-      onError(err?.response?.data?.error || 'Failed to create temporary assignment');
+      onError(extractApiError(err, 'Failed to create temporary assignment'));
     } finally {
       setSaving(false);
     }
@@ -428,7 +429,7 @@ const SubstitutionForm = ({ nurses, onDone, onError }) => {
       setReason('');
       onDone();
     } catch (err) {
-      onError(err?.response?.data?.error || 'Failed to create substitution');
+      onError(extractApiError(err, 'Failed to create substitution'));
     } finally {
       setSaving(false);
     }

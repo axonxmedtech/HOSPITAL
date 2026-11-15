@@ -19,6 +19,7 @@ import hospitalService from '../../services/hospitalService';
 import icuService from '../../services/icuService';
 import otService from '../../services/otService';
 import wardService from '../../services/wardService';
+import { extractApiError } from '../../utils/apiError';
 import { canManageBilling as userCanManageBilling } from '../../utils/billingAccess';
 import { FOOD_TIMING_OPTIONS, isFoodTimingApplicable } from '../../utils/foodTiming';
 import { printBlob } from '../../utils/printPdf';
@@ -136,17 +137,8 @@ const IpdDetails = () => {
     };
   }, [hasOT, isDoctor, id, otModalOpen]);
 
-  const parseError = (err, fallback) => {
-    if (!err) return fallback;
-    if (err.response?.data) {
-      const data = err.response.data;
-      if (typeof data === 'object') {
-        return data.error || data.message || JSON.stringify(data);
-      }
-      return data;
-    }
-    return err.message || fallback;
-  };
+  // Never JSON.stringify a body or show axios's transport text — see utils/apiError.
+  const parseError = extractApiError;
 
   // Layout States
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -570,7 +562,7 @@ const IpdDetails = () => {
       printBlob(blob); // print on this page (hidden iframe), not a new tab
     } catch (err) {
       console.error(err);
-      toastError(err.message || 'Failed to load bill for printing');
+      toastError(extractApiError(err, 'Failed to load bill for printing'));
     } finally {
       setPrintingBill(false);
     }

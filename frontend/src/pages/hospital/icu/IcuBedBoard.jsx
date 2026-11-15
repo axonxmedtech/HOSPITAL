@@ -4,6 +4,7 @@ import EmptyState from '../../../components/EmptyState';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
 import icuService from '../../../services/icuService';
+import { extractApiError } from '../../../utils/apiError';
 import { bedStatusMeta, respiratorySummary, since } from './icuBoardShared';
 
 /**
@@ -88,7 +89,7 @@ const IcuBedBoard = ({ refreshKey = 0, initialWardId = null }) => {
     icuService
       .getBoard()
       .then(setData)
-      .catch((e) => toastError(e?.response?.data?.error || 'Failed to load the ICU bed board'))
+      .catch((e) => toastError(extractApiError(e, 'Failed to load the ICU bed board')))
       .finally(() => setLoading(false));
   }, [toastError]);
 

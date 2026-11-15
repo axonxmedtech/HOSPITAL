@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useToast } from '../../../context/ToastContext';
+import useOtPermissions from '../../../hooks/useOtPermissions';
 import otService from '../../../services/otService';
 import wardService from '../../../services/wardService';
+import { extractApiError } from '../../../utils/apiError';
 import { backdropProps } from '../../../utils/modalA11y';
-import useOtPermissions from '../../../hooks/useOtPermissions';
 
 /**
  * ScheduleSurgeryModal - assign a surgeon + date/time + theatre to a surgery.
@@ -90,7 +91,7 @@ const ScheduleSurgeryModal = ({ surgery, onClose, onScheduled }) => {
       if (e?.response?.status === 409) {
         toastError('Surgery was modified by another request. Refresh and retry.');
       } else {
-        toastError(e?.response?.data?.error || 'Failed to schedule surgery');
+        toastError(extractApiError(e, 'Failed to schedule surgery'));
       }
     } finally {
       setSaving(false);
