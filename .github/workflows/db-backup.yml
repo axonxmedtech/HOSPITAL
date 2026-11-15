@@ -71,7 +71,7 @@ jobs:
         env:
           HMS_HOST: ${{ steps.env.outputs.host }}
           HMS_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-        run: bash scripts/deploy/validate-config.sh HMS_HOST HMS_KEY
+        run: bash scripts/deploy/validate-config.sh HMS_HOST HMS_KEY:multiline
 
       - name: Run backup on VPS (dump stays on server)
         env:
