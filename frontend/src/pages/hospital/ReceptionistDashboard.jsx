@@ -1236,7 +1236,6 @@ const ReceptionistDashboard = () => {
         footerData={user?.hospitalName}
         variant="plain"
         isCollapsed={sidebarCollapsed}
-        showOnMobile={true}
       />
 
       {/* Main Content */}
@@ -1249,7 +1248,7 @@ const ReceptionistDashboard = () => {
           onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
         />
 
-        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-8">
+        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-4 md:p-8">
           {loadError && (
             <div
               role="alert"

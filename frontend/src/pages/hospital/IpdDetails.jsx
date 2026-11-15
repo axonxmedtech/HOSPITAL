@@ -595,7 +595,7 @@ const IpdDetails = () => {
         />
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-[#fafafa] p-6">
+        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-[#fafafa] p-4 md:p-6">
           {loading && !data ? (
             <SkeletonDetailCard />
           ) : !data ? (

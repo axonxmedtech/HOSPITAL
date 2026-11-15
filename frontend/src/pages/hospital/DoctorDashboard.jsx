@@ -1146,7 +1146,6 @@ const DoctorDashboard = () => {
         footerData={user?.hospitalName}
         variant="plain"
         isCollapsed={sidebarCollapsed}
-        showOnMobile={true}
       />
 
       {/* Main Content Wrapper */}
@@ -1161,7 +1160,7 @@ const DoctorDashboard = () => {
         />
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-8">
+        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-4 md:p-8">
           {/* A failed load says so. It must never be shown as an empty clinic: "no patients
               waiting" and "we could not reach the server" call for opposite responses from a
               doctor, and only one of them is true. */}
