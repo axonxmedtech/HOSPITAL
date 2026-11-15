@@ -217,7 +217,7 @@ const VentilatorPanel = ({ admissionId, readOnly = false, refreshKey = 0 }) => {
               {def.unit ? <span className="text-gray-500"> {def.unit}</span> : null}
               {def.enabled === false && (
                 <span
-                  className="ml-1 text-[11px] font-semibold text-gray-500 bg-gray-100 border border-gray-200 rounded px-1.5 py-0.5"
+                  className="ml-1 text-[11px] font-semibold text-gray-600 bg-gray-100 border border-gray-200 rounded px-1.5 py-0.5"
                   title="This parameter is no longer charted. The value recorded at the time is kept."
                 >
                   no longer charted
@@ -253,7 +253,7 @@ const VentilatorPanel = ({ admissionId, readOnly = false, refreshKey = 0 }) => {
             </span>
           )}
           {supersededIds.has(e.id) && (
-            <span className="text-[11px] font-semibold text-gray-500 bg-gray-100 border border-gray-200 rounded px-2 py-0.5">
+            <span className="text-[11px] font-semibold text-gray-600 bg-gray-100 border border-gray-200 rounded px-2 py-0.5">
               Superseded
             </span>
           )}

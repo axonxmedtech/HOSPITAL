@@ -53,9 +53,10 @@ jobs:
             --to ${{ github.sha }} \
             --verbose
 
-      - name: ESLint (report-only)
+      # Blocking for errors (warnings stay report-only): the frontend reached 0 errors, so an
+      # error now means a regression — e.g. an unlabelled form field or a console.log.
+      - name: ESLint (errors block, warnings report-only)
         id: eslint
-        continue-on-error: true
         run: npm run lint
 
       - name: Prettier format check (report-only)
@@ -72,6 +73,6 @@ jobs:
             echo "| Check | Result |"
             echo "| --- | --- |"
             echo "| Commit messages | ${{ github.event_name != 'pull_request' && '— push (skipped)' || (steps.commitlint.outcome == 'success' && '✅ conventional' || '⚠️ issues — report-only') }} |"
-            echo "| ESLint | ${{ steps.eslint.outcome == 'success' && '✅ clean' || '⚠️ issues — report-only' }} |"
+            echo "| ESLint | ${{ steps.eslint.outcome == 'success' && '✅ no errors (warnings report-only)' || '❌ errors — blocking' }} |"
             echo "| Prettier | ${{ steps.prettier.outcome == 'success' && '✅ clean' || '⚠️ issues — report-only' }} |"
           } >> "$GITHUB_STEP_SUMMARY"

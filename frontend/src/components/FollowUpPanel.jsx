@@ -104,10 +104,12 @@ const FollowUpPanel = ({ role, mine = false, refreshKey }) => {
     if (loadError && rows.length === 0) {
       return (
         <tr>
-          <td colSpan={6} className="py-12 text-center" role="alert">
-            <p className="text-sm font-bold text-gray-900">Couldn't load follow-ups</p>
-            <p className="mt-1 text-sm text-gray-600">{loadError}</p>
-            <p className="mt-1 text-xs text-gray-500">This is not the same as having none.</p>
+          <td colSpan={6} className="py-12 text-center">
+            <div role="alert">
+              <p className="text-sm font-bold text-gray-900">Couldn&apos;t load follow-ups</p>
+              <p className="mt-1 text-sm text-gray-600">{loadError}</p>
+              <p className="mt-1 text-xs text-gray-500">This is not the same as having none.</p>
+            </div>
             <button
               type="button"
               onClick={load}
@@ -239,7 +241,7 @@ const FollowUpPanel = ({ role, mine = false, refreshKey }) => {
       {/* A failed refresh keeps the rows it already had, and says so. */}
       {loadError && rows.length > 0 ? (
         <div className="px-4 py-2 bg-amber-50 border-b border-amber-100 text-xs text-amber-800" role="alert">
-          Couldn't refresh follow-ups: {loadError} The list below may be out of date.{' '}
+          Couldn&apos;t refresh follow-ups: {loadError} The list below may be out of date.{' '}
           <button type="button" onClick={load} className="underline font-bold">
             Retry
           </button>

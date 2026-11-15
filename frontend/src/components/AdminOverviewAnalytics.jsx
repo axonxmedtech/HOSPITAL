@@ -251,7 +251,7 @@ const AdminOverviewAnalytics = () => {
             onClick={() => setRange(option.value)}
             aria-pressed={selected}
             className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-              selected ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-600 hover:bg-neutral-100'
+              selected ? 'bg-sky-700 text-white shadow-sm' : 'text-slate-600 hover:bg-neutral-100'
             }`}
           >
             {option.label}

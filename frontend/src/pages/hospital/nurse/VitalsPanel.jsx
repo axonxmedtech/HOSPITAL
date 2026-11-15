@@ -519,7 +519,7 @@ const VitalsPanel = ({ admissionId, readOnly = false, refreshKey = 0 }) => {
                       </span>
                     )}
                     {supersededIds.has(v.id) && (
-                      <span className="text-[11px] font-semibold text-gray-500 bg-gray-100 border border-gray-200 rounded px-2 py-0.5">
+                      <span className="text-[11px] font-semibold text-gray-600 bg-gray-100 border border-gray-200 rounded px-2 py-0.5">
                         Superseded
                       </span>
                     )}

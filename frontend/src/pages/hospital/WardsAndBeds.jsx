@@ -114,7 +114,7 @@ const WardsAndBeds = () => {
               setEditWard(null);
               setEditOpen(true);
             }}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm font-semibold shadow-sm transition-all"
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-sky-700 hover:bg-sky-800 text-white rounded-xl text-sm font-semibold shadow-sm transition-all"
           >
             <span>+</span>
             <span>Create Ward</span>

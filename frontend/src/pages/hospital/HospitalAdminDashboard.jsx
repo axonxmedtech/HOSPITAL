@@ -2908,7 +2908,7 @@ const HospitalAdminDashboard = () => {
                           {user?.role === 'HOSPITAL_ADMIN' && (
                             <button
                               onClick={() => handleAdd('patients')}
-                              className="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-sm transform hover:-translate-y-0.5 transition-all flex items-center gap-1.5"
+                              className="bg-sky-700 hover:bg-sky-800 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-sm transform hover:-translate-y-0.5 transition-all flex items-center gap-1.5"
                             >
                               <svg
                                 xmlns="http://www.w3.org/2000/svg"
@@ -3001,7 +3001,7 @@ const HospitalAdminDashboard = () => {
                         {user?.role === 'HOSPITAL_ADMIN' && (
                           <button
                             onClick={() => handleAdd('appointments')}
-                            className="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-sm transform hover:-translate-y-0.5 transition-all flex items-center gap-1.5"
+                            className="bg-sky-700 hover:bg-sky-800 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-sm transform hover:-translate-y-0.5 transition-all flex items-center gap-1.5"
                           >
                             <svg
                               xmlns="http://www.w3.org/2000/svg"
@@ -3157,7 +3157,7 @@ const HospitalAdminDashboard = () => {
                           className={`px-4 py-1 text-sm font-medium rounded-md transition-all ${
                             doctorSubView === subView
                               ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'
-                              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                              : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                           }`}
                         >
                           {subView === 'Active' ? 'Active Doctors' : 'Deleted Doctors'}
@@ -3188,7 +3188,7 @@ const HospitalAdminDashboard = () => {
                             className={`px-4 py-1 text-sm font-medium rounded-md transition-all ${
                               patientTabView === view
                                 ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'
-                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                                : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                             }`}
                           >
                             {view}
@@ -3205,7 +3205,7 @@ const HospitalAdminDashboard = () => {
                         type="button"
                         onClick={handleDownloadPatientsReport}
                         disabled={loading}
-                        className="bg-sky-600 hover:bg-sky-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px]"
+                        className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px]"
                       >
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
@@ -3239,7 +3239,7 @@ const HospitalAdminDashboard = () => {
                             className={`px-4 py-1 text-sm font-medium rounded-md transition-all ${
                               opdTabView === view
                                 ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'
-                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                                : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                             }`}
                           >
                             {view}
@@ -3253,7 +3253,7 @@ const HospitalAdminDashboard = () => {
                         type="button"
                         onClick={handleDownloadOpdReport}
                         disabled={loading}
-                        className="bg-sky-600 hover:bg-sky-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px]"
+                        className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px]"
                       >
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
@@ -3285,7 +3285,7 @@ const HospitalAdminDashboard = () => {
                           className={`px-4 py-1 text-sm font-medium rounded-md transition-all ${
                             appointmentsViewFilter === view
                               ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'
-                              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                              : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                           }`}
                         >
                           {view.charAt(0).toUpperCase() + view.slice(1)}
@@ -3301,7 +3301,7 @@ const HospitalAdminDashboard = () => {
                           className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
                             billingStatus === status
                               ? 'bg-white text-primary-600 shadow-sm border border-gray-100'
-                              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                              : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                           }`}
                         >
                           {status.charAt(0) + status.slice(1).toLowerCase()}
@@ -3331,7 +3331,7 @@ const HospitalAdminDashboard = () => {
                           className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
                             auditLogRoleFilter === item.id
                               ? 'bg-white text-blue-600 shadow-sm border border-gray-100 font-semibold'
-                              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                              : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                           }`}
                         >
                           {item.label}
@@ -3836,8 +3836,6 @@ const HospitalAdminDashboard = () => {
                     </div>
                   )}
 
-                  {/* eslint-disable-next-line jsx-a11y/aria-role -- `role` here is
-                      FollowUpPanel's own prop (the user's role), not an ARIA role. */}
                   {activeTab === 'follow-ups' && <FollowUpPanel role="HOSPITAL_ADMIN" />}
 
                   {activeTab === 'opd' &&
@@ -7122,7 +7120,7 @@ const HospitalAdminDashboard = () => {
                     <button
                       type="button"
                       onClick={addBillItem}
-                      className="text-xs font-semibold text-sky-600 hover:text-sky-800"
+                      className="text-xs font-semibold text-sky-700 hover:text-sky-900"
                     >
                       + Add Charge Item
                     </button>

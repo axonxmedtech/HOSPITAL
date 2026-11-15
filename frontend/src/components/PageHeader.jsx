@@ -69,7 +69,7 @@ const PageHeader = ({
           <button
             onClick={onAdd}
             aria-label={addLabel || 'Add New'}
-            className="bg-sky-600 hover:bg-sky-700 text-white px-5 py-2.5 rounded-xl font-semibold shadow-soft hover:shadow-soft-lg transform hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 focus:ring-2 focus:ring-sky-500 focus:ring-offset-2"
+            className="bg-sky-700 hover:bg-sky-800 text-white px-5 py-2.5 rounded-xl font-semibold shadow-soft hover:shadow-soft-lg transform hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 focus:ring-2 focus:ring-sky-500 focus:ring-offset-2"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
