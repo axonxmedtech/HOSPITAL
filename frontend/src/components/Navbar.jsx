@@ -1,21 +1,17 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { DESKTOP_NAV_QUERY, useMobileNav } from '../context/MobileNavContext';
+import { isPhoneViewport, mobileNav, useMobileNavOpen } from '../hooks/useMobileNav';
 import UserMenu from './UserMenu';
 
 const Navbar = ({ title, user, onLogout, onProfile, onSupport, actions, onToggleSidebar }) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const mobileNav = useMobileNav();
+  const drawerOpen = useMobileNavOpen();
 
   // Phones have no visible sidebar, so the menu button opens the navigation drawer there;
   // on wider screens it keeps collapsing/expanding the sidebar rail.
-  const isPhone = () =>
-    Boolean(mobileNav) &&
-    typeof window.matchMedia === 'function' &&
-    !window.matchMedia(DESKTOP_NAV_QUERY).matches;
   const handleMenuClick = () => {
-    if (isPhone()) mobileNav.open();
+    if (isPhoneViewport()) mobileNav.open();
     else onToggleSidebar?.();
   };
 
@@ -39,8 +35,8 @@ const Navbar = ({ title, user, onLogout, onProfile, onSupport, actions, onToggle
           type="button"
           onClick={handleMenuClick}
           aria-label="Toggle navigation menu"
-          aria-haspopup={mobileNav ? 'dialog' : undefined}
-          aria-expanded={mobileNav ? mobileNav.isOpen : undefined}
+          aria-haspopup="dialog"
+          aria-expanded={drawerOpen}
           className="p-2 flex-shrink-0 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"
           title="Toggle sidebar"
         >

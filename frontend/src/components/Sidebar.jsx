@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import { useMobileNav } from '../context/MobileNavContext';
+import { useLocation } from 'react-router-dom';
+import { mobileNav, useMobileNavOpen } from '../hooks/useMobileNav';
 import { titleCase } from '../utils/text';
 
 // Icon mapping for sidebar menu items
@@ -1001,6 +1002,13 @@ const FOCUSABLE = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1
  */
 const MobileDrawer = ({ onClose, onTabChange, ...contentProps }) => {
   const panelRef = useRef(null);
+  const { pathname } = useLocation();
+  const openedAt = useRef(pathname);
+
+  // Close when the route changes (e.g. the patient-import page or another dashboard).
+  useEffect(() => {
+    if (pathname !== openedAt.current) onClose();
+  }, [pathname, onClose]);
 
   useEffect(() => {
     const previouslyFocused = document.activeElement;
@@ -1086,7 +1094,9 @@ const Sidebar = ({
   variant = 'plain',
   isCollapsed = false,
 }) => {
-  const mobileNav = useMobileNav();
+  const drawerOpen = useMobileNavOpen();
+  // Never leave the drawer flagged open for the next dashboard that mounts.
+  useEffect(() => mobileNav.close, []);
   const theme = variants[variant] || variants.plain;
   const contentProps = {
     tabs,
@@ -1105,7 +1115,7 @@ const Sidebar = ({
       >
         <SidebarContent {...contentProps} isCollapsed={isCollapsed} />
       </aside>
-      {mobileNav?.isOpen && <MobileDrawer {...contentProps} onClose={mobileNav.close} />}
+      {drawerOpen && <MobileDrawer {...contentProps} onClose={mobileNav.close} />}
     </>
   );
 };

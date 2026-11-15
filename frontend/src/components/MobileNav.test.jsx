@@ -1,8 +1,8 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
 import { MemoryRouter, useNavigate } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MobileNavProvider } from '../context/MobileNavContext';
+import { mobileNav } from '../hooks/useMobileNav';
 import Navbar from './Navbar';
 import Sidebar from './Sidebar';
 
@@ -56,9 +56,7 @@ const Dashboard = ({ onToggleSidebar = () => {} }) => {
 const renderDashboard = (props) =>
   render(
     <MemoryRouter initialEntries={['/hospital/admin']}>
-      <MobileNavProvider>
-        <Dashboard {...props} />
-      </MobileNavProvider>
+      <Dashboard {...props} />
     </MemoryRouter>
   );
 
@@ -67,7 +65,10 @@ const openMenu = () =>
 const drawer = () => screen.queryByRole('dialog', { name: 'Navigation menu' });
 
 describe('phone navigation drawer', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    act(() => mobileNav.close());
+    vi.unstubAllGlobals();
+  });
 
   it('desktop: the menu button toggles the sidebar rail and never opens a drawer', () => {
     setViewport(true);
@@ -158,15 +159,21 @@ describe('phone navigation drawer', () => {
     );
   });
 
-  it('without a provider (isolated renders) the menu button falls back to toggling the rail', () => {
-    setViewport(false);
+  it('browsers without matchMedia fall back to toggling the rail', () => {
+    vi.stubGlobal('matchMedia', undefined);
     const onToggleSidebar = vi.fn();
-    render(
-      <MemoryRouter>
-        <Navbar user={{}} onToggleSidebar={onToggleSidebar} />
-      </MemoryRouter>
-    );
+    renderDashboard({ onToggleSidebar });
     openMenu();
     expect(onToggleSidebar).toHaveBeenCalledTimes(1);
+    expect(drawer()).not.toBeInTheDocument();
+  });
+
+  it('closes the drawer when the dashboard unmounts', () => {
+    setViewport(false);
+    const { unmount } = renderDashboard();
+    openMenu();
+    expect(mobileNav.getSnapshot()).toBe(true);
+    unmount();
+    expect(mobileNav.getSnapshot()).toBe(false);
   });
 });
