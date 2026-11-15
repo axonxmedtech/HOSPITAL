@@ -6,11 +6,17 @@
 #   A ":port" suffix also requires the value to be a TCP port: digits only, 1-65535. Used for the
 #   health port, which has no default: a default once pointed staging verification at another
 #   service on the same host.
+#   Every value must also be clean: no carriage return anywhere (a Windows-pasted value
+#   "hms-production\r\n" once broke `cd`/`systemctl` mid-deploy), and no newline or
+#   leading/trailing whitespace — except values marked ":multiline" (SSH private keys), which
+#   may contain newlines but still never a carriage return (that makes ssh fail with
+#   "Load key ...: error in libcrypto").
 # Exit:  0 = all present and valid; 1 = one or more missing/invalid (deployment must stop).
 set -uo pipefail
 
 missing=()
 invalid=()
+unclean=()
 for spec in "$@"; do
   name="${spec%%:*}"
   kind=""
@@ -19,6 +25,14 @@ for spec in "$@"; do
   if [ -z "$val" ]; then
     missing+=("$name")
     continue
+  fi
+  case "$val" in
+    *$'\r'*) unclean+=("$name"); continue ;;
+  esac
+  if [ "$kind" != "multiline" ]; then
+    case "$val" in
+      *$'\n'* | [[:space:]]* | *[[:space:]]) unclean+=("$name"); continue ;;
+    esac
   fi
   if [ "$kind" = "port" ]; then
     if ! printf '%s' "$val" | grep -qE '^[0-9]{1,5}$' || [ "$((10#$val))" -lt 1 ] || [ "$((10#$val))" -gt 65535 ]; then
@@ -34,6 +48,10 @@ if [ "${#missing[@]}" -gt 0 ]; then
 fi
 if [ "${#invalid[@]}" -gt 0 ]; then
   echo "::error::Deployment blocked — invalid port (must be 1-65535): ${invalid[*]}"
+  rc=1
+fi
+if [ "${#unclean[@]}" -gt 0 ]; then
+  echo "::error::Deployment blocked — value contains a carriage return, newline or surrounding spaces (re-save it in GitHub without them): ${unclean[*]}"
   rc=1
 fi
 if [ "$rc" -ne 0 ]; then
