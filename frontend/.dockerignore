@@ -1,0 +1,7 @@
+# Keep the Docker build context small and reproducible: dependencies are installed by
+# `npm ci` inside the image, and the build output is produced there too.
+node_modules
+dist
+coverage
+.env*
+*.log
