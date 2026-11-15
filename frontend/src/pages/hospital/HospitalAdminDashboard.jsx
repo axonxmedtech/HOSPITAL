@@ -2585,7 +2585,7 @@ const HospitalAdminDashboard = () => {
         />
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-8">
+        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-4 md:p-8">
           {/* Low Stock Warning Banner */}
           {modules.includes('HOSPITAL_INVENTORY') && <LowStockBanner />}
 

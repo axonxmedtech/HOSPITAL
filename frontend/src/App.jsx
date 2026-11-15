@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import PageMeta from './components/PageMeta';
+import { MobileNavProvider } from './context/MobileNavContext';
 import { ToastProvider } from './context/ToastContext';
 import authService from './services/authService';
 
@@ -134,10 +135,18 @@ const LandingRedirect = () => {
   }
 };
 
+// Router plus app-wide state that needs the current location (the phone navigation drawer
+// closes on every route change).
+const AppRouter = ({ children }) => (
+  <Router>
+    <MobileNavProvider>{children}</MobileNavProvider>
+  </Router>
+);
+
 function App() {
   return (
     <ToastProvider>
-      <Router>
+      <AppRouter>
         <Suspense fallback={<PageLoading />}>
           <Routes>
             {/* Public / Login Pages */}
@@ -330,7 +339,7 @@ function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
-      </Router>
+      </AppRouter>
     </ToastProvider>
   );
 }

@@ -43,7 +43,7 @@ const OtInchargeDashboard = () => {
   const { success, error: toastError } = useToast();
   const { can, loaded: permsLoaded } = useOtPermissions();
 
-  const [sidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('board');
 
@@ -123,10 +123,11 @@ const OtInchargeDashboard = () => {
           user={user}
           onLogout={handleLogout}
           onProfile={() => setProfileOpen(true)}
+          onToggleSidebar={() => setSidebarCollapsed((c) => !c)}
           title="Operation Theatre"
         />
 
-        <main className="flex-1 overflow-y-auto p-6 space-y-6 bg-gray-50/50">
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 bg-gray-50/50">
           <OtAnalyticsStrip />
 
           {!permsLoaded ? (

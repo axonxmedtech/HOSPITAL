@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
+import { useMobileNav } from '../context/MobileNavContext';
 import { titleCase } from '../utils/text';
 
 // Icon mapping for sidebar menu items
@@ -835,110 +836,78 @@ const menuIcons = {
   ),
 };
 
-const Sidebar = ({
-  title,
+const variants = {
+  plain: {
+    activeBg: 'bg-gray-100',
+    activeText: 'text-gray-900',
+  },
+  blue: {
+    activeBg: 'bg-blue-50',
+    activeText: 'text-blue-900',
+  },
+};
+
+/** Logo, navigation and footer — shared by the desktop rail and the phone drawer. */
+const SidebarContent = ({
   tabs,
   activeTab,
   onTabChange,
   onToggleGroup,
   footerTitle,
   footerData,
-  variant = 'plain',
-  isCollapsed = false,
-  showOnMobile = false,
-}) => {
-  // Professional color variants - only 2 colors: gray-900 and white
-  const variants = {
-    plain: {
-      bgIcon: 'bg-white',
-      textIcon: 'text-gray-900',
-      activeBg: 'bg-gray-100',
-      activeText: 'text-gray-900',
-      activeIcon: 'text-gray-900',
-      activeBorder: 'border-l-4 border-gray-900',
-    },
-    blue: {
-      bgIcon: 'bg-blue-50',
-      textIcon: 'text-blue-600',
-      activeBg: 'bg-blue-50',
-      activeText: 'text-blue-900',
-      activeIcon: 'text-blue-600',
-      activeBorder: 'border-l-4 border-blue-600',
-    },
-  };
-
-  const theme = variants[variant] || variants.plain;
-
-  return (
-    <aside
-      className={`${isCollapsed ? 'w-16' : 'w-72'} bg-white z-20 ${showOnMobile ? 'flex' : 'hidden md:flex'} flex-col h-full border-r border-gray-200 overflow-hidden transition-all duration-300`}
+  theme,
+  isCollapsed,
+}) => (
+  <>
+    {/* Header Section */}
+    <div
+      className={`${isCollapsed ? 'p-3' : 'p-6'} border-b border-gray-200 transition-all duration-300 flex-shrink-0`}
     >
-      {/* Header Section */}
-      <div
-        className={`${isCollapsed ? 'p-3' : 'p-6'} border-b border-gray-200 transition-all duration-300 flex-shrink-0`}
-      >
-        {!isCollapsed && (
-          <div>
-            <img src="/logo.png" alt="logo" className="h-full w-[70%]" />
-            <p className="text-sm text-gray-600 mt-1">Management Portal</p>
-          </div>
-        )}
-      </div>
+      {!isCollapsed && (
+        <div>
+          <img src="/logo.png" alt="logo" className="h-full w-[70%]" />
+          <p className="text-sm text-gray-600 mt-1">Management Portal</p>
+        </div>
+      )}
+    </div>
 
-      {/* Navigation */}
-      <nav className={`flex-1 overflow-y-auto ${isCollapsed ? 'p-2' : 'p-6'} space-y-1`}>
-        {tabs.map((tab) => {
-          const hasSubItems = tab.subItems && tab.subItems.length > 0;
-          const isExpanded = !isCollapsed && tab.isExpanded; // Could also use internal state if preferred, but this will respect state passed from parent page
+    {/* Navigation */}
+    <nav className={`flex-1 overflow-y-auto ${isCollapsed ? 'p-2' : 'p-6'} space-y-1`}>
+      {tabs.map((tab) => {
+        const hasSubItems = tab.subItems && tab.subItems.length > 0;
+        const isExpanded = !isCollapsed && tab.isExpanded; // Could also use internal state if preferred, but this will respect state passed from parent page
 
-          return (
-            <div key={tab.id} className="space-y-1">
-              <button
-                type="button"
-                onClick={() =>
-                  hasSubItems && onToggleGroup ? onToggleGroup(tab.id) : onTabChange(tab.id)
-                }
-                className={`w-full flex items-center ${isCollapsed ? 'justify-center px-2' : 'px-3'} py-2 text-sm font-medium transition-colors duration-200 relative ${
-                  activeTab === tab.id || tab.subItems?.some((s) => s.id === activeTab)
-                    ? `${theme.activeBg} ${theme.activeText}`
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                }`}
-                title={isCollapsed ? tab.label : ''}
-              >
-                {/* Active indicator */}
-                {(activeTab === tab.id || tab.subItems?.some((s) => s.id === activeTab)) && (
-                  <div className="absolute left-0 top-0 bottom-0 w-1 bg-gray-900"></div>
-                )}
+        return (
+          <div key={tab.id} className="space-y-1">
+            <button
+              type="button"
+              onClick={() =>
+                hasSubItems && onToggleGroup ? onToggleGroup(tab.id) : onTabChange(tab.id)
+              }
+              className={`w-full flex items-center ${isCollapsed ? 'justify-center px-2' : 'px-3'} py-2 text-sm font-medium transition-colors duration-200 relative ${
+                activeTab === tab.id || tab.subItems?.some((s) => s.id === activeTab)
+                  ? `${theme.activeBg} ${theme.activeText}`
+                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+              }`}
+              title={isCollapsed ? tab.label : ''}
+              aria-label={isCollapsed ? tab.label : undefined}
+              aria-expanded={hasSubItems ? Boolean(isExpanded) : undefined}
+              aria-current={activeTab === tab.id ? 'page' : undefined}
+            >
+              {/* Active indicator */}
+              {(activeTab === tab.id || tab.subItems?.some((s) => s.id === activeTab)) && (
+                <div className="absolute left-0 top-0 bottom-0 w-1 bg-gray-900"></div>
+              )}
 
-                {/* Icon */}
-                <div className={isCollapsed ? '' : 'mr-3'}>
-                  {menuIcons[tab.label] ? (
-                    React.cloneElement(menuIcons[tab.label], {
-                      className: `w-5 h-5 ${isCollapsed ? '' : 'mr-0'}`,
-                    })
-                  ) : (
-                    <svg
-                      className="w-5 h-5"
-                      aria-hidden="true"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                      />
-                    </svg>
-                  )}
-                </div>
-
-                {!isCollapsed && <span className="flex-1 text-left">{tab.label}</span>}
-
-                {!isCollapsed && hasSubItems && (
+              {/* Icon */}
+              <div className={isCollapsed ? '' : 'mr-3'}>
+                {menuIcons[tab.label] ? (
+                  React.cloneElement(menuIcons[tab.label], {
+                    className: `w-5 h-5 ${isCollapsed ? '' : 'mr-0'}`,
+                  })
+                ) : (
                   <svg
-                    className={`w-4 h-4 transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                    className="w-5 h-5"
                     aria-hidden="true"
                     fill="none"
                     viewBox="0 0 24 24"
@@ -948,58 +917,196 @@ const Sidebar = ({
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                     />
                   </svg>
                 )}
-              </button>
-
-              {/* Sub Items */}
-              {!isCollapsed && hasSubItems && isExpanded && (
-                <div className="pl-8 space-y-1">
-                  {tab.subItems.map((subItem) => (
-                    <button
-                      type="button"
-                      key={subItem.id}
-                      onClick={() => onTabChange(subItem.id)}
-                      className={`w-full flex items-center px-3 py-1.5 text-sm font-medium transition-colors duration-200 ${
-                        activeTab === subItem.id
-                          ? 'text-gray-900 font-semibold'
-                          : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
-                      }`}
-                    >
-                      {subItem.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </nav>
-
-      {/* Footer Section */}
-      {!isCollapsed && (
-        <div className="mt-auto p-6 bg-gray-50 border-t border-gray-200">
-          <div className="bg-white border border-gray-200 p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-gray-900 text-white font-bold text-xs flex items-center justify-center">
-                {footerData?.charAt(0)?.toUpperCase() || 'A'}
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-gray-600 uppercase mb-0.5">{footerTitle}</p>
-                <p
-                  className="text-sm font-medium text-gray-900 truncate"
-                  title={titleCase(footerData)}
+
+              {!isCollapsed && <span className="flex-1 text-left">{tab.label}</span>}
+
+              {!isCollapsed && hasSubItems && (
+                <svg
+                  className={`w-4 h-4 transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                  aria-hidden="true"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
                 >
-                  {titleCase(footerData)}
-                </p>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              )}
+            </button>
+
+            {/* Sub Items */}
+            {!isCollapsed && hasSubItems && isExpanded && (
+              <div className="pl-8 space-y-1">
+                {tab.subItems.map((subItem) => (
+                  <button
+                    type="button"
+                    key={subItem.id}
+                    onClick={() => onTabChange(subItem.id)}
+                    aria-current={activeTab === subItem.id ? 'page' : undefined}
+                    className={`w-full flex items-center px-3 py-1.5 text-sm font-medium transition-colors duration-200 ${
+                      activeTab === subItem.id
+                        ? 'text-gray-900 font-semibold'
+                        : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    {subItem.label}
+                  </button>
+                ))}
               </div>
+            )}
+          </div>
+        );
+      })}
+    </nav>
+
+    {/* Footer Section */}
+    {!isCollapsed && (
+      <div className="mt-auto p-6 bg-gray-50 border-t border-gray-200">
+        <div className="bg-white border border-gray-200 p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-gray-900 text-white font-bold text-xs flex items-center justify-center">
+              {footerData?.charAt(0)?.toUpperCase() || 'A'}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-gray-600 uppercase mb-0.5">{footerTitle}</p>
+              <p
+                className="text-sm font-medium text-gray-900 truncate"
+                title={titleCase(footerData)}
+              >
+                {titleCase(footerData)}
+              </p>
             </div>
           </div>
         </div>
-      )}
-    </aside>
+      </div>
+    )}
+  </>
+);
+
+const FOCUSABLE = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Phone navigation drawer (below the md breakpoint). Opened by the Navbar menu button via
+ * MobileNavContext; closes on navigation, the close button, the backdrop or Escape. Focus moves
+ * into the drawer, stays there while it is open, and returns to the menu button afterwards.
+ */
+const MobileDrawer = ({ onClose, onTabChange, ...contentProps }) => {
+  const panelRef = useRef(null);
+
+  useEffect(() => {
+    const previouslyFocused = document.activeElement;
+    panelRef.current?.querySelector(FOCUSABLE)?.focus();
+
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab' || !panelRef.current) return;
+      const items = [...panelRef.current.querySelectorAll(FOCUSABLE)];
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      previouslyFocused?.focus?.();
+    };
+  }, [onClose]);
+
+  return (
+    <div className="md:hidden fixed inset-0 z-50">
+      <div className="absolute inset-0 bg-gray-900/50" aria-hidden="true" onClick={onClose} />
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Navigation menu"
+        className="absolute inset-y-0 left-0 w-72 max-w-[85vw] bg-white flex flex-col shadow-xl"
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close navigation menu"
+          className="absolute top-3 right-3 p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"
+        >
+          <svg
+            className="w-5 h-5"
+            aria-hidden="true"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+        <SidebarContent
+          {...contentProps}
+          isCollapsed={false}
+          onTabChange={(id) => {
+            onTabChange(id);
+            onClose();
+          }}
+        />
+      </div>
+    </div>
+  );
+};
+
+const Sidebar = ({
+  title: _title,
+  tabs,
+  activeTab,
+  onTabChange,
+  onToggleGroup,
+  footerTitle,
+  footerData,
+  variant = 'plain',
+  isCollapsed = false,
+}) => {
+  const mobileNav = useMobileNav();
+  const theme = variants[variant] || variants.plain;
+  const contentProps = {
+    tabs,
+    activeTab,
+    onTabChange,
+    onToggleGroup,
+    footerTitle,
+    footerData,
+    theme,
+  };
+
+  return (
+    <>
+      <aside
+        className={`${isCollapsed ? 'w-16' : 'w-72'} bg-white z-20 hidden md:flex flex-col h-full border-r border-gray-200 overflow-hidden transition-all duration-300 flex-shrink-0`}
+      >
+        <SidebarContent {...contentProps} isCollapsed={isCollapsed} />
+      </aside>
+      {mobileNav?.isOpen && <MobileDrawer {...contentProps} onClose={mobileNav.close} />}
+    </>
   );
 };
 

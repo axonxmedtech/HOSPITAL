@@ -1,10 +1,23 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { DESKTOP_NAV_QUERY, useMobileNav } from '../context/MobileNavContext';
 import UserMenu from './UserMenu';
 
 const Navbar = ({ title, user, onLogout, onProfile, onSupport, actions, onToggleSidebar }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const mobileNav = useMobileNav();
+
+  // Phones have no visible sidebar, so the menu button opens the navigation drawer there;
+  // on wider screens it keeps collapsing/expanding the sidebar rail.
+  const isPhone = () =>
+    Boolean(mobileNav) &&
+    typeof window.matchMedia === 'function' &&
+    !window.matchMedia(DESKTOP_NAV_QUERY).matches;
+  const handleMenuClick = () => {
+    if (isPhone()) mobileNav.open();
+    else onToggleSidebar?.();
+  };
 
   const isSingleDoctor = user?.role === 'HOSPITAL_ADMIN' && user?.isSingleDoctor;
   const isDoctorDashboard = location.pathname.includes('/hospital/doctor');
@@ -20,14 +33,24 @@ const Navbar = ({ title, user, onLogout, onProfile, onSupport, actions, onToggle
 
   return (
     <header className="bg-white border-b border-gray-200 z-10 w-full sticky top-0">
-      <div className="flex justify-between items-center px-6 py-3">
-        {/* Left side - Sidebar toggle button */}
+      <div className="flex justify-between items-center gap-2 px-3 sm:px-6 py-3">
+        {/* Left side - menu button: opens the drawer on phones, toggles the rail on desktop */}
         <button
-          onClick={onToggleSidebar}
-          className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+          type="button"
+          onClick={handleMenuClick}
+          aria-label="Toggle navigation menu"
+          aria-haspopup={mobileNav ? 'dialog' : undefined}
+          aria-expanded={mobileNav ? mobileNav.isOpen : undefined}
+          className="p-2 flex-shrink-0 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"
           title="Toggle sidebar"
         >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg
+            className="w-5 h-5"
+            aria-hidden="true"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -38,7 +61,7 @@ const Navbar = ({ title, user, onLogout, onProfile, onSupport, actions, onToggle
         </button>
 
         {/* Right side - User menu and single doctor toggle */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
           {/* Quick actions if provided */}
           {actions && <div className="flex items-center gap-3">{actions}</div>}
 
