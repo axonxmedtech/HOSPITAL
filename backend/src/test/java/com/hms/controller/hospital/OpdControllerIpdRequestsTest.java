@@ -95,21 +95,29 @@ class OpdControllerIpdRequestsTest {
         verify(opdService).getPendingIpdRequests(any(Pageable.class));
     }
 
-    /** Neither endpoint is part of a doctor's or pharmacist's job. */
+    /** Doctors (e.g. in solo/both reception mode) and receptionists may read pending IPD requests. */
     @Test
     @WithMockUser(roles = "DOCTOR")
-    void doctorCannotReadPendingIpdRequests() throws Exception {
+    void doctorMayReadPendingIpdRequests() throws Exception {
+        when(opdService.getPendingIpdRequestCount()).thenReturn(5L);
+        when(opdService.getPendingIpdRequests(any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
         mockMvc.perform(get("/hospital/opd/ipd-requests/count"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.count").value(5));
         mockMvc.perform(get("/hospital/opd/ipd-requests"))
-                .andExpect(status().isForbidden());
-        verify(opdService, never()).getPendingIpdRequestCount();
+                .andExpect(status().isOk());
+        verify(opdService).getPendingIpdRequestCount();
+        verify(opdService).getPendingIpdRequests(any(Pageable.class));
     }
 
     @Test
     @WithMockUser(roles = "PHARMACIST")
     void pharmacistCannotReadPendingIpdRequests() throws Exception {
         mockMvc.perform(get("/hospital/opd/ipd-requests/count"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/hospital/opd/ipd-requests"))
                 .andExpect(status().isForbidden());
         verify(opdService, never()).getPendingIpdRequestCount();
     }

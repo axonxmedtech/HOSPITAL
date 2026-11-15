@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../../context/ToastContext';
+import { extractApiError } from '../../utils/apiError';
 
 /**
  * useViewManager - Standardizes data fetching, searching, and pagination logic
@@ -30,7 +31,7 @@ export const useViewManager = (apiCall, options = {}) => {
       setTotalPages(response.totalPages || 0);
       setTotalElements(response.totalElements || 0);
     } catch (err) {
-      const errMsg = err.response?.data?.message || 'Failed to load data. Please try again.';
+      const errMsg = extractApiError(err, 'Failed to load data. Please try again.');
       setError(errMsg);
       toast.error(errMsg);
     } finally {

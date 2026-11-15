@@ -2,6 +2,7 @@ import React, { useEffect, useId, useState } from 'react';
 import { useToast } from '../context/ToastContext';
 import hospitalService from '../services/hospitalService';
 import wardService from '../services/wardService';
+import { extractApiError } from '../utils/apiError';
 
 const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) => {
   const formId = useId();
@@ -127,9 +128,7 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
       onClose();
     } catch (err) {
       console.error('IPD admit failed', err);
-      const data = err.response?.data;
-      const msg =
-        typeof data === 'string' ? data : data?.error || data?.message || 'Failed to admit patient';
+      const msg = extractApiError(err, 'Failed to admit patient');
       toastError(msg);
     } finally {
       setLoading(false);

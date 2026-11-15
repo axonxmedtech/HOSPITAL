@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useToast } from '../../context/ToastContext';
 import icuService from '../../services/icuService';
+import { extractApiError } from '../../utils/apiError';
 
 /**
  * VentilatorSettingsCard - the per-hospital ventilator parameter catalogue (ICU Phase 7, D-5).
@@ -56,7 +57,7 @@ const VentilatorSettingsCard = ({ refreshKey = 0 }) => {
       success(next ? `${p.displayName} enabled` : `${p.displayName} disabled — history is kept`);
     } catch (err) {
       setParams((list) => list.map((x) => (x.key === p.key ? { ...x, enabled: p.enabled } : x)));
-      toastError(err?.response?.data?.error || 'Could not update the parameter');
+      toastError(extractApiError(err, 'Could not update the parameter'));
     }
   };
 
@@ -75,7 +76,7 @@ const VentilatorSettingsCard = ({ refreshKey = 0 }) => {
       setEditing(null);
       load();
     } catch (err) {
-      toastError(err?.response?.data?.error || 'Could not update the parameter');
+      toastError(extractApiError(err, 'Could not update the parameter'));
     }
   };
 
@@ -95,7 +96,7 @@ const VentilatorSettingsCard = ({ refreshKey = 0 }) => {
       setDraft({ displayName: '', unit: '', category: 'SETTING' });
       load();
     } catch (err) {
-      toastError(err?.response?.data?.error || 'Could not add the parameter');
+      toastError(extractApiError(err, 'Could not add the parameter'));
     } finally {
       setAdding(false);
     }

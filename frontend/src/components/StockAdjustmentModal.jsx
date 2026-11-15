@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import inventoryApi from '../services/pharmacy/inventoryApi';
+import { extractApiError } from '../utils/apiError';
 
 const StockAdjustmentModal = ({ isOpen, onClose, item, onAdjustmentComplete }) => {
   const [adjustmentQty, setAdjustmentQty] = useState('');
@@ -28,7 +29,7 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, onAdjustmentComplete }) =
       onAdjustmentComplete();
       onClose();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to adjust stock. Please try again.');
+      setError(extractApiError(err, 'Failed to adjust stock. Please try again.'));
     } finally {
       setIsSubmitting(false);
     }

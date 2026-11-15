@@ -5,6 +5,7 @@ import { useToast } from '../../../context/ToastContext';
 import useEnabledScoreTypes from '../../../hooks/useEnabledScoreTypes';
 import authService from '../../../services/authService';
 import icuService from '../../../services/icuService';
+import { extractApiError } from '../../../utils/apiError';
 
 /**
  * SeverityScorePanel - timed severity scores (ICU Phase 8).
@@ -121,7 +122,7 @@ const SeverityScorePanel = ({ admissionId, readOnly = false, refreshKey = 0 }) =
       setTotal('');
       load();
     } catch (err) {
-      toastError(err?.response?.data?.error || 'Failed to record the score');
+      toastError(extractApiError(err, 'Failed to record the score'));
     } finally {
       setSubmitting(false);
     }
@@ -139,7 +140,7 @@ const SeverityScorePanel = ({ admissionId, readOnly = false, refreshKey = 0 }) =
       setCorrecting(null);
       load();
     } catch (err) {
-      toastError(err?.response?.data?.error || 'Failed to record the correction');
+      toastError(extractApiError(err, 'Failed to record the correction'));
     } finally {
       setSubmitting(false);
     }

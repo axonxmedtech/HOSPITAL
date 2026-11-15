@@ -3,6 +3,7 @@ import DateSelect from '../../../components/DateSelect';
 import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
 import otService from '../../../services/otService';
+import { extractApiError } from '../../../utils/apiError';
 import { backdropProps } from '../../../utils/modalA11y';
 import { printHtml } from '../../../utils/printHtml';
 
@@ -28,7 +29,7 @@ const OtListPrint = ({ onClose }) => {
       try {
         setRows(await otService.getOtList(d));
       } catch (e) {
-        toastError(e?.response?.data?.error || 'Failed to load OT list');
+        toastError(extractApiError(e, 'Failed to load OT list'));
       } finally {
         setLoading(false);
       }

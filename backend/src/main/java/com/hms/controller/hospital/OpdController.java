@@ -293,13 +293,13 @@ public class OpdController {
      * dashboard previously paged 1000 OPDs and filtered client-side, which silently lost any
      * request beyond that page.
      */
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     @GetMapping("/ipd-requests/count")
     public ResponseEntity<?> getPendingIpdRequestCount() {
         return ResponseEntity.ok(java.util.Map.of("count", opdService.getPendingIpdRequestCount()));
     }
 
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST')")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     @GetMapping("/ipd-requests")
     public ResponseEntity<?> getPendingIpdRequests(
             @RequestParam(defaultValue = "0") int page,

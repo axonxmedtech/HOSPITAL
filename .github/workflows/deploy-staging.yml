@@ -273,7 +273,9 @@ jobs:
   staging-smoke:
     name: Staging — Smoke Tests
     needs: [deploy-staging]
-    if: needs.deploy-staging.result == 'success'
+    # always(): without it GitHub prepends success(), which is false whenever an upstream job
+    # (e.g. Sonar without a token) was skipped — so smoke silently skipped after a good deploy.
+    if: always() && needs.deploy-staging.result == 'success'
     runs-on: ubuntu-latest
     environment: Staging
     timeout-minutes: 15

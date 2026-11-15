@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import DateSelect from '../../components/DateSelect';
 import { useToast } from '../../context/ToastContext';
 import otService from '../../services/otService';
+import { extractApiError } from '../../utils/apiError';
 
 /**
  * OtAnalyticsCard - the NABH surgical-care indicators over a date range.
@@ -38,7 +39,7 @@ const OtAnalyticsCard = () => {
       try {
         setData(await otService.getOtNabh(f, t));
       } catch (e) {
-        toastError(e?.response?.data?.error || 'Failed to load OT analytics');
+        toastError(extractApiError(e, 'Failed to load OT analytics'));
       } finally {
         setLoading(false);
       }

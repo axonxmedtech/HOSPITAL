@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../context/ToastContext';
 import hospitalService from '../services/hospitalService';
+import { extractApiError } from '../utils/apiError';
 import ConfirmationModal from './ConfirmationModal';
 
 /**
@@ -118,7 +119,7 @@ const NotePresetsManager = ({
       setNewDoctorId('');
       success(`${nounCap} added`);
     } catch (err) {
-      toastError(err?.response?.data || `Failed to add ${noun}`);
+      toastError(extractApiError(err, `Failed to add ${noun}`));
     } finally {
       setAdding(false);
     }

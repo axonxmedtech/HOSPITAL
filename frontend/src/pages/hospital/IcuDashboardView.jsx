@@ -5,6 +5,7 @@ import wardService from '../../services/wardService';
 import authService from '../../services/authService';
 import IpdAdmitModal from '../../components/IpdAdmitModal';
 import ConfirmationModal from '../../components/ConfirmationModal';
+import { extractApiError } from '../../utils/apiError';
 
 const IcuDashboardView = () => {
   const { success, error: toastError } = useToast();
@@ -112,7 +113,7 @@ const IcuDashboardView = () => {
       fetchIcuData();
     } catch (err) {
       console.error(err);
-      toastError(err.response?.data?.error || 'Failed to create cleaning task');
+      toastError(extractApiError(err, 'Failed to create cleaning task'));
     } finally {
       setSubmittingTask(false);
     }
@@ -281,7 +282,7 @@ const IcuDashboardView = () => {
           fetchIcuData();
         } catch (err) {
           console.error(err);
-          toastError(err.response?.data?.error || err.response?.data?.message || 'Failed to discharge patient');
+          toastError(extractApiError(err, 'Failed to discharge patient'));
         } finally {
           setConfirmModal({ open: false, title: '', message: '', onConfirm: null });
         }

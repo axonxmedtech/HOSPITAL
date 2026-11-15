@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
 import nurseService from '../../../services/nurseService';
+import { extractApiError } from '../../../utils/apiError';
 
 /**
  * OtNotesSection - intra-operative notes the nurse records while assisting a
@@ -54,7 +55,7 @@ const OtNotesSection = ({ admissionId }) => {
       success('OT note added');
       refresh();
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to add OT note');
+      toastError(extractApiError(e, 'Failed to add OT note'));
     } finally {
       setSaving(false);
     }

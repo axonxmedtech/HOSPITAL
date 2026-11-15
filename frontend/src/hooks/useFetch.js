@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { extractApiError, isRequestCancelled } from '../utils/apiError';
 
 // Usage:
 // const { data, loading, error, refetch } = useFetch(
@@ -17,8 +18,8 @@ export function useFetch(fetchFn, deps = []) {
       const result = await fetchFn();
       setData(result);
     } catch (err) {
-      if (err.name !== 'CanceledError') {
-        setError(err.message || 'An error occurred');
+      if (!isRequestCancelled(err)) {
+        setError(extractApiError(err, 'An error occurred'));
       }
     } finally {
       setLoading(false);

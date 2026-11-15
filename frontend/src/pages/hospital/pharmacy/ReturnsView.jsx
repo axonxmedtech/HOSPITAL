@@ -4,6 +4,7 @@ import { useToast } from '../../../context/ToastContext';
 import inventoryApi from '../../../services/pharmacy/inventoryApi';
 import salesApi from '../../../services/pharmacy/salesApi';
 import suppliersApi from '../../../services/pharmacy/suppliersApi';
+import { extractApiError } from '../../../utils/apiError';
 
 const ReturnsView = () => {
   const { success, error: toastError } = useToast();
@@ -108,7 +109,7 @@ const ReturnsView = () => {
     } catch (err) {
       console.error('Sale search failed', err);
       toastError(
-        err.response?.data?.message || 'Invoice not found. Please verify the bill number.'
+        extractApiError(err, 'Invoice not found. Please verify the bill number.')
       );
     } finally {
       setSearchingBill(false);
@@ -171,7 +172,7 @@ const ReturnsView = () => {
           setPatientReturns({});
         } catch (err) {
           console.error('Refund failed', err);
-          toastError(err.response?.data?.message || 'Failed to process patient refund.');
+          toastError(extractApiError(err, 'Failed to process patient refund.'));
         } finally {
           setProcessingRefund(false);
         }
@@ -268,7 +269,7 @@ const ReturnsView = () => {
           setSelectedSupplierId('');
         } catch (err) {
           console.error('Supplier return dispatch failed', err);
-          toastError(err.response?.data?.message || 'Failed to process supplier return.');
+          toastError(extractApiError(err, 'Failed to process supplier return.'));
         } finally {
           setProcessingSupplierReturn(false);
         }

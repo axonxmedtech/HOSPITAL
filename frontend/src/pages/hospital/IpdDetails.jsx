@@ -19,9 +19,11 @@ import hospitalService from '../../services/hospitalService';
 import icuService from '../../services/icuService';
 import otService from '../../services/otService';
 import wardService from '../../services/wardService';
+import { extractApiError } from '../../utils/apiError';
 import { canManageBilling as userCanManageBilling } from '../../utils/billingAccess';
 import { FOOD_TIMING_OPTIONS, isFoodTimingApplicable } from '../../utils/foodTiming';
 import { printBlob } from '../../utils/printPdf';
+import { buildSidebarConfig, getRoleNavigateUrl } from '../../utils/sidebarNavigation';
 import IcuStayCard from './icu/IcuStayCard';
 import AdmissionFormModal from './nurse/AdmissionFormModal';
 import ConsentFormsPanel from './nurse/ConsentFormsPanel';
@@ -135,17 +137,8 @@ const IpdDetails = () => {
     };
   }, [hasOT, isDoctor, id, otModalOpen]);
 
-  const parseError = (err, fallback) => {
-    if (!err) return fallback;
-    if (err.response?.data) {
-      const data = err.response.data;
-      if (typeof data === 'object') {
-        return data.error || data.message || JSON.stringify(data);
-      }
-      return data;
-    }
-    return err.message || fallback;
-  };
+  // Never JSON.stringify a body or show axios's transport text — see utils/apiError.
+  const parseError = extractApiError;
 
   // Layout States
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -157,96 +150,37 @@ const IpdDetails = () => {
     navigate(loginUrl);
   };
 
-  const isSoloOrBoth = user?.receptionMode === 'SOLO' || user?.receptionMode === 'BOTH';
   const hasBilling = userCanManageBilling(user);
-  const hasInClinic = user?.inClinic !== false;
-  const modules = user?.modules || [];
-
   const activeDashboard = sessionStorage.getItem('activeDashboard');
-  const effectiveRole =
-    user?.role === 'HOSPITAL_ADMIN' && user?.isSingleDoctor && activeDashboard !== 'admin'
-      ? 'DOCTOR'
-      : user?.role;
 
-  const getSidebarTabs = () => {
-    if (effectiveRole === 'HOSPITAL_ADMIN') {
-      const adminAllTabs = [
-        { id: 'overview', label: 'Overview', requiredModule: 'OPD' },
-        { id: 'patients', label: 'Patients', requiredModule: 'OPD' },
-        { id: 'opd', label: 'OPD', requiredModule: 'OPD' },
-        { id: 'wards', label: 'Wards & Beds', requiredModule: 'IPD' },
-        { id: 'icu-dashboard', label: 'ICU Dashboard', requiredModule: 'ICU' },
-        { id: 'icu-beds', label: 'ICU Bed Board', requiredModule: 'ICU' },
-        { id: 'doctors', label: 'Doctors', requiredModule: 'OPD' },
-        { id: 'receptionists', label: 'Receptionists', requiredModule: 'OPD' },
-        { id: 'billing', label: 'Billing', requiredModule: 'BILLING' },
-        { id: 'pharmacy', label: 'Pharmacy', requiredModule: 'PHARMACY' },
-        { id: 'pharmacists', label: 'Pharmacists', requiredModule: 'PHARMACY' },
-        { id: 'inventory', label: 'Medicine Inventory', requiredModule: 'OPD' },
-        { id: 'hospital-inventory', label: 'Hospital Inventory', requiredModule: 'OPD' },
-        { id: 'pathology', label: 'Pathology', requiredModule: 'PATHOLOGY' },
-        { id: 'ipd', label: 'IPD', requiredModule: 'IPD' },
-        { id: 'fees', label: 'Fees', requiredModule: 'OPD' },
-        { id: 'audit-logs', label: 'Audit Logs', requiredModule: null },
-        { id: 'settings', label: 'Settings', requiredModule: 'OPD' },
-      ];
-      return adminAllTabs.filter(
-        (tab) => !tab.requiredModule || modules.includes(tab.requiredModule)
-      );
-    } else if (effectiveRole === 'DOCTOR') {
-      return [
-        { id: 'overview', label: 'Overview' },
-        // Gated like every other optional capability. The HOSPITAL_ADMIN branch above already
-        // filters on requiredModule; this list did not, so a doctor at a walk-in-only hospital
-        // was offered "My Appointments" here and navigated to a tab their own dashboard hides.
-        ...(modules.includes('APPOINTMENTS')
-          ? [{ id: 'appointments', label: 'My Appointments' }]
-          : []),
-        { id: 'ipd', label: 'IPD' },
-        { id: 'queue', label: 'Queue' },
-        { id: 'opd', label: 'OPD' },
-        ...(isSoloOrBoth ? [{ id: 'patients', label: 'Patients' }] : []),
-        ...(hasBilling ? [{ id: 'billing', label: 'Billing' }] : []),
-        ...(isSoloOrBoth && hasInClinic ? [{ id: 'inventory', label: 'Medicine Inventory' }] : []),
-        ...(isSoloOrBoth ? [{ id: 'hospital-inventory', label: 'Hospital Inventory' }] : []),
-      ];
-    } else if (effectiveRole === 'RECEPTIONIST') {
-      return [
-        { id: 'overview', label: 'Overview' },
-        { id: 'patients', label: 'Patients' },
-        { id: 'opd', label: 'OPD' },
-        { id: 'ipd', label: 'IPD' },
-        { id: 'billing', label: 'Billing' },
-        ...(user?.inClinic !== false ? [{ id: 'inventory', label: 'Medicine Inventory' }] : []),
-      ].filter((tab) => tab.id !== 'billing' || hasBilling);
-    } else if (effectiveRole === 'PHARMACIST') {
-      const isStandalonePharmacy = modules.includes('PHARMACY') && !modules.includes('OPD');
-      return [
-        { id: 'dashboard', label: 'Dashboard' },
-        { id: 'billing', label: 'Billing Counter' },
-        ...(!isStandalonePharmacy ? [{ id: 'prescriptions', label: 'Prescriptions' }] : []),
-        { id: 'inventory', label: 'Inventory' },
-        { id: 'medicine_master', label: 'Medicine Master' },
-        { id: 'purchase', label: 'Purchase Management' },
-        { id: 'suppliers', label: 'Suppliers' },
-        { id: 'returns', label: 'Returns & Refunds' },
-        { id: 'expiry', label: 'Expiry Management' },
-        { id: 'reports', label: 'Reports & Analytics' },
-      ];
-    }
-    return [];
+  // Manually-expanded sidebar groups (Hospital Admin's grouped sidebar).
+  // Default to expanding Patient Management because activeTab is 'ipd'.
+  const [expandedSidebarGroups, setExpandedSidebarGroups] = useState(
+    () => new Set(['group-patient-management'])
+  );
+
+  const handleToggleSidebarGroup = (groupId) => {
+    setExpandedSidebarGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
   };
 
+  const sidebarConfig = buildSidebarConfig({
+    user,
+    activeDashboard,
+    expandedGroups: expandedSidebarGroups,
+    activeTab: 'ipd',
+  });
+
   const handleTabChange = (tabId) => {
-    if (effectiveRole === 'HOSPITAL_ADMIN') {
-      navigate(`/hospital/admin?tab=${tabId}`);
-    } else if (effectiveRole === 'DOCTOR') {
-      navigate(`/hospital/doctor?tab=${tabId}`);
-    } else if (effectiveRole === 'RECEPTIONIST') {
-      navigate(`/hospital/receptionist?tab=${tabId}`);
-    } else if (effectiveRole === 'PHARMACIST') {
-      navigate(`/hospital/pharmacy?tab=${tabId}`);
-    }
+    const url = getRoleNavigateUrl(tabId, user, activeDashboard);
+    navigate(url);
   };
 
   const isAdmin = user?.role === 'HOSPITAL_ADMIN';
@@ -628,7 +562,7 @@ const IpdDetails = () => {
       printBlob(blob); // print on this page (hidden iframe), not a new tab
     } catch (err) {
       console.error(err);
-      toastError(err.message || 'Failed to load bill for printing');
+      toastError(extractApiError(err, 'Failed to load bill for printing'));
     } finally {
       setPrintingBill(false);
     }
@@ -638,12 +572,13 @@ const IpdDetails = () => {
     <div className="flex h-screen bg-white overflow-hidden">
       {/* Sidebar */}
       <Sidebar
-        title="HMS Portal"
-        tabs={getSidebarTabs()}
+        title={sidebarConfig.title}
+        tabs={sidebarConfig.tabs}
         activeTab="ipd"
         onTabChange={handleTabChange}
-        footerTitle="Hospital"
-        footerData={user?.hospitalName || 'Hospital'}
+        onToggleGroup={sidebarConfig.usesGroupedSidebar ? handleToggleSidebarGroup : undefined}
+        footerTitle={sidebarConfig.footerTitle}
+        footerData={sidebarConfig.footerData}
         variant="plain"
         isCollapsed={sidebarCollapsed}
       />

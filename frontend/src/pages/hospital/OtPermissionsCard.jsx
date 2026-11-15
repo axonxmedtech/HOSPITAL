@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../../context/ToastContext';
 import otService from '../../services/otService';
+import { extractApiError } from '../../utils/apiError';
 
 const ROLE_LABELS = {
   DOCTOR: 'Doctor',
@@ -41,7 +42,7 @@ const OtPermissionsCard = () => {
       setMatrix(mtx || {});
       setDirty(false);
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to load OT permissions');
+      toastError(extractApiError(e, 'Failed to load OT permissions'));
     } finally {
       setLoading(false);
     }
@@ -71,7 +72,7 @@ const OtPermissionsCard = () => {
       setDirty(false);
       success('OT permissions updated — users see the change after their next login');
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to save OT permissions');
+      toastError(extractApiError(e, 'Failed to save OT permissions'));
     } finally {
       setSaving(false);
     }
@@ -84,7 +85,7 @@ const OtPermissionsCard = () => {
       setDirty(false);
       success('OT permissions reset to defaults');
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to reset OT permissions');
+      toastError(extractApiError(e, 'Failed to reset OT permissions'));
     } finally {
       setSaving(false);
     }

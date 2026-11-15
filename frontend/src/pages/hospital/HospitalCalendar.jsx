@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import DateSelect from '../../components/DateSelect';
 import { useToast } from '../../context/ToastContext';
 import calendarService from '../../services/calendarService';
+import { extractApiError } from '../../utils/apiError';
 import { backdropProps } from '../../utils/modalA11y';
 
 const MONTHS = [
@@ -52,7 +53,7 @@ const HospitalCalendar = () => {
     try {
       setDays(await calendarService.getMonth(year, month));
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to load calendar');
+      toastError(extractApiError(e, 'Failed to load calendar'));
     } finally {
       setLoading(false);
     }
@@ -69,7 +70,7 @@ const HospitalCalendar = () => {
     try {
       setDayDetail(await calendarService.getDay(dateStr));
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to load day');
+      toastError(extractApiError(e, 'Failed to load day'));
     } finally {
       setDayLoading(false);
     }
@@ -236,7 +237,7 @@ const DayPanel = ({ date, detail, loading, onClose, onChanged }) => {
       success('Event deleted');
       onChanged();
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to delete');
+      toastError(extractApiError(e, 'Failed to delete'));
     }
   };
   return (
@@ -342,7 +343,7 @@ const EventForm = ({ initialDate, onClose, onSaved, onError }) => {
       });
       onSaved();
     } catch (e) {
-      onError(e?.response?.data?.error || 'Failed to save event');
+      onError(extractApiError(e, 'Failed to save event'));
     } finally {
       setSaving(false);
     }

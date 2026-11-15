@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../../context/ToastContext';
 import otService from '../../services/otService';
+import { extractApiError } from '../../utils/apiError';
 
 const ARCHETYPE_LABELS = {
   SMALL: 'Small hospital',
@@ -36,7 +37,7 @@ const OtPoliciesCard = () => {
       setArchetypes(data.archetypes || []);
       setDirty(false);
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to load OT policies');
+      toastError(extractApiError(e, 'Failed to load OT policies'));
     } finally {
       setLoading(false);
     }
@@ -59,7 +60,7 @@ const OtPoliciesCard = () => {
       setDirty(false);
       success('OT policies saved');
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to save OT policies');
+      toastError(extractApiError(e, 'Failed to save OT policies'));
     } finally {
       setBusy(false);
     }
@@ -72,7 +73,7 @@ const OtPoliciesCard = () => {
       await load();
       success(`Applied the ${ARCHETYPE_LABELS[name] || name} preset`);
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to apply preset');
+      toastError(extractApiError(e, 'Failed to apply preset'));
     } finally {
       setBusy(false);
     }

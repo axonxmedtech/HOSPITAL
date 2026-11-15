@@ -3,6 +3,7 @@ import EmptyState from '../../../components/EmptyState';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
 import nurseService from '../../../services/nurseService';
+import { extractApiError } from '../../../utils/apiError';
 import { describeShift, isOnShiftNow } from '../../../utils/nurseShift';
 
 /**
@@ -22,7 +23,7 @@ const MyNursesView = ({ refreshKey }) => {
       const data = await nurseService.getMyNurses();
       setNurses(Array.isArray(data) ? data : []);
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to load nurses');
+      toastError(extractApiError(e, 'Failed to load nurses'));
     } finally {
       setLoading(false);
     }

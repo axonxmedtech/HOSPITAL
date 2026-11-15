@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useToast } from '../../../context/ToastContext';
 import useOtPermissions from '../../../hooks/useOtPermissions';
 import otService from '../../../services/otService';
+import { extractApiError } from '../../../utils/apiError';
 import { backdropProps } from '../../../utils/modalA11y';
 
 /**
@@ -50,7 +51,7 @@ const SurgeryExecutionModal = ({ surgery, onClose }) => {
       setWho(c);
       setMilestones(Array.isArray(m) ? m : []);
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to load execution details');
+      toastError(extractApiError(e, 'Failed to load execution details'));
     } finally {
       setLoading(false);
     }
@@ -72,7 +73,7 @@ const SurgeryExecutionModal = ({ surgery, onClose }) => {
       setWho(await otService.signWhoPhase(sid, phase, payload));
       success(`${phase.replace('_', ' ')} signed`);
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to sign');
+      toastError(extractApiError(e, 'Failed to sign'));
     } finally {
       setBusy(false);
     }
@@ -84,7 +85,7 @@ const SurgeryExecutionModal = ({ surgery, onClose }) => {
       const created = await otService.recordMilestone(sid, { milestone });
       setMilestones((prev) => [...prev, created]);
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to record');
+      toastError(extractApiError(e, 'Failed to record'));
     } finally {
       setBusy(false);
     }
@@ -96,7 +97,7 @@ const SurgeryExecutionModal = ({ surgery, onClose }) => {
       await otService.saveOperativeNote(sid, note);
       success('Operative note saved');
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to save note');
+      toastError(extractApiError(e, 'Failed to save note'));
     } finally {
       setBusy(false);
     }

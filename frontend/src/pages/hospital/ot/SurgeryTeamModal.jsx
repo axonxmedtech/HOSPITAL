@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useToast } from '../../../context/ToastContext';
-import otService from '../../../services/otService';
-import { backdropProps } from '../../../utils/modalA11y';
 import useOtPermissions from '../../../hooks/useOtPermissions';
+import otService from '../../../services/otService';
+import { extractApiError } from '../../../utils/apiError';
+import { backdropProps } from '../../../utils/modalA11y';
 
 /**
  * SurgeryTeamModal - the surgical team on one case.
@@ -38,7 +39,7 @@ const SurgeryTeamModal = ({ surgery, onClose }) => {
       setTeam(Array.isArray(t) ? t : []);
       setSurgeons(Array.isArray(s) ? s : []);
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to load team');
+      toastError(extractApiError(e, 'Failed to load team'));
     } finally {
       setLoading(false);
     }
@@ -85,7 +86,7 @@ const SurgeryTeamModal = ({ surgery, onClose }) => {
       setForm({ caseRoleCode: '', staffId: '', externalName: '' });
       success('Team member added');
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to add team member');
+      toastError(extractApiError(e, 'Failed to add team member'));
     } finally {
       setBusy(false);
     }
@@ -97,7 +98,7 @@ const SurgeryTeamModal = ({ surgery, onClose }) => {
       await otService.removeTeamMember(surgery.surgeryId, m.id);
       setTeam((prev) => prev.filter((x) => x.id !== m.id));
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to remove');
+      toastError(extractApiError(e, 'Failed to remove'));
     } finally {
       setBusy(false);
     }
@@ -112,7 +113,7 @@ const SurgeryTeamModal = ({ surgery, onClose }) => {
       set('caseRoleCode', r.code);
       success('Role added');
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to add role');
+      toastError(extractApiError(e, 'Failed to add role'));
     }
   };
 

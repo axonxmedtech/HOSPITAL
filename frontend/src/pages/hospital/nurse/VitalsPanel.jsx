@@ -4,6 +4,7 @@ import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
 import icuService from '../../../services/icuService';
 import nurseService from '../../../services/nurseService';
+import { extractApiError } from '../../../utils/apiError';
 import escapeHtml from '../../../utils/escapeHtml';
 import { titleCase } from '../../../utils/text';
 
@@ -328,12 +329,7 @@ const VitalsPanel = ({ admissionId, readOnly = false, refreshKey = 0 }) => {
       setPerformedByNurseId('');
       load();
     } catch (err) {
-      const data = err.response?.data;
-      const msg =
-        data?.error ||
-        data?.message ||
-        (typeof data === 'string' ? data : null) ||
-        'Failed to record vitals';
+      const msg = extractApiError(err, 'Failed to record vitals');
       toastError(msg);
     } finally {
       setSubmitting(false);

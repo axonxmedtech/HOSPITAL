@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
 import nurseScheduleService from '../../../services/nurseScheduleService';
+import { extractApiError } from '../../../utils/apiError';
 
 const toYMD = (d) => {
   const y = d.getFullYear();
@@ -32,7 +33,7 @@ const MyShiftsView = ({ refreshKey }) => {
       list.sort((a, b) => (a.shiftDate < b.shiftDate ? -1 : a.shiftDate > b.shiftDate ? 1 : 0));
       setShifts(list);
     } catch (e) {
-      toastError(e?.response?.data?.error || 'Failed to load your shifts');
+      toastError(extractApiError(e, 'Failed to load your shifts'));
     } finally {
       setLoading(false);
     }
