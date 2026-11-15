@@ -1915,9 +1915,8 @@ const HospitalAdminDashboard = () => {
       'Delete Appointment',
       'Are you sure you want to delete this appointment?',
       async (reason) => {
-        console.log(`Deleting appointment ${id}. Reason: ${reason}`);
         try {
-          await hospitalService.deleteAppointment(id);
+          await hospitalService.deleteAppointment(id, reason);
           success('Appointment deleted successfully');
           loadData(page, pageSize, !(activeTab === 'overview' && isHospitalTenant));
         } catch (err) {
@@ -1949,11 +1948,8 @@ const HospitalAdminDashboard = () => {
         'Cancel Appointment',
         'Are you sure you want to cancel this appointment?',
         async (reason) => {
-          console.log(`Cancelling appointment ${id}. Reason: ${reason}`);
           try {
-            // Pass reason to updateAppointment if supported, or just log
-            // For now we assume updateAppointmentStatus just takes status
-            await hospitalService.updateAppointmentStatus(id, newStatus);
+            await hospitalService.updateAppointmentStatus(id, newStatus, reason);
             success('Appointment cancelled successfully');
             // refresh
             if (activeTab === 'appointments' || activeTab === 'overview') {

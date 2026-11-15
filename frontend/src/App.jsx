@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import ErrorBoundary from './components/ErrorBoundary';
 import PageMeta from './components/PageMeta';
 import { ToastProvider } from './context/ToastContext';
 import authService from './services/authService';
@@ -17,6 +18,7 @@ const NurseDashboard = lazy(() => import('./pages/hospital/NurseDashboard'));
 const NurseInchargeDashboard = lazy(() => import('./pages/hospital/NurseInchargeDashboard'));
 const OtInchargeDashboard = lazy(() => import('./pages/hospital/OtInchargeDashboard'));
 const IpdDetails = lazy(() => import('./pages/hospital/IpdDetails'));
+const NotFound = lazy(() => import('./pages/NotFound'));
 
 // Minimal loading fallback shown while a lazy chunk is fetching
 const PageLoading = () => (
@@ -134,11 +136,22 @@ const LandingRedirect = () => {
   }
 };
 
+// Error boundary + lazy-chunk loading for the routed pages. The boundary sits outside Suspense
+// so a failed chunk download is caught too, and it resets when the user navigates elsewhere.
+const RouteShell = ({ children }) => {
+  const { pathname } = useLocation();
+  return (
+    <ErrorBoundary resetKey={pathname}>
+      <Suspense fallback={<PageLoading />}>{children}</Suspense>
+    </ErrorBoundary>
+  );
+};
+
 function App() {
   return (
     <ToastProvider>
       <Router>
-        <Suspense fallback={<PageLoading />}>
+        <RouteShell>
           <Routes>
             {/* Public / Login Pages */}
             <Route
@@ -326,10 +339,17 @@ function App() {
             {/* Default landing */}
             <Route path="/" element={<LandingRedirect />} />
 
-            {/* Catch-all */}
-            <Route path="*" element={<Navigate to="/" replace />} />
+            {/* Catch-all: a real 404 page instead of a silent redirect */}
+            <Route
+              path="*"
+              element={
+                <PageMeta title="HMS - Page not found">
+                  <NotFound />
+                </PageMeta>
+              }
+            />
           </Routes>
-        </Suspense>
+        </RouteShell>
       </Router>
     </ToastProvider>
   );

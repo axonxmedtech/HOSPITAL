@@ -1,0 +1,8 @@
+# AxonX HMS is a private, login-only clinical application and must not appear in search results.
+#
+# Indexing is blocked with <meta name="robots" content="noindex, nofollow"> on every page
+# (frontend/index.html). Crawling is deliberately NOT disallowed here: a crawler that is
+# blocked by robots.txt never sees the noindex tag, so a URL linked from elsewhere could stay
+# in search results. Allowing the crawl lets search engines see noindex and drop the page.
+User-agent: *
+Disallow:

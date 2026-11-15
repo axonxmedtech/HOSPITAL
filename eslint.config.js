@@ -61,6 +61,9 @@ export default [
       'unused-imports/no-unused-imports': 'warn',
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
       'no-empty': ['warn', { allowEmptyCatch: true }],
+      // Clinical data was being logged to the browser console. Only warn/error are allowed;
+      // production builds also strip console.log/info/debug (frontend/vite.config.js).
+      'no-console': ['error', { allow: ['warn', 'error'] }],
       // Import hygiene — ordering + no duplicates, as warnings.
       'import/no-duplicates': 'warn',
       'import/order': [
