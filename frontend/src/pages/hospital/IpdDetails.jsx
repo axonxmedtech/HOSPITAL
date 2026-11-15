@@ -878,7 +878,7 @@ const IpdDetails = () => {
                           data.status !== 'DISCHARGE_PLANNED' &&
                           data.status !== 'DISCHARGED' && (
                             <button
-                              className="px-3 py-1 bg-green-600 text-white rounded"
+                              className="px-3 py-1 bg-green-700 text-white rounded hover:bg-green-800"
                               onClick={onAddFollowUp}
                             >
                               + Add Follow-up
@@ -931,7 +931,7 @@ const IpdDetails = () => {
                           <button
                             onClick={saveFollowup}
                             disabled={followupModal.saving}
-                            className="px-3 py-1 bg-green-600 text-white rounded"
+                            className="px-3 py-1 bg-green-700 text-white rounded hover:bg-green-800"
                           >
                             {followupModal.saving ? 'Saving...' : 'Save'}
                           </button>
@@ -2010,7 +2010,7 @@ const IpdDetails = () => {
                       )}
                       <div className="mt-3 flex gap-2">
                         <button
-                          className="px-3 py-1 bg-green-600 text-white rounded"
+                          className="px-3 py-1 bg-green-700 text-white rounded hover:bg-green-800"
                           onClick={openBillModal}
                         >
                           Take Payment
@@ -2354,7 +2354,7 @@ const IpdDetails = () => {
                               }}
                               disabled={payment.saving}
                               title={payment.saving ? 'Recording payment…' : undefined}
-                              className="px-3 py-1 bg-green-600 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="px-3 py-1 bg-green-700 text-white rounded hover:bg-green-800 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               {payment.saving ? 'Recording…' : 'Paid'}
                             </button>

@@ -326,7 +326,7 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
             type="button"
             onClick={handleSubmit}
             disabled={loading}
-            className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm font-semibold shadow-sm transition-all"
+            className="px-4 py-2 bg-sky-700 hover:bg-sky-800 text-white rounded-xl text-sm font-semibold shadow-sm transition-all"
           >
             {loading ? 'Admitting...' : 'Confirm Admission'}
           </button>

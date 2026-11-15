@@ -1347,7 +1347,7 @@ const DoctorDashboard = () => {
                             className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
                               viewFilter === view
                                 ? 'bg-white text-gray-900 shadow-sm border border-gray-100'
-                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                                : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                             }`}
                           >
                             {view.charAt(0).toUpperCase() + view.slice(1)}
@@ -1359,7 +1359,7 @@ const DoctorDashboard = () => {
                     {/* Scrollable Container */}
                     <div className="flex-1 overflow-auto p-6 space-y-6">
                       <div>
-                        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
                           <span className="w-1.5 h-3 bg-gray-950 rounded-full"></span>
                           Today&apos;s Appointments
                         </h4>
@@ -1423,7 +1423,7 @@ const DoctorDashboard = () => {
                     {canDoctorManageReception && (
                       <button
                         onClick={() => setIsOpdModalOpen(true)}
-                        className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer animate-fade-in"
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-sky-700 hover:bg-sky-800 text-white text-xs font-semibold rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer animate-fade-in"
                       >
                         <svg
                           className="w-4 h-4"
@@ -1588,7 +1588,7 @@ const DoctorDashboard = () => {
                             className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
                               viewFilter === view
                                 ? 'bg-white text-primary-600 shadow-sm border border-gray-100'
-                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                                : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                             }`}
                           >
                             {view.charAt(0).toUpperCase() + view.slice(1)}
@@ -1608,7 +1608,7 @@ const DoctorDashboard = () => {
                           className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
                             billingStatus === status
                               ? 'bg-white text-primary-600 shadow-sm border border-gray-100'
-                              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                              : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                           }`}
                         >
                           {status.charAt(0) + status.slice(1).toLowerCase()}
@@ -1630,7 +1630,7 @@ const DoctorDashboard = () => {
                             className={`px-4 py-1 text-sm font-medium rounded-md transition-all ${
                               patientTabView === view
                                 ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'
-                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                                : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                             }`}
                           >
                             {view}
@@ -1650,7 +1650,7 @@ const DoctorDashboard = () => {
                         type="button"
                         onClick={handleDownloadPatientsReport}
                         disabled={loading}
-                        className="bg-sky-600 hover:bg-sky-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px]"
+                        className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px]"
                       >
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
@@ -1684,7 +1684,7 @@ const DoctorDashboard = () => {
                             className={`px-4 py-1 text-sm font-medium rounded-md transition-all ${
                               opdTabView === view
                                 ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'
-                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                                : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                             }`}
                           >
                             {view}
@@ -1704,7 +1704,7 @@ const DoctorDashboard = () => {
                         type="button"
                         onClick={handleDownloadOpdReport}
                         disabled={loading}
-                        className="bg-sky-600 hover:bg-sky-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px]"
+                        className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px]"
                       >
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
@@ -1740,7 +1740,7 @@ const DoctorDashboard = () => {
                           className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
                             ipdSubTab === sub.value
                               ? 'bg-white text-primary-600 shadow-sm border border-gray-100 font-semibold'
-                              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                              : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                           }`}
                         >
                           {sub.label}
@@ -1794,7 +1794,6 @@ const DoctorDashboard = () => {
                   />
                 ))}
 
-              {/* eslint-disable-next-line jsx-a11y/aria-role -- `role` is FollowUpPanel's own prop, not an ARIA role */}
               {activeTab === 'follow-ups' && <FollowUpPanel role="DOCTOR" mine />}
 
               {activeTab === 'opd' &&
@@ -1863,7 +1862,7 @@ const DoctorDashboard = () => {
                                     setIpdOpdForAdmit(o);
                                     setIsIpdAdmitOpen(true);
                                   }}
-                                  className="px-3 py-1 bg-green-600 text-white rounded text-xs font-semibold hover:bg-green-700 transition"
+                                  className="px-3 py-1 bg-green-700 text-white rounded text-xs font-semibold hover:bg-green-800 transition"
                                 >
                                   Admit to IPD
                                 </button>
@@ -2661,7 +2660,7 @@ const DoctorDashboard = () => {
                     <button
                       onClick={() => handleProcessPayment('Online')}
                       disabled={!!docPaymentProcessing}
-                      className={`px-4 py-3 rounded-xl text-white font-bold text-sm transition-all flex flex-col items-center gap-1.5 ${docPaymentProcessing ? 'bg-gray-400 cursor-not-allowed' : 'bg-sky-600 hover:bg-sky-700'}`}
+                      className={`px-4 py-3 rounded-xl text-white font-bold text-sm transition-all flex flex-col items-center gap-1.5 ${docPaymentProcessing ? 'bg-gray-400 cursor-not-allowed' : 'bg-sky-700 hover:bg-sky-800'}`}
                     >
                       {docPaymentProcessing === 'Online'
                         ? '⏳ Processing...'
@@ -2787,7 +2786,7 @@ const DoctorDashboard = () => {
                       <button
                         type="button"
                         onClick={addBillItem}
-                        className="text-xs font-semibold text-sky-600 hover:text-sky-800"
+                        className="text-xs font-semibold text-sky-700 hover:text-sky-900"
                       >
                         + Add Charge Item
                       </button>
@@ -2960,7 +2959,7 @@ export default DoctorDashboard;
 
 const DoctorFollowUpsContent = ({ followUps, className = '' }) => (
   <div className={className}>
-    <h4 className="text-xs font-bold text-indigo-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+    <h4 className="text-xs font-bold text-indigo-600 uppercase tracking-wider mb-3 flex items-center gap-2">
       <span className="w-1.5 h-3 bg-indigo-600 rounded-full"></span>
       Today&apos;s Follow-Ups
     </h4>
@@ -2999,7 +2998,7 @@ const DoctorFollowUpsContent = ({ followUps, className = '' }) => (
       </div>
     ) : (
       <div className="text-center py-8 border border-dashed border-gray-200 rounded-xl">
-        <p className="text-sm text-gray-400 font-medium">No follow-ups scheduled for today.</p>
+        <p className="text-sm text-gray-500 font-medium">No follow-ups scheduled for today.</p>
       </div>
     )}
   </div>

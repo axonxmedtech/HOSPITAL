@@ -13,7 +13,7 @@ import { extractApiError } from '../../utils/apiError';
  */
 const Metric = ({ label, value, suffix = '', hint }) => (
   <div className="bg-white border border-gray-200 rounded-xl px-4 py-3">
-    <div className="text-[11px] uppercase tracking-wide text-gray-400">{label}</div>
+    <div className="text-[11px] uppercase tracking-wide text-gray-500">{label}</div>
     <div className="text-2xl font-bold text-gray-900">
       {value == null ? '—' : value}
       {value == null ? '' : suffix}

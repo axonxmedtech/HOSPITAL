@@ -44,7 +44,7 @@ const InchargeOverview = ({ onNavigate, refreshKey }) => {
   const actions = [
     { label: 'Create Nurse', tab: 'my-nurses', cls: 'bg-gray-900 hover:bg-gray-800' },
     { label: 'Mark Attendance', tab: 'attendance', cls: 'bg-indigo-600 hover:bg-indigo-700' },
-    { label: 'Manage Beds', tab: 'beds', cls: 'bg-teal-600 hover:bg-teal-700' },
+    { label: 'Manage Beds', tab: 'beds', cls: 'bg-teal-700 hover:bg-teal-800' },
     { label: 'View Schedule', tab: 'schedule', cls: 'bg-blue-600 hover:bg-blue-700' },
   ];
 

@@ -1355,7 +1355,7 @@ const ReceptionistDashboard = () => {
                           setActiveTab('ipd');
                           setIpdSubTab('requested');
                         }}
-                        className="text-xs font-semibold text-sky-600 hover:text-sky-800 hover:underline flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0"
+                        className="text-xs font-semibold text-sky-700 hover:text-sky-900 hover:underline flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0"
                       >
                         <span>View Requests</span>
                         <span>→</span>
@@ -1439,7 +1439,7 @@ const ReceptionistDashboard = () => {
                             className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
                               viewFilter === view
                                 ? 'bg-white text-gray-900 shadow-sm border border-gray-100'
-                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                                : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                             }`}
                           >
                             {view.charAt(0).toUpperCase() + view.slice(1)}
@@ -1451,7 +1451,7 @@ const ReceptionistDashboard = () => {
                     {/* Appointment List Content */}
                     <div className="flex-1 overflow-auto p-6 space-y-6">
                       <div>
-                        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
                           <span className="w-1.5 h-3 bg-gray-900 rounded-full"></span>
                           Active Appointments
                         </h4>
@@ -1686,7 +1686,7 @@ const ReceptionistDashboard = () => {
                         className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
                           viewFilter === view
                             ? 'bg-white text-primary-600 shadow-sm border border-gray-100'
-                            : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                            : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                         }`}
                       >
                         {view.charAt(0).toUpperCase() + view.slice(1)}
@@ -1705,7 +1705,7 @@ const ReceptionistDashboard = () => {
                         className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
                           billingStatus === status
                             ? 'bg-white text-primary-600 shadow-sm border border-gray-100'
-                            : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                            : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                         }`}
                       >
                         {status.charAt(0) + status.slice(1).toLowerCase()}
@@ -1747,7 +1747,7 @@ const ReceptionistDashboard = () => {
                           className={`px-4 py-1 text-sm font-medium rounded-md transition-all ${
                             patientTabView === view
                               ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'
-                              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                              : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                           }`}
                         >
                           {view}
@@ -1767,7 +1767,7 @@ const ReceptionistDashboard = () => {
                       type="button"
                       onClick={handleDownloadPatientsReport}
                       disabled={loading}
-                      className="bg-sky-600 hover:bg-sky-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px]"
+                      className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px]"
                     >
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -1801,7 +1801,7 @@ const ReceptionistDashboard = () => {
                           className={`px-4 py-1 text-sm font-medium rounded-md transition-all ${
                             opdTabView === view
                               ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'
-                              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                              : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                           }`}
                         >
                           {view}
@@ -1821,7 +1821,7 @@ const ReceptionistDashboard = () => {
                       type="button"
                       onClick={handleDownloadOpdReport}
                       disabled={loading}
-                      className="bg-sky-600 hover:bg-sky-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px]"
+                      className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px]"
                     >
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -1857,7 +1857,7 @@ const ReceptionistDashboard = () => {
                         className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
                           ipdSubTab === sub.value
                             ? 'bg-white text-primary-600 shadow-sm border border-gray-100 font-semibold'
-                            : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                            : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                         }`}
                       >
                         {sub.label}
@@ -1912,7 +1912,6 @@ const ReceptionistDashboard = () => {
                     onAction={() => setIsAddModalOpen(true)}
                   />
                 ))}
-              {/* eslint-disable-next-line jsx-a11y/aria-role -- `role` is FollowUpPanel's own prop, not an ARIA role */}
               {activeTab === 'follow-ups' && <FollowUpPanel role="RECEPTIONIST" />}
               {activeTab === 'opd' &&
                 (opds.length > 0 ? (
@@ -2091,7 +2090,7 @@ const ReceptionistDashboard = () => {
                                   setIpdOpdForAdmit(o);
                                   setIsIpdAdmitOpen(true);
                                 }}
-                                className="px-3 py-1 bg-green-600 text-white rounded text-xs font-semibold hover:bg-green-700 transition"
+                                className="px-3 py-1 bg-green-700 text-white rounded text-xs font-semibold hover:bg-green-800 transition"
                               >
                                 Admit to IPD
                               </button>
@@ -3109,7 +3108,7 @@ const ReceptionistDashboard = () => {
                     <button
                       type="button"
                       onClick={addBillItem}
-                      className="text-xs font-semibold text-sky-600 hover:text-sky-800"
+                      className="text-xs font-semibold text-sky-700 hover:text-sky-900"
                     >
                       + Add Charge Item
                     </button>

@@ -176,7 +176,7 @@ const NurseDashboard = () => {
             </div>
             <span
               className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full ${
-                onShift ? 'text-green-700 bg-green-50' : 'text-gray-500 bg-gray-100'
+                onShift ? 'text-green-700 bg-green-50' : 'text-gray-600 bg-gray-100'
               }`}
             >
               <span
