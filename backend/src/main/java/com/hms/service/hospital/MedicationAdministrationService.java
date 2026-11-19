@@ -30,6 +30,9 @@ import java.util.Set;
 @Service
 public class MedicationAdministrationService {
 
+    private static final String ROLE_NURSE = "NURSE";
+    private static final String UNLINKED = "UNLINKED";
+
     private static final Logger logger = LoggerFactory.getLogger(MedicationAdministrationService.class);
     private static final Set<String> STATUSES = Set.of("GIVEN", "SKIPPED", "DELAYED", "REFUSED", "NOT_AVAILABLE");
     private static final Set<String> TIME_REQUIRED = Set.of("GIVEN", "DELAYED");
@@ -61,7 +64,7 @@ public class MedicationAdministrationService {
 
     /** Everyone who may be configured to record doses; the default when a hospital chose nothing. */
     public static final List<String> RECORDING_ROLES =
-            List.of("NURSE", "NURSE_INCHARGE", "DOCTOR", "HOSPITAL_ADMIN", "RECEPTIONIST");
+            List.of(ROLE_NURSE, "NURSE_INCHARGE", "DOCTOR", "HOSPITAL_ADMIN", "RECEPTIONIST");
 
     /**
      * ACTIVE prescriptions for an admission — the medicine list the nurse
@@ -70,7 +73,7 @@ public class MedicationAdministrationService {
     public List<Prescription> getActivePrescriptions(Long ipdAdmissionId) {
         Long hospitalId = requireHospitalId();
         IpdAdmission admission = requireAdmission(ipdAdmissionId, hospitalId);
-        if ("NURSE".equals(securityHelper.getCurrentUserRole())) {
+        if (ROLE_NURSE.equals(securityHelper.getCurrentUserRole())) {
             nurseAccessGuard.assertAssigned(admission.getId());
         }
         return prescriptionRepository.findByIpdAdmissionIdAndStatus(ipdAdmissionId, "ACTIVE");
@@ -84,7 +87,7 @@ public class MedicationAdministrationService {
     public java.util.List<com.hms.dto.MedicationChartItemDTO> getMedicationChart(Long ipdAdmissionId) {
         Long hospitalId = requireHospitalId();
         IpdAdmission admission = requireAdmission(ipdAdmissionId, hospitalId);
-        if ("NURSE".equals(securityHelper.getCurrentUserRole())) {
+        if (ROLE_NURSE.equals(securityHelper.getCurrentUserRole())) {
             nurseAccessGuard.assertAssigned(admission.getId());
         }
 
@@ -160,7 +163,7 @@ public class MedicationAdministrationService {
             try {
                 java.util.Map<String, Object> stock = medicationStock.stockFor(p.getStockSource(), null, p.getHospitalItemName());
                 if (stock == null) {
-                    d.setInventoryStatus("UNLINKED");
+                    d.setInventoryStatus(UNLINKED);
                 } else {
                     int available = ((Number) stock.get("available")).intValue();
                     d.setAvailableQuantity(available);
@@ -172,7 +175,7 @@ public class MedicationAdministrationService {
                 }
             } catch (Exception e) {
                 logger.warn("Could not read hospital stock for prescription {}: {}", p.getId(), e.getMessage());
-                d.setInventoryStatus("UNLINKED");
+                d.setInventoryStatus(UNLINKED);
             }
             return;
         }
@@ -182,7 +185,7 @@ public class MedicationAdministrationService {
             logger.warn("Could not read dispensing history for prescription {}: {}", p.getId(), e.getMessage());
         }
         if (p.getMedicineId() == null) {
-            d.setInventoryStatus("UNLINKED");
+            d.setInventoryStatus(UNLINKED);
             return;
         }
         try {
@@ -200,7 +203,7 @@ public class MedicationAdministrationService {
         } catch (Exception e) {
             // Including the case where the linked medicine has since been removed from inventory.
             logger.warn("Could not read stock for prescription {}: {}", p.getId(), e.getMessage());
-            d.setInventoryStatus("UNLINKED");
+            d.setInventoryStatus(UNLINKED);
         }
     }
 
@@ -280,7 +283,7 @@ public class MedicationAdministrationService {
     public List<MedicationAdministration> getByAdmission(Long ipdAdmissionId) {
         Long hospitalId = requireHospitalId();
         IpdAdmission admission = requireAdmission(ipdAdmissionId, hospitalId);
-        if ("NURSE".equals(securityHelper.getCurrentUserRole())) {
+        if (ROLE_NURSE.equals(securityHelper.getCurrentUserRole())) {
             nurseAccessGuard.assertAssigned(admission.getId());
         }
         return marRepository.findByIpdAdmissionIdAndIsActiveTrueOrderByCreatedAtDesc(ipdAdmissionId);
@@ -292,11 +295,9 @@ public class MedicationAdministrationService {
      */
     private MedicationAdministration takeFromStock(MedicationAdministration mar, Prescription p, IpdAdmission admission,
                                                    Integer requestedQty, boolean ownSupply) {
-        int qty = requestedQty != null ? requestedQty : (p.getQuantityPerDose() != null ? p.getQuantityPerDose() : 1);
+        int qty = doseQuantity(requestedQty, p);
         mar.setQuantity(qty);
-        // Orders made before stock sources existed carry only a medicine id: that is medicine stock.
-        String source = p.getStockSource() != null ? p.getStockSource()
-                : (p.getMedicineId() != null ? MedicationStockService.SOURCE_MEDICINE : null);
+        String source = stockSourceOf(p);
         boolean stocked = source != null;
         if (ownSupply || !stocked) {
             mar.setOwnSupply(true);
@@ -321,6 +322,18 @@ public class MedicationAdministrationService {
         mar.setBillingMedicineId(taken.billingMedicineId());
         mar.setStockDetail(taken.detail());
         return marRepository.save(mar);
+    }
+
+    /** Units for a dose: what was entered, else the order's quantity per dose, else 1. */
+    private static int doseQuantity(Integer requested, Prescription p) {
+        if (requested != null) return requested;
+        return p.getQuantityPerDose() != null ? p.getQuantityPerDose() : 1;
+    }
+
+    /** Orders made before stock sources existed carry only a medicine id: that is medicine stock. */
+    private static String stockSourceOf(Prescription p) {
+        if (p.getStockSource() != null) return p.getStockSource();
+        return p.getMedicineId() != null ? MedicationStockService.SOURCE_MEDICINE : null;
     }
 
     /**
@@ -436,7 +449,8 @@ public class MedicationAdministrationService {
     @Transactional
     public void setRecordingRoles(Long hospitalId, List<String> roles) {
         List<String> clean = roles == null ? List.of() : roles.stream()
-                .map(r -> r == null ? "" : r.trim().toUpperCase(java.util.Locale.ROOT))
+                .filter(java.util.Objects::nonNull)
+                .map(r -> r.trim().toUpperCase(java.util.Locale.ROOT))
                 .filter(RECORDING_ROLES::contains).distinct().toList();
         if (clean.isEmpty()) throw new IllegalArgumentException("Allow at least one role to record medicines");
         com.hms.entity.HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(hospitalId)
@@ -460,7 +474,7 @@ public class MedicationAdministrationService {
                     "Your role can't record medicines in this hospital. The admin can allow it in Settings.");
         }
         // Nurses keep their ward / assignment rules; other roles are scoped to the hospital above.
-        if ("NURSE".equals(role) || "NURSE_INCHARGE".equals(role)) {
+        if (ROLE_NURSE.equals(role) || "NURSE_INCHARGE".equals(role)) {
             nurseWriteAccess.assertCanWriteFor(admission.getId());
         }
     }

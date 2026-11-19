@@ -88,8 +88,9 @@ public class MedicationStockService {
         for (MedicineStockService.StockOption o : medicineStock.dispensableOptions(needle)) {
             Medicine m = medicineRepository.findByIdAndHospitalId(o.medicineId(), hospitalId).orElse(null);
             int min = m != null && m.getMinStockLevel() != null ? m.getMinStockLevel() : 0;
-            out.add(option(SOURCE_MEDICINE, o.medicineId(), o.name(), o.type(), o.availableQuantity(), min,
-                    m != null && m.getUnitPrice() != null ? BigDecimal.valueOf(m.getUnitPrice()) : null, o.earliestExpiry()));
+            BigDecimal price = m != null && m.getUnitPrice() != null ? BigDecimal.valueOf(m.getUnitPrice()) : null;
+            out.add(withStock(option(SOURCE_MEDICINE, o.medicineId(), o.name(), o.type()), o.availableQuantity(), min,
+                    price, o.earliestExpiry()));
         }
         for (Map.Entry<String, List<HospitalInventory>> e : itemsByName(hospitalId).entrySet()) {
             if (!needle.isEmpty() && !e.getKey().toLowerCase(Locale.ROOT).contains(needle)) continue;
@@ -117,7 +118,7 @@ public class MedicationStockService {
             Medicine m = medicineRepository.findByIdAndHospitalId(medicineId, hospitalId).orElse(null);
             if (m == null) return null;
             int available = medicineStock.availableQuantityFor(medicineId, hospitalId);
-            return option(SOURCE_MEDICINE, medicineId, m.getName(), m.getType(), available,
+            return withStock(option(SOURCE_MEDICINE, medicineId, m.getName(), m.getType()), available,
                     m.getMinStockLevel() == null ? 0 : m.getMinStockLevel(),
                     m.getUnitPrice() == null ? null : BigDecimal.valueOf(m.getUnitPrice()),
                     medicineStock.earliestUsableExpiry(medicineId, hospitalId));
@@ -179,33 +180,45 @@ public class MedicationStockService {
         if (available < quantity) throw notEnough(itemName, available);
         // Earliest expiry first; rows without an expiry last.
         rows.sort(Comparator.comparing(HospitalInventory::getExpiryDate, Comparator.nullsLast(Comparator.naturalOrder())));
-        int remaining = quantity;
-        BigDecimal charge = BigDecimal.ZERO;
-        StringBuilder detail = new StringBuilder();
-        for (HospitalInventory r : rows) {
-            int have = r.getStockQuantity() == null ? 0 : r.getStockQuantity();
-            int take = Math.min(have, remaining);
-            if (take <= 0) continue;
-            r.setStockQuantity(have - take);
-            inventoryRepository.save(r);
-            if (r.getUnitPrice() != null) charge = charge.add(BigDecimal.valueOf(r.getUnitPrice()).multiply(BigDecimal.valueOf(take)));
-            if (!detail.isEmpty()) detail.append(',');
-            detail.append(r.getId()).append(':').append(take);
-            remaining -= take;
-            if (remaining == 0) break;
-        }
-        Long billingItemId = null;
+        Deduction d = deductRows(rows, quantity);
         Billing bill = ipdBill(admission, hospitalId);
-        if (bill != null && charge.signum() > 0) {
+        Long billingItemId = null;
+        if (bill != null && d.charge().signum() > 0) {
             BillingItem bi = new BillingItem();
             bi.setBillingId(bill.getId());
             bi.setHospitalId(hospitalId);
             bi.setDescription(itemName + " × " + quantity);
-            bi.setAmount(charge);
+            bi.setAmount(d.charge());
             billingItemId = billingItemRepository.save(bi).getId();
             billingService.recalculateTotal(bill.getId());
         }
-        return new Taken(bill != null ? charge : BigDecimal.ZERO, billingItemId, null, detail.toString());
+        return new Taken(bill != null ? d.charge() : BigDecimal.ZERO, billingItemId, null, d.detail());
+    }
+
+    /** What was taken from hospital-inventory rows: the price of it, and "rowId:qty,..." to undo it. */
+    private record Deduction(BigDecimal charge, String detail) {}
+
+    /** Takes {@code quantity} from the rows in the order given (earliest expiry first). */
+    private Deduction deductRows(List<HospitalInventory> rows, int quantity) {
+        int remaining = quantity;
+        BigDecimal charge = BigDecimal.ZERO;
+        StringBuilder detail = new StringBuilder();
+        for (HospitalInventory r : rows) {
+            if (remaining == 0) break;
+            int have = r.getStockQuantity() == null ? 0 : r.getStockQuantity();
+            int take = Math.min(have, remaining);
+            if (take > 0) {
+                r.setStockQuantity(have - take);
+                inventoryRepository.save(r);
+                if (r.getUnitPrice() != null) {
+                    charge = charge.add(BigDecimal.valueOf(r.getUnitPrice()).multiply(BigDecimal.valueOf(take)));
+                }
+                if (!detail.isEmpty()) detail.append(',');
+                detail.append(r.getId()).append(':').append(take);
+                remaining -= take;
+            }
+        }
+        return new Deduction(charge, detail.toString());
     }
 
     /** Undoes a dose's stock and charge. */
@@ -215,15 +228,26 @@ public class MedicationStockService {
         if (SOURCE_MEDICINE.equals(mar.getStockSource())) {
             medicineStock.returnConsumption(key(mar.getId()), "Dose undone");
         } else if (SOURCE_HOSPITAL_ITEM.equals(mar.getStockSource()) && mar.getStockDetail() != null) {
-            for (String part : mar.getStockDetail().split(",")) {
-                String[] idQty = part.split(":");
-                if (idQty.length != 2) continue;
+            restoreRows(mar.getStockDetail(), hospitalId);
+        }
+        removeCharge(mar, hospitalId);
+    }
+
+    /** Puts "rowId:qty,rowId:qty" back onto those hospital-inventory rows. */
+    private void restoreRows(String detail, Long hospitalId) {
+        for (String part : detail.split(",")) {
+            String[] idQty = part.split(":");
+            if (idQty.length == 2) {
                 inventoryRepository.findByIdAndHospitalId(Long.valueOf(idQty[0]), hospitalId).ifPresent(r -> {
                     r.setStockQuantity((r.getStockQuantity() == null ? 0 : r.getStockQuantity()) + Integer.parseInt(idQty[1]));
                     inventoryRepository.save(r);
                 });
             }
         }
+    }
+
+    /** Takes a dose's line off its bill and re-totals the bill. */
+    private void removeCharge(MedicationAdministration mar, Long hospitalId) {
         Long billId = null;
         if (mar.getBillingMedicineId() != null) {
             BillingMedicine bm = billingMedicineRepository.findById(mar.getBillingMedicineId()).orElse(null);
@@ -301,24 +325,30 @@ public class MedicationStockService {
         LocalDate expiry = rows.stream().filter(r -> r.getStockQuantity() != null && r.getStockQuantity() > 0)
                 .map(HospitalInventory::getExpiryDate).filter(java.util.Objects::nonNull).min(LocalDate::compareTo).orElse(null);
         String type = rows.stream().map(HospitalInventory::getType).filter(java.util.Objects::nonNull).findFirst().orElse("Item");
-        return option(SOURCE_HOSPITAL_ITEM, null, name, type, available, min, price, expiry);
+        return withStock(option(SOURCE_HOSPITAL_ITEM, null, name, type), available, min, price, expiry);
     }
 
-    private static Map<String, Object> option(String source, Long medicineId, String name, String type, int available,
-                                              int minLevel, BigDecimal unitPrice, LocalDate expiry) {
+    /** What an item is: its inventory, id or name, and type. */
+    private static Map<String, Object> option(String source, Long medicineId, String name, String type) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("source", source);
         m.put("medicineId", medicineId);
         m.put("itemName", SOURCE_HOSPITAL_ITEM.equals(source) ? name : null);
         m.put("name", name);
         m.put("type", type);
+        m.put("inventory", SOURCE_MEDICINE.equals(source) ? "Medicine inventory" : "Hospital inventory");
+        return m;
+    }
+
+    /** How much of it there is: stock, reorder level, price, earliest expiry. */
+    private static Map<String, Object> withStock(Map<String, Object> m, int available, int minLevel,
+                                                 BigDecimal unitPrice, LocalDate expiry) {
         m.put("available", available);
         m.put("minLevel", minLevel);
         m.put("low", available <= minLevel);
         m.put("outOfStock", available <= 0);
         m.put("unitPrice", unitPrice);
         m.put("earliestExpiry", expiry);
-        m.put("inventory", SOURCE_MEDICINE.equals(source) ? "Medicine inventory" : "Hospital inventory");
         return m;
     }
 

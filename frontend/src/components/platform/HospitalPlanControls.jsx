@@ -38,6 +38,12 @@ const formatDate = (iso) =>
       })
     : '—';
 
+/** " · 3 days left" while there is time left; nothing once ended or expired. */
+const daysLeftText = (d) => {
+  if (d.daysLeft < 0 || d.state === 'DEMO_ENDED' || d.state === 'EXPIRED') return '';
+  return ` · ${d.daysLeft} day${d.daysLeft === 1 ? '' : 's'} left`;
+};
+
 const btn = 'px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50';
 const input =
   'border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900';
@@ -119,9 +125,7 @@ export default function HospitalPlanControls({ hospitalPublicId, onChanged }) {
         {data.endsAt && (
           <span className="text-gray-600">
             {isDemo ? 'Demo ends' : 'Ends'} {formatDate(data.endsAt)}
-            {data.daysLeft >= 0 && data.state !== 'DEMO_ENDED' && data.state !== 'EXPIRED'
-              ? ` · ${data.daysLeft} day${data.daysLeft === 1 ? '' : 's'} left`
-              : ''}
+            {daysLeftText(data)}
           </span>
         )}
       </div>
@@ -133,7 +137,7 @@ export default function HospitalPlanControls({ hospitalPublicId, onChanged }) {
         </h4>
         <div className="flex flex-wrap items-center gap-2">
           <label className="text-xs text-gray-700 flex items-center gap-1.5">
-            Days
+            <span>Days</span>
             <input
               type="number"
               min="1"

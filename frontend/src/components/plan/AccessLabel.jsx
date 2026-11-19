@@ -10,11 +10,9 @@ export default function AccessLabel({ className = '' }) {
   const status = useAccessStatus();
   if (!status?.demo) return null;
   const ended = status.state === 'DEMO_ENDED';
-  const text = ended
-    ? 'Demo ended'
-    : status.daysLeft >= 0
-      ? `Demo · ${daysText(status.daysLeft)}`
-      : 'Demo';
+  let text = 'Demo';
+  if (ended) text = 'Demo ended';
+  else if (status.daysLeft >= 0) text = `Demo · ${daysText(status.daysLeft)}`;
   return (
     <span
       title={status.message || undefined}

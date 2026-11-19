@@ -20,11 +20,14 @@ const formatDate = (iso) =>
 function UsageRow({ row }) {
   const { label, used, limit } = row;
   const unlimited = limit === null || limit === undefined;
-  const pct =
-    unlimited || limit === 0 ? (unlimited ? 0 : 100) : Math.min(100, (used / limit) * 100);
-  let bar = 'bg-emerald-500';
-  if (!unlimited && pct >= 100) bar = 'bg-red-500';
-  else if (!unlimited && pct >= 80) bar = 'bg-amber-500';
+  let pct = 0;
+  if (!unlimited) pct = limit === 0 ? 100 : Math.min(100, (used / limit) * 100);
+  // Full class names, so Tailwind sees them: the bar colour goes on the progress value.
+  let bar = '[&::-webkit-progress-value]:bg-emerald-500 [&::-moz-progress-bar]:bg-emerald-500';
+  if (!unlimited && pct >= 100)
+    bar = '[&::-webkit-progress-value]:bg-red-500 [&::-moz-progress-bar]:bg-red-500';
+  else if (!unlimited && pct >= 80)
+    bar = '[&::-webkit-progress-value]:bg-amber-500 [&::-moz-progress-bar]:bg-amber-500';
   let figure = `${used} used · unlimited`;
   if (!unlimited) figure = limit === 0 ? 'Not included' : `${used} / ${limit}`;
   return (
@@ -34,16 +37,14 @@ function UsageRow({ row }) {
         <span className="text-gray-700">{figure}</span>
       </div>
       {!unlimited && limit > 0 && (
-        <div
-          className="mt-1.5 h-2 rounded-full bg-gray-100 overflow-hidden"
-          role="progressbar"
+        <progress
           aria-label={label}
-          aria-valuemin={0}
-          aria-valuemax={limit}
-          aria-valuenow={used}
+          max={limit}
+          value={Math.min(used, limit)}
+          className={`mt-1.5 block w-full h-2 appearance-none overflow-hidden rounded-full [&::-webkit-progress-bar]:bg-gray-100 bg-gray-100 ${bar}`}
         >
-          <div className={`h-full ${bar}`} style={{ width: `${pct}%` }} />
-        </div>
+          {Math.round(pct)}%
+        </progress>
       )}
     </li>
   );

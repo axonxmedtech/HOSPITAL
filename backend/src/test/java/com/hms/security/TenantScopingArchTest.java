@@ -59,7 +59,7 @@ class TenantScopingArchTest {
             // caller's hospital, each checked against that hospital; ipdBill reads the caller's own hospital.
             "MedicationStockService#assertChargeRemovable",
             "MedicationStockService#ipdBill",
-            "MedicationStockService#putBack",
+            "MedicationStockService#removeCharge",
             // Plan limits and access state: the hospital id is the caller's own (security context)
             // or, for the Super Admin, the hospital resolved from its public id.
             "PlanLimitService#limitFor",

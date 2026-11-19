@@ -50,9 +50,13 @@ import java.util.Map;
 @Service
 public class PlatformHospitalService {
 
-    @org.springframework.beans.factory.annotation.Autowired
-    @org.springframework.context.annotation.Lazy
     private PlatformSubscriptionService subscriptionAdmin;
+
+    /** Setter-injected and lazy: the subscription service in turn reaches back into hospitals. */
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setSubscriptionAdmin(@org.springframework.context.annotation.Lazy PlatformSubscriptionService subscriptionAdmin) {
+        this.subscriptionAdmin = subscriptionAdmin;
+    }
 
     private static final Logger logger = LoggerFactory.getLogger(PlatformHospitalService.class);
 

@@ -93,10 +93,7 @@ describe('PlanUsage', () => {
     expect(await screen.findByText('10 / 10')).toBeInTheDocument();
     expect(screen.getByText('Not included')).toBeInTheDocument();
     expect(screen.getByText('4 used · unlimited')).toBeInTheDocument();
-    expect(screen.getByRole('progressbar', { name: 'Beds' })).toHaveAttribute(
-      'aria-valuenow',
-      '10'
-    );
+    expect(screen.getByRole('progressbar', { name: 'Beds' })).toHaveAttribute('value', '10');
     expect(screen.getByRole('link', { name: '9022915865' })).toBeInTheDocument();
   });
 });

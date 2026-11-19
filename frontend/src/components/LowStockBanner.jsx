@@ -29,10 +29,7 @@ const LowStockBanner = () => {
   const low = items.filter((i) => !i.outOfStock);
 
   return (
-    <div
-      className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 space-y-1"
-      role="status"
-    >
+    <output className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 space-y-1 block">
       <div className="text-sm font-semibold text-amber-900">Low stock — reorder soon</div>
       {out.length > 0 && (
         <p className="text-xs text-red-700">
@@ -46,7 +43,7 @@ const LowStockBanner = () => {
           {low.map((i) => `${i.name} (${i.available} left, reorder at ${i.minLevel})`).join(' · ')}
         </p>
       )}
-    </div>
+    </output>
   );
 };
 

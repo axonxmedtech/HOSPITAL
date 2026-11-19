@@ -40,6 +40,8 @@ import java.util.Map;
 @Service
 public class PlatformSubscriptionService {
 
+    private static final String DAYS = " days";
+
     private static final Logger logger = LoggerFactory.getLogger(PlatformSubscriptionService.class);
     private static final int MAX_DAYS = 365;
     /** A demo ending within this many days is listed as "ending soon". */
@@ -86,7 +88,7 @@ public class PlatformSubscriptionService {
         hospital.setIsDemo(true);
         hospital.setDemoStartedAt(now);
         hospital.setDemoEndsAt(now.plusDays(d));
-        return saveAndAudit(hospital, "DEMO_STARTED", "Demo started for " + d + " days");
+        return saveAndAudit(hospital, "DEMO_STARTED", "Demo started for " + d + DAYS);
     }
 
     /**
@@ -106,7 +108,7 @@ public class PlatformSubscriptionService {
                 int d = requireDays(days, "Extension");
                 LocalDateTime from = h.getDemoEndsAt() != null && h.getDemoEndsAt().isAfter(now()) ? h.getDemoEndsAt() : now();
                 h.setDemoEndsAt(from.plusDays(d));
-                saveAndAudit(h, "DEMO_EXTENDED", "Demo extended by " + d + " days");
+                saveAndAudit(h, "DEMO_EXTENDED", "Demo extended by " + d + DAYS);
             }
             case "END" -> {
                 if (!Boolean.TRUE.equals(h.getIsDemo())) throw new IllegalArgumentException("This account is not a demo.");
@@ -135,7 +137,7 @@ public class PlatformSubscriptionService {
         LocalDateTime from = sub.getExpiresAt() != null && sub.getExpiresAt().isAfter(now()) ? sub.getExpiresAt() : now();
         sub.setExpiresAt(from.plusDays(d));
         subscriptionRepository.save(sub);
-        saveAndAudit(h, "SUBSCRIPTION_EXTENDED", "Subscription extended by " + d + " days");
+        saveAndAudit(h, "SUBSCRIPTION_EXTENDED", "Subscription extended by " + d + DAYS);
         Map<String, Object> out = accessOf(h);
         out.put("expiresAt", sub.getExpiresAt());
         return out;
@@ -309,7 +311,7 @@ public class PlatformSubscriptionService {
 
     private static int requireDays(Integer days, String what) {
         if (days == null || days < 1 || days > MAX_DAYS) {
-            throw new IllegalArgumentException(what + " must be between 1 and " + MAX_DAYS + " days");
+            throw new IllegalArgumentException(what + " must be between 1 and " + MAX_DAYS + DAYS);
         }
         return days;
     }

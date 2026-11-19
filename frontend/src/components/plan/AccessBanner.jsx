@@ -14,7 +14,7 @@ export default function AccessBanner() {
   const tone = status && TONE[status.state];
   if (!tone || !status.message) return null;
   return (
-    <div role="status" className={`border-b px-4 sm:px-6 py-2 text-sm ${tone}`}>
+    <output className={`block border-b px-4 sm:px-6 py-2 text-sm ${tone}`}>
       {status.message}
       {status.supportPhone && (
         <a
@@ -24,6 +24,6 @@ export default function AccessBanner() {
           Call {status.supportPhone}
         </a>
       )}
-    </div>
+    </output>
   );
 }

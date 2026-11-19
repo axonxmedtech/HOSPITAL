@@ -98,22 +98,28 @@ public class TenantAccessService {
     /** The rules, without any lookups: also used by the Super Admin overview for every hospital. */
     public Access compute(Hospital h, HospitalPlanSubscription sub, LocalDateTime now) {
         String planName = sub != null && sub.getPlan() != null ? sub.getPlan().getName() : null;
-        if (Boolean.TRUE.equals(h.getIsDemo())) {
-            LocalDateTime end = h.getDemoEndsAt();
-            if (end != null && !now.isBefore(end)) {
-                return new Access(State.DEMO_ENDED, end, 0, planName,
-                        "Your demo has ended. You can still look around, but changes are switched off. "
-                                + "Contact our support team at " + supportPhone + " to upgrade your plan.");
-            }
-            long left = end == null ? -1 : daysUntil(now, end);
-            return new Access(State.DEMO, end, left, planName,
-                    end == null ? "Demo account." : "Demo account: " + daysText(left) + " left. Call " + supportPhone
-                            + " to upgrade your plan.");
-        }
+        if (Boolean.TRUE.equals(h.getIsDemo())) return demoAccess(h.getDemoEndsAt(), planName, now);
         if (sub == null || sub.getExpiresAt() == null) {
             return new Access(State.ACTIVE, null, -1, planName, null);
         }
-        LocalDateTime expires = sub.getExpiresAt();
+        return planAccess(sub.getExpiresAt(), planName, now);
+    }
+
+    /** A demo: running until its end date, then readable but closed to changes. */
+    private Access demoAccess(LocalDateTime end, String planName, LocalDateTime now) {
+        if (end != null && !now.isBefore(end)) {
+            return new Access(State.DEMO_ENDED, end, 0, planName,
+                    "Your demo has ended. You can still look around, but changes are switched off. "
+                            + "Contact our support team at " + supportPhone + " to upgrade your plan.");
+        }
+        if (end == null) return new Access(State.DEMO, null, -1, planName, "Demo account.");
+        long left = daysUntil(now, end);
+        return new Access(State.DEMO, end, left, planName,
+                "Demo account: " + daysText(left) + " left. Call " + supportPhone + " to upgrade your plan.");
+    }
+
+    /** A paid plan: active, expiring within the warning days, in grace, or expired. */
+    private Access planAccess(LocalDateTime expires, String planName, LocalDateTime now) {
         if (now.isBefore(expires)) {
             long left = daysUntil(now, expires);
             if (left <= warningDays) {
@@ -138,7 +144,7 @@ public class TenantAccessService {
 
     /** Whole days left, counting a part day as a day ("1 day left" until the very end). */
     private static long daysUntil(LocalDateTime now, LocalDateTime end) {
-        long hours = Duration.between(now, end).toHours();
+        long hours = Duration.between(now.atZone(ZONE), end.atZone(ZONE)).toHours();
         return Math.max(0, (hours + 23) / 24);
     }
 

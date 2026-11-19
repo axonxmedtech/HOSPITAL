@@ -62,7 +62,7 @@ export default function GiveExtraItem({
       <StockPicker label="Item from stock" selected={picked} onSelect={setPicked} />
       {!picked && (
         <label className="block text-xs font-medium text-gray-600">
-          Or type a name (patient&apos;s own supply)
+          <span>Or type a name (patient&apos;s own supply)</span>
           <input
             value={typedName}
             onChange={(e) => setTypedName(e.target.value)}
@@ -73,7 +73,7 @@ export default function GiveExtraItem({
       )}
       <div className="flex flex-wrap items-end gap-4">
         <label className="text-xs font-medium text-gray-600">
-          Quantity
+          <span>Quantity</span>
           <input
             type="number"
             min="1"
@@ -89,7 +89,7 @@ export default function GiveExtraItem({
               checked={ownSupply}
               onChange={(e) => setOwnSupply(e.target.checked)}
             />
-            Patient&apos;s own supply
+            <span>Patient&apos;s own supply</span>
           </label>
         )}
       </div>
@@ -100,7 +100,7 @@ export default function GiveExtraItem({
         </p>
       )}
       <label className="block text-xs font-medium text-gray-600">
-        Remarks
+        <span>Remarks</span>
         <input
           value={remarks}
           onChange={(e) => setRemarks(e.target.value)}

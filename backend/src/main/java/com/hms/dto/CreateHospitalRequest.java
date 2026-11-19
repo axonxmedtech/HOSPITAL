@@ -81,7 +81,7 @@ public class CreateHospitalRequest {
     private String billingPeriod;
 
     /** Create as a demo account that ends after {@link #demoDays} days. */
-    private Boolean isDemo = false;
+    private Boolean isDemo;
 
     /** Demo length in days (1–365); required when isDemo. */
     private Integer demoDays;

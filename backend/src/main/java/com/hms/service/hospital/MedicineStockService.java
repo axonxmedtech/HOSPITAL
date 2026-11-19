@@ -277,8 +277,9 @@ public class MedicineStockService {
         if (findReplay(hospitalId, returnKey) != null) return 0;
         int returned = 0;
         Long medicineId = null;
-        for (StockMovement out : movementRepository.findByHospitalIdAndIdempotencyKeyOrderByIdAsc(hospitalId, consumedKey)) {
-            if (out.getBatchId() == null || !StockMovement.OUT.equals(out.getDirection())) continue;
+        List<StockMovement> taken = movementRepository.findByHospitalIdAndIdempotencyKeyOrderByIdAsc(hospitalId, consumedKey)
+                .stream().filter(m -> m.getBatchId() != null && StockMovement.OUT.equals(m.getDirection())).toList();
+        for (StockMovement out : taken) {
             MedicineStockBatch b = batchRepository.findByIdAndHospitalId(out.getBatchId(), hospitalId).orElse(null);
             if (b == null) continue;
             batchRepository.addAtomically(b.getId(), hospitalId, out.getQuantity());

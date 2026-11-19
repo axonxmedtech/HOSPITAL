@@ -125,9 +125,10 @@ public class PlanLimitService {
         }
         long room = Math.max(0, limit - used);
         String head = key.singularTitle() + " limit reached: " + capitalise(plan) + " allows " + key.count(limit);
+        String inUse = used + (used == 1 ? " is" : " are") + " already set up";
         String body = room == 0 || adding == 1
-                ? ", and " + used + (used == 1 ? " is" : " are") + " already set up."
-                : ". " + used + (used == 1 ? " is" : " are") + " already set up, so only " + room + " more can be added.";
+                ? ", and " + inUse + "."
+                : ". " + inUse + ", so only " + room + " more can be added.";
         return head + body + upgrade;
     }
 

@@ -22,7 +22,7 @@ const emptyLimits = () => Object.fromEntries(PLAN_LIMITS.map((l) => [l.key, ''])
 /** "10 beds · 3 doctors", or "Unlimited" when the plan caps nothing. */
 export const limitsSummary = (limits) => {
   const parts = PLAN_LIMITS.filter(
-    (l) => limits && limits[l.key] !== null && limits[l.key] !== undefined
+    (l) => limits?.[l.key] !== null && limits?.[l.key] !== undefined
   ).map((l) => `${limits[l.key]} ${l.short}`);
   return parts.length ? parts.join(' · ') : 'Unlimited';
 };
@@ -161,7 +161,7 @@ export default function PlansTab({ hospitalType = null }) {
           l.key,
           form.limits[l.key] === '' || form.limits[l.key] === null
             ? null
-            : parseInt(form.limits[l.key], 10),
+            : Number.parseInt(form.limits[l.key], 10),
         ])
       ),
     };
