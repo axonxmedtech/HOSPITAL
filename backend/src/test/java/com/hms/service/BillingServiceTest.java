@@ -137,13 +137,40 @@ class BillingServiceTest {
         Pageable pageable = PageRequest.of(0, 10);
         Billing b = new Billing();
         b.setId(1L);
-        when(billingRepository.searchBillingsByStatus(1L, "ravi", "PENDING", pageable))
+        when(billingRepository.searchBillingsByStatus(1L, "ravi", List.of("PENDING"), pageable))
                 .thenReturn(new PageImpl<>(List.of(b), pageable, 25));
 
         Page<Billing> result = billingService.getAllBills("ravi", "PENDING", pageable);
 
         assertThat(result.getTotalElements()).as("every matching bill counts, not one page's worth").isEqualTo(25);
         verify(billingRepository, never()).searchBillings(anyLong(), anyString(), any());
+    }
+
+    @Test
+    void getAllBills_paidFilterAlsoShowsBillsClosedAtDischarge() {
+        // Discharge finalises an IPD bill as CLOSED; the Billing screen only has Pending / Paid /
+        // Partial tabs, so before this every discharged patient's bill was listed nowhere.
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+        Pageable pageable = PageRequest.of(0, 10);
+        when(billingRepository.findByHospitalIdAndPaymentStatusIn(1L, List.of("PAID", "CLOSED"), pageable))
+                .thenReturn(new PageImpl<>(List.of(new Billing()), pageable, 1));
+        when(billingRepository.searchBillingsByStatus(1L, "ramesh", List.of("PAID", "CLOSED"), pageable))
+                .thenReturn(new PageImpl<>(List.of(new Billing()), pageable, 1));
+
+        assertThat(billingService.getAllBills(null, "paid", pageable).getTotalElements()).isEqualTo(1);
+        assertThat(billingService.getAllBills("ramesh", "PAID", pageable).getTotalElements()).isEqualTo(1);
+    }
+
+    @Test
+    void getAllBills_otherFiltersStayExact() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+        Pageable pageable = PageRequest.of(0, 10);
+        when(billingRepository.findByHospitalIdAndPaymentStatusIn(1L, List.of("PENDING"), pageable))
+                .thenReturn(Page.empty(pageable));
+
+        billingService.getAllBills(null, "PENDING", pageable);
+
+        verify(billingRepository).findByHospitalIdAndPaymentStatusIn(1L, List.of("PENDING"), pageable);
     }
 
     @Test

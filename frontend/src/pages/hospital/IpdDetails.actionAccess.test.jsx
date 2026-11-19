@@ -144,9 +144,15 @@ describe('IpdDetails — Complete Admission (admission form at the desk)', () =>
     expect(screen.queryByText('Complete Admission')).not.toBeInTheDocument();
   });
 
-  it('a doctor does not see it (the server only lets them read the form)', async () => {
-    as('DOCTOR', { receptionMode: 'SOLO' });
+  it('a doctor with a front desk does not see it', async () => {
+    as('DOCTOR', { receptionMode: 'HAS_RECEPTIONIST' });
     await renderCase();
     expect(screen.queryByText('Complete Admission')).not.toBeInTheDocument();
+  });
+
+  it('a Solo-mode doctor completes it, being the front desk', async () => {
+    as('DOCTOR', { receptionMode: 'SOLO' });
+    await renderCase();
+    expect(await screen.findByText('Complete Admission')).toBeInTheDocument();
   });
 });

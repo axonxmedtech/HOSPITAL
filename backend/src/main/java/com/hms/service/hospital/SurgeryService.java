@@ -77,6 +77,7 @@ public class SurgeryService {
         // endoscopy, minor orthopaedics) is anchored on the patient alone.
         IpdAdmission admission = req.getIpdAdmissionId() != null
                 ? requireAdmission(req.getIpdAdmissionId(), hospitalId) : null;
+        if (admission != null) IpdClinicalState.requireActive(admission);
         Long patientId = admission != null ? admission.getPatientId() : req.getPatientId();
 
         // Scope the "already has an active surgery" check to the PATIENT so it holds for
@@ -146,6 +147,13 @@ public class SurgeryService {
         }
         if (req.getScheduledAt() == null || (req.getOtRoomId() == null && req.getOtWardId() == null)) {
             throw new IllegalArgumentException("Date/time and a theatre are required");
+        }
+        // A booking is for the future. An hour of slack lets a case that just began be entered.
+        if (req.getScheduledAt().isBefore(LocalDateTime.now().minusHours(1))) {
+            throw new IllegalArgumentException("The surgery time is in the past. Choose a current or future time.");
+        }
+        if (s.getIpdAdmissionId() != null) {
+            ipdAdmissionRepository.findById(s.getIpdAdmissionId()).ifPresent(IpdClinicalState::requireActive);
         }
 
         // Any active doctor may be assigned as the operating surgeon; reception decides.
@@ -436,6 +444,17 @@ public class SurgeryService {
         for (Long candidateId : candidateIds) {
             Bed locked = bedRepository.findByBedIdAndHospitalIdForUpdate(candidateId, hospitalId).orElse(null);
             if (locked != null && "available".equalsIgnoreCase(locked.getStatus())) {
+                return locked;
+            }
+        }
+        // A theatre left "cleaning" by the previous case is turned over, not out of service: the
+        // schedule already keeps the turnover gap between cases. Without this, the first surgery's
+        // cleaning state blocked every later surgery in a ward-backed theatre, because nobody on
+        // the OT side may mark a ward bed cleaned.
+        for (Bed b : bedRepository.findByWardIdAndHospitalId(otWardId, hospitalId)) {
+            if (!com.hms.entity.BedStatus.CLEANING.equalsIgnoreCase(b.getStatus())) continue;
+            Bed locked = bedRepository.findByBedIdAndHospitalIdForUpdate(b.getBedId(), hospitalId).orElse(null);
+            if (locked != null && com.hms.entity.BedStatus.CLEANING.equalsIgnoreCase(locked.getStatus())) {
                 return locked;
             }
         }

@@ -35,4 +35,6 @@ public interface QueueEntryRepository extends JpaRepository<QueueEntry, Long> {
         void deleteByOpdId(Long opdId);
 
         long countByOpdId(Long opdId);
+
+        java.util.List<QueueEntry> findByOpd_Id(Long opdId);
 }

@@ -13,9 +13,11 @@ import java.util.List;
 @RestController
 @RequestMapping({"/hospital/wards", "/clinic/wards", "/pharmacy/wards"})
 @Validated
-// Reads are shared: reception and doctors need ward/bed lists to admit and manage IPD.
+// Reads are shared: reception and doctors need ward/bed lists to admit and manage IPD, and the
+// OT in-charge needs them to pick a theatre when scheduling (without OT_INCHARGE here the
+// schedule form's theatre list was a 403 and no surgery could be scheduled).
 // Every mutation below overrides this with HOSPITAL_ADMIN only.
-@PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','DOCTOR','RECEPTIONIST','PHARMACIST')")
+@PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','DOCTOR','RECEPTIONIST','PHARMACIST','OT_INCHARGE')")
 public class WardController {
 
     private final WardService wardService;

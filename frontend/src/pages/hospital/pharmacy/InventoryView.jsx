@@ -196,11 +196,13 @@ const InventoryView = ({ onNavigate, refreshKey = 0 }) => {
                 Export
               </button>
               {!isStandalonePharmacy && (
+                // The Medicine Master tab this used to open was removed; medicines now enter
+                // inventory through a purchase entry (the backend creates the medicine record).
                 <button
-                  onClick={() => onNavigate('medicine_master')}
+                  onClick={() => onNavigate('purchase')}
                   className="px-4 py-2 bg-gray-900 text-white text-sm font-bold rounded-lg hover:bg-gray-800 transition-all shadow-md"
                 >
-                  + Add Medicine
+                  + Add Stock
                 </button>
               )}
             </div>

@@ -75,6 +75,7 @@ public class IcuIoService {
             throw new IllegalArgumentException("ipdAdmissionId is required");
         }
         IpdAdmission admission = requireAdmission(req.getIpdAdmissionId(), hospitalId);
+        com.hms.service.hospital.IpdClinicalState.requireActive(admission);
         nurseWriteAccess.assertCanWriteFor(admission.getId());
         validate(req);
 
@@ -216,6 +217,10 @@ public class IcuIoService {
         }
         if (req.getVolumeMl() == null || req.getVolumeMl() <= 0) {
             throw new IllegalArgumentException("Volume must be greater than zero");
+        }
+        // One entry is one bag, one feed, one measured output: 10 litres is already implausible.
+        if (req.getVolumeMl() > 10000) {
+            throw new IllegalArgumentException("Volume must be at most 10000 ml per entry");
         }
         if (req.getOccurredAt() != null
                 && req.getOccurredAt().isAfter(LocalDateTime.now().plusMinutes(1))) {

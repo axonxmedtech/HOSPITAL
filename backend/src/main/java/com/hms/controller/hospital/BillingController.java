@@ -166,50 +166,28 @@ public class BillingController {
             java.util.List<com.hms.entity.BillingItem> items = itemsByBillId.getOrDefault(b.getId(), java.util.Collections.emptyList());
             java.util.List<com.hms.entity.BillingMedicine> medicines = medicinesByBillId.getOrDefault(b.getId(), java.util.Collections.emptyList());
             
-            java.math.BigDecimal totalAmt = java.math.BigDecimal.ZERO;
-            if (items != null && !items.isEmpty()) {
-                for (com.hms.entity.BillingItem it : items) {
-                    if (it.getAmount() != null) {
-                        totalAmt = totalAmt.add(it.getAmount());
-                    }
-                }
-            }
-            if (medicines != null && !medicines.isEmpty()) {
-                for (com.hms.entity.BillingMedicine med : medicines) {
-                    if (med.getAmount() != null) {
-                        totalAmt = totalAmt.add(med.getAmount());
-                    }
-                }
-            }
-            if (totalAmt.compareTo(java.math.BigDecimal.ZERO) == 0 && (items == null || items.isEmpty()) && (medicines == null || medicines.isEmpty())) {
-                totalAmt = b.getAmount() != null ? b.getAmount() : java.math.BigDecimal.ZERO;
-                if (totalAmt.compareTo(java.math.BigDecimal.ZERO) == 0 && "IPD".equalsIgnoreCase(b.getBillingType())) {
-                    if (b.getIpdAdmissionId() != null) {
-                        com.hms.entity.IpdAdmission ipd = ipdByAdmissionId.get(b.getIpdAdmissionId());
-                        if (ipd != null && ipd.getWardId() != null) {
-                            com.hms.entity.Ward ward = wardById.get(ipd.getWardId());
-                            if (ward != null && ward.getBedPrice() != null) {
-                                totalAmt = totalAmt.add(ward.getBedPrice());
-                            }
-                        }
-                    }
-                }
-            }
-
-            java.math.BigDecimal paidAmt = java.math.BigDecimal.ZERO;
             java.util.List<com.hms.entity.BillingPayment> payments = paymentsByBillId.getOrDefault(b.getId(), java.util.Collections.emptyList());
-            for (com.hms.entity.BillingPayment pay : payments) {
-                if (pay.getAmount() != null) {
-                    paidAmt = paidAmt.add(pay.getAmount());
-                }
-            }
+            final com.hms.entity.Billing bill0 = b;
+            final java.util.Map<Long, com.hms.entity.IpdAdmission> ipdMap = ipdByAdmissionId;
+            final java.util.Map<Long, com.hms.entity.Ward> wardMap = wardById;
+            com.hms.service.hospital.BillMoney money = com.hms.service.hospital.BillMoney.of(b, items, medicines, payments, () -> {
+                if (!"IPD".equalsIgnoreCase(bill0.getBillingType()) || bill0.getIpdAdmissionId() == null) return null;
+                com.hms.entity.IpdAdmission ipd = ipdMap.get(bill0.getIpdAdmissionId());
+                if (ipd == null || ipd.getWardId() == null) return null;
+                com.hms.entity.Ward ward = wardMap.get(ipd.getWardId());
+                return ward != null ? ward.getBedPrice() : null;
+            });
 
             java.util.Map<String, Object> asMap = mapper.convertValue(b, java.util.Map.class);
             asMap.put("items", items);
             asMap.put("medicines", medicines);
-            asMap.put(AMOUNT, totalAmt);
-            asMap.put("paidAmount", paidAmt);
-            asMap.put("balance", totalAmt.subtract(paidAmt));
+            // amount = net payable (after discount); grossAmount = the charges before it.
+            asMap.put(AMOUNT, money.net());
+            asMap.put("grossAmount", money.gross());
+            asMap.put("discountAmount", money.discount());
+            asMap.put("paidAmount", money.paid());
+            asMap.put("refundedAmount", com.hms.service.hospital.BillMoney.refunded(payments));
+            asMap.put("balance", money.balance());
             
             if (b.getPatientId() != null) {
                 com.hms.entity.Patient p = patientById.get(b.getPatientId());
@@ -308,6 +286,9 @@ public class BillingController {
     private com.hms.repository.IpdAdmissionRepository ipdAdmissionRepository;
 
     @Autowired
+    private com.hms.service.hospital.BillingSchedulerService billingSchedulerService;
+
+    @Autowired
     private com.hms.repository.WardRepository wardRepository;
 
     @Autowired
@@ -350,53 +331,32 @@ public class BillingController {
         Long ipdBillHospitalId = securityHelper.getCurrentHospitalId();
         List<Billing> bills = billingRepository.findByIpdAdmissionId(ipdId);
         if (bills == null || bills.isEmpty()) return ResponseEntity.notFound().build();
-        Billing bill = bills.get(0);
-        if (bill.getHospitalId() == null || !bill.getHospitalId().equals(ipdBillHospitalId)) {
+        Billing found = bills.get(0);
+        if (found.getHospitalId() == null || !found.getHospitalId().equals(ipdBillHospitalId)) {
             return ResponseEntity.notFound().build();
         }
+        // Bed days missed while the server was down are added before the bill is shown.
+        ipdAdmissionRepository.findByIdAndHospitalId(ipdId, ipdBillHospitalId)
+                .ifPresent(billingSchedulerService::catchUpAdmission);
+        final Billing bill = billingRepository.findById(found.getId()).orElse(found);
 
         List<BillingItem> items = billingItemRepository.findByBillingId(bill.getId());
         List<com.hms.entity.BillingMedicine> medicines = billingMedicineRepository.findByBillingId(bill.getId());
         List<BillingPayment> payments = billingPaymentRepository.findByBillingId(bill.getId());
 
-        BigDecimal total = BigDecimal.ZERO;
-        if (items != null && !items.isEmpty()) {
-            for (BillingItem it : items) {
-                if (it.getAmount() != null) total = total.add(it.getAmount());
-            }
-        }
-        if (medicines != null && !medicines.isEmpty()) {
-            for (com.hms.entity.BillingMedicine med : medicines) {
-                if (med.getAmount() != null) total = total.add(med.getAmount());
-            }
-        }
-        if (total.compareTo(BigDecimal.ZERO) == 0 && (items == null || items.isEmpty()) && (medicines == null || medicines.isEmpty())) {
-            total = bill.getAmount() != null ? bill.getAmount() : BigDecimal.ZERO;
-            if (total.compareTo(BigDecimal.ZERO) == 0) {
-                try {
-                    com.hms.entity.IpdAdmission ipd = ipdAdmissionRepository.findById(ipdId).orElse(null);
-                    if (ipd != null && ipd.getWardId() != null) {
-                        com.hms.entity.Ward ward = wardRepository.findById(ipd.getWardId()).orElse(null);
-                        if (ward != null && ward.getBedPrice() != null) {
-                            total = total.add(ward.getBedPrice());
-                        }
-                    }
-                    } catch (Exception e) {
-                        logger.warn("Failed to retrieve ward bed price for IPD billing calculation", e);
-                    }
-            }
-        }
-
-        BigDecimal paid = BigDecimal.ZERO;
-        for (BillingPayment pay : payments) {
-            if (pay.getAmount() != null) paid = paid.add(pay.getAmount());
-        }
+        com.hms.service.hospital.BillMoney money = com.hms.service.hospital.BillMoney.of(
+                bill, items, medicines, payments, () -> billingService.legacyIpdBedPrice(bill));
 
         Map<String,Object> resp = new HashMap<>();
         resp.put("billingId", bill.getId());
-        resp.put("totalAmount", total);
-        resp.put("paidAmount", paid);
-        resp.put("balance", total.subtract(paid));
+        resp.put("customId", bill.getCustomId());
+        resp.put("status", bill.getPaymentStatus());
+        resp.put("grossAmount", money.gross());
+        resp.put("discountAmount", money.discount());
+        resp.put("discountReason", bill.getDiscountReason());
+        resp.put("totalAmount", money.net());
+        resp.put("paidAmount", money.paid());
+        resp.put("balance", money.balance());
         java.util.List<Map<String,Object>> list = new java.util.ArrayList<>();
         for (BillingItem it : items) {
             Map<String,Object> m = new HashMap<>();
@@ -453,123 +413,71 @@ public class BillingController {
             return ResponseEntity.status(403).body("Not allowed");
         }
 
-        // Scope the lookup to the caller's hospital. Without this filter any hospital could
-        // settle another hospital's bill by guessing its (sequential) numeric id — a
-        // cross-tenant financial write. The sibling endpoints above already filter this way.
-        Long payHospitalId = securityHelper.getCurrentHospitalId();
-        Billing bill = billingRepository.findByIdAndHospitalIdForUpdate(billingId, payHospitalId)
-                .orElse(null);
-        if (bill == null) return ResponseEntity.notFound().build();
+        // Full or part payment, Cash / Card / UPI. The service scopes the bill to the caller's
+        // hospital, locks it, checks the amount fits the (discount-aware) balance and records
+        // who took the money.
+        return ResponseEntity.ok(billingService.recordPayment(billingId, req.amount, req.mode, req.reference));
+    }
 
-        if (req.amount == null || req.amount.compareTo(BigDecimal.ZERO) <= 0) {
-            return ResponseEntity.badRequest().body("Invalid amount");
-        }
+    public static class DiscountRequest {
+        @NotNull(message = "Discount amount is required")
+        @DecimalMin(value = "0.0", message = "Discount cannot be negative")
+        public BigDecimal amount;
+        @Size(max = 255, message = "Reason is too long")
+        public String reason;
+    }
 
-        // Calculate remaining balance before saving new payment
-        {
-            List<BillingItem> itemsVal = billingItemRepository.findByBillingId(billingId);
-            List<com.hms.entity.BillingMedicine> medicinesVal = billingMedicineRepository.findByBillingId(billingId);
-            BigDecimal totalVal = BigDecimal.ZERO;
-            if (itemsVal != null && !itemsVal.isEmpty()) {
-                for (BillingItem it : itemsVal) {
-                    if (it.getAmount() != null) totalVal = totalVal.add(it.getAmount());
-                }
-            }
-            if (medicinesVal != null && !medicinesVal.isEmpty()) {
-                for (com.hms.entity.BillingMedicine med : medicinesVal) {
-                    if (med.getAmount() != null) totalVal = totalVal.add(med.getAmount());
-                }
-            }
-            if (totalVal.compareTo(BigDecimal.ZERO) == 0 && (itemsVal == null || itemsVal.isEmpty()) && (medicinesVal == null || medicinesVal.isEmpty())) {
-                totalVal = bill.getAmount() != null ? bill.getAmount() : BigDecimal.ZERO;
-                // A legacy line-less IPD bill is shown at its ward's bed price (getIpdBill); value
-                // it the same here, or the balance the screen offers is refused as an overpayment.
-                if (totalVal.signum() == 0) totalVal = billingService.legacyIpdBedPrice(bill);
-            }
+    public static class RefundRequest {
+        @NotNull(message = "Refund amount is required")
+        @DecimalMin(value = "0.01", message = "Refund must be greater than zero")
+        public BigDecimal amount;
+        @Size(max = 30, message = "Mode is too long")
+        public String mode;
+        @Size(max = 255, message = "Reason is too long")
+        public String reason;
+        /** The patient was overcharged: also reduce the bill by this amount. */
+        public Boolean reduceBill;
+    }
 
-            List<BillingPayment> paymentsVal = billingPaymentRepository.findByBillingId(billingId);
-            BigDecimal paidVal = BigDecimal.ZERO;
-            for (BillingPayment p : paymentsVal) if (p.getAmount() != null) paidVal = paidVal.add(p.getAmount());
+    public static class CancelRequest {
+        @Size(max = 255, message = "Reason is too long")
+        public String reason;
+        @Size(max = 30, message = "Mode is too long")
+        public String refundMode;
+    }
 
-            BigDecimal balanceVal = totalVal.subtract(paidVal);
-            // A state conflict, not a malformed request: the amount was valid, the bill simply
-            // does not owe it any more. Raised as ConflictException so it returns the canonical
-            // 409 body rather than a bare string, and so a duplicate submission that slips past
-            // the lock is reported honestly instead of silently posting.
-            if (req.amount.compareTo(balanceVal) > 0) {
-                throw new com.hms.exception.ConflictException(
-                        "The remaining balance is " + balanceVal + "; cannot accept a payment of " + req.amount + ".");
-            }
-        }
+    /** Discount / concession on a bill (any billing user; reason required and audited). */
+    @PostMapping("/{billingId}/discount")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
+    public ResponseEntity<?> discount(@PathVariable Long billingId, @Valid @RequestBody DiscountRequest req) {
+        validateBillingAccess();
+        return ResponseEntity.ok(billingService.applyDiscount(billingId, req.amount, req.reason));
+    }
 
-        BillingPayment payment = new BillingPayment();
-        payment.setBillingId(billingId);
-        payment.setHospitalId(bill.getHospitalId());
-        payment.setAmount(req.amount);
-        payment.setMode(req.mode);
-        payment.setReference(req.reference);
-        billingPaymentRepository.save(payment);
+    /** Refund money on a bill. Hospital admin only. */
+    @PostMapping("/{billingId}/refund")
+    @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
+    public ResponseEntity<?> refund(@PathVariable Long billingId, @Valid @RequestBody RefundRequest req) {
+        return ResponseEntity.ok(billingService.refund(billingId, req.amount, req.mode, req.reason,
+                Boolean.TRUE.equals(req.reduceBill)));
+    }
 
-        // Audit logging
-        try {
-            auditLogService.logAction(
-                    "BILLING_PAYMENT_RECORDED",
-                    "Recorded payment of " + req.amount + " (" + req.mode + ") for bill " + bill.getCustomId() + ".",
-                    securityHelper.getCurrentUserEmail(),
-                    bill.getHospitalId(),
-                    "BILLING",
-                    bill.getPublicId(),
-                    null);
-        } catch (Exception e) {
-            logger.warn("Failed to create audit log for billing payment", e);
-        }
+    /** Cancel (void) a bill, refunding anything collected. Hospital admin only. */
+    @PostMapping("/{billingId}/cancel")
+    @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
+    public ResponseEntity<?> cancel(@PathVariable Long billingId, @Valid @RequestBody CancelRequest req) {
+        return ResponseEntity.ok(billingService.cancel(billingId, req.reason, req.refundMode));
+    }
 
-        // recalc totals
-        List<BillingItem> items = billingItemRepository.findByBillingId(billingId);
-        List<com.hms.entity.BillingMedicine> medicines = billingMedicineRepository.findByBillingId(billingId);
-        BigDecimal total = BigDecimal.ZERO;
-        if (items != null && !items.isEmpty()) {
-            for (BillingItem it : items) {
-                if (it.getAmount() != null) total = total.add(it.getAmount());
-            }
-        }
-        if (medicines != null && !medicines.isEmpty()) {
-            for (com.hms.entity.BillingMedicine med : medicines) {
-                if (med.getAmount() != null) total = total.add(med.getAmount());
-            }
-        }
-        if (total.compareTo(BigDecimal.ZERO) == 0 && (items == null || items.isEmpty()) && (medicines == null || medicines.isEmpty())) {
-            total = bill.getAmount() != null ? bill.getAmount() : BigDecimal.ZERO;
-            if (total.signum() == 0) total = billingService.legacyIpdBedPrice(bill);
-        }
-
-        List<BillingPayment> payments = billingPaymentRepository.findByBillingId(billingId);
-        BigDecimal paid = BigDecimal.ZERO;
-        for (BillingPayment p : payments) if (p.getAmount() != null) paid = paid.add(p.getAmount());
-
-        if (paid.compareTo(total) >= 0) {
-            bill.setPaymentStatus("PAID");
-            bill.setPaymentMethod(req.mode);
-            bill.setPaymentReference(req.reference);
-            try {
-                String userEmail = securityHelper.getCurrentUserEmail();
-                String userRole = securityHelper.getCurrentUserRole();
-                bill.setMarkedPaidBy(userRole + " (" + userEmail + ")");
-            } catch (Exception e) {
-                logger.warn("Failed to resolve current user for markedPaidBy field", e);
-            }
-        } else {
-            bill.setPaymentStatus("PARTIAL");
-            bill.setPaymentMethod(req.mode);
-        }
-        billingRepository.save(bill);
-
-        Map<String,Object> out = new HashMap<>();
-        out.put("billingId", bill.getId());
-        out.put("totalAmount", total);
-        out.put("paidAmount", paid);
-        out.put("balance", total.subtract(paid));
-        return ResponseEntity.ok(out);
+    /** Daily cash-closing report: collections and refunds for one day, by payment mode. */
+    @GetMapping("/reports/daily-collection")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
+    public ResponseEntity<?> dailyCollection(
+            @RequestParam(required = false)
+            @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE)
+            java.time.LocalDate date) {
+        validateBillingAccess();
+        return ResponseEntity.ok(billingService.dailyCollection(date != null ? date : java.time.LocalDate.now()));
     }
 
     @GetMapping("/patient/{patientPublicId}")
@@ -605,23 +513,20 @@ public class BillingController {
             java.util.List<com.hms.entity.BillingMedicine> medicines = medicinesByBillId.getOrDefault(b.getId(), java.util.Collections.emptyList());
             java.util.List<com.hms.entity.BillingPayment> payments = paymentsByBillId.getOrDefault(b.getId(), java.util.Collections.emptyList());
 
-            BigDecimal totalAmt = BigDecimal.ZERO;
-            for (com.hms.entity.BillingItem it : items) if (it.getAmount() != null) totalAmt = totalAmt.add(it.getAmount());
-            for (com.hms.entity.BillingMedicine med : medicines) if (med.getAmount() != null) totalAmt = totalAmt.add(med.getAmount());
-
-            if (totalAmt.compareTo(BigDecimal.ZERO) == 0) {
-                totalAmt = b.getAmount() != null ? b.getAmount() : BigDecimal.ZERO;
-            }
-
-            BigDecimal paidAmt = BigDecimal.ZERO;
-            for (BillingPayment pay : payments) if (pay.getAmount() != null) paidAmt = paidAmt.add(pay.getAmount());
+            final Billing billP = b;
+            com.hms.service.hospital.BillMoney money = com.hms.service.hospital.BillMoney.of(
+                    b, items, medicines, payments, () -> billingService.legacyIpdBedPrice(billP));
 
             asMap.put("items", items);
             asMap.put("medicines", medicines);
             asMap.put("payments", payments);
-            asMap.put(AMOUNT, totalAmt);
-            asMap.put("paidAmount", paidAmt);
-            asMap.put("balance", totalAmt.subtract(paidAmt));
+            // amount = net payable (after discount); grossAmount = the charges before it.
+            asMap.put(AMOUNT, money.net());
+            asMap.put("grossAmount", money.gross());
+            asMap.put("discountAmount", money.discount());
+            asMap.put("paidAmount", money.paid());
+            asMap.put("refundedAmount", com.hms.service.hospital.BillMoney.refunded(payments));
+            asMap.put("balance", money.balance());
             asMap.put("patientName", patient.getName());
             mapped.add(asMap);
         }

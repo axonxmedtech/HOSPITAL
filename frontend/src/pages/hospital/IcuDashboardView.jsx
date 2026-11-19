@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useToast } from '../../context/ToastContext';
-import hospitalService from '../../services/hospitalService';
-import wardService from '../../services/wardService';
-import authService from '../../services/authService';
-import IpdAdmitModal from '../../components/IpdAdmitModal';
 import ConfirmationModal from '../../components/ConfirmationModal';
+import { ConfirmDischargeModal } from '../../components/ipd/DischargeType';
+import IpdAdmitModal from '../../components/IpdAdmitModal';
+import { useToast } from '../../context/ToastContext';
+import authService from '../../services/authService';
+import hospitalService from '../../services/hospitalService';
+import icuService from '../../services/icuService';
+import icuWardService from '../../services/icuWardService';
+import wardService from '../../services/wardService';
 import { extractApiError } from '../../utils/apiError';
 
 const IcuDashboardView = () => {
@@ -21,7 +24,14 @@ const IcuDashboardView = () => {
   // Modals
   const [isAdmitModalOpen, setIsAdmitModalOpen] = useState(false);
   const [isCleaningModalOpen, setIsCleaningModalOpen] = useState(false);
-  const [confirmModal, setConfirmModal] = useState({ open: false, title: '', message: '', onConfirm: null });
+  const [confirmModal, setConfirmModal] = useState({
+    open: false,
+    title: '',
+    message: '',
+    onConfirm: null,
+  });
+  // ICU discharge asks how the patient left (normal / LAMA / referred / expired / absconded).
+  const [icuDischarge, setIcuDischarge] = useState(null);
 
   // Cleaning Form State
   const [taskForm, setTaskForm] = useState({
@@ -37,8 +47,14 @@ const IcuDashboardView = () => {
   const fetchIcuData = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. Fetch Wards & populate beds for each ward
-      const rawWards = await wardService.getWards();
+      // 1. Critical-care wards only. This screen used to list every ward and every admitted
+      // patient, so a general-ward patient appeared under "ICU Active Patients" and could be
+      // discharged from here by mistake. ICU wards are the ones registered under ICU Wards.
+      const icuUnits = await icuWardService.getIcuWards().catch(() => []);
+      const icuWardIds = new Set((icuUnits || []).map((u) => u.wardId));
+      const rawWards = ((await wardService.getWards()) || []).filter((w) =>
+        icuWardIds.has(w.wardId || w.id)
+      );
       const wardsWithBeds = await Promise.all(
         (rawWards || []).map(async (w) => {
           try {
@@ -59,21 +75,16 @@ const IcuDashboardView = () => {
       );
       setIcuWards(wardsWithBeds);
 
-      // 2. Fetch IPD admissions (active admitted patients)
-      let ipdList = [];
-      try {
-        const admittedSummaries = await hospitalService.getAdmittedIpdAdmissions();
-        if (Array.isArray(admittedSummaries) && admittedSummaries.length > 0) {
-          ipdList = admittedSummaries;
-        } else {
-          const pageRes = await hospitalService.getIpdAdmissions(0, 200, '');
-          ipdList = pageRes?.content || (Array.isArray(pageRes) ? pageRes : []);
-        }
-      } catch (e) {
-        const pageRes = await hospitalService.getIpdAdmissions(0, 200, '');
-        ipdList = pageRes?.content || (Array.isArray(pageRes) ? pageRes : []);
-      }
-      setIcuPatients(ipdList || []);
+      // 2. Patients currently in critical care. The IPD admissions list deliberately leaves
+      // ICU patients out (they live here), so reading it showed the ward patients instead.
+      const icuRows = await icuService.getIcuPatients().catch(() => []);
+      setIcuPatients(
+        (icuRows || []).map((p) => ({
+          ...p,
+          id: p.ipdId,
+          wardName: p.icuWardName,
+        }))
+      );
 
       // 3. Fetch ICU cleaning tasks
       const cleaningRes = await hospitalService.getIcuCleaningTasks();
@@ -124,24 +135,7 @@ const IcuDashboardView = () => {
     try {
       await hospitalService.updateIcuCleaningTaskStatus(taskId, newStatus);
 
-      // If task marked COMPLETED, also update bed entity status to AVAILABLE if it was set to CLEANING
-      const task = cleaningTasks.find((t) => (t.id || t.taskId) === taskId);
-      if (task && newStatus === 'COMPLETED') {
-        for (const ward of icuWards) {
-          for (const bed of ward.beds || []) {
-            const bedCode = bed?.bedCode || bed?.bedNumber;
-            if (isBedMatch(task, ward, bed, bedCode)) {
-              if (bed.bedId || bed.id) {
-                try {
-                  await wardService.updateBedStatus(bed.bedId || bed.id, 'AVAILABLE');
-                } catch (e) {
-                  // ignore if bed was already available
-                }
-              }
-            }
-          }
-        }
-      }
+      // Completing a task frees its bed on the server (BedStatusService), so nothing else to do here.
 
       success(`Task status updated to ${newStatus}`);
       fetchIcuData();
@@ -219,7 +213,8 @@ const IcuDashboardView = () => {
   const getBedCleaningInfo = (ward, bed, bedCode) => {
     const isOccupied = bed?.status && bed.status.toLowerCase() === 'occupied';
     const isBedCleaningStatus =
-      bed?.status && (bed.status.toLowerCase() === 'cleaning' || bed.status.toLowerCase() === 'dirty');
+      bed?.status &&
+      (bed.status.toLowerCase() === 'cleaning' || bed.status.toLowerCase() === 'dirty');
 
     // Find active non-COMPLETED task for this bed
     const activeTask = cleaningTasks.find((t) => isBedMatch(t, ward, bed, bedCode));
@@ -269,32 +264,30 @@ const IcuDashboardView = () => {
 
   // Handle Discharge Patient
   const handleDischargePatient = (ipdRow, patientName, bedCode) => {
-    const ipdId = ipdRow.id || ipdRow.ipdId;
-    setConfirmModal({
-      open: true,
-      title: 'Discharge ICU Patient',
-      message: `Are you sure you want to discharge patient "${patientName}" (Bed: ${bedCode})? The bed will be automatically sent to the Cleaning Management section.`,
-      onConfirm: async () => {
-        try {
-          await hospitalService.confirmDischarge(ipdId);
-          success(`Patient ${patientName} discharged. Bed ${bedCode} sent to Cleaning Management.`);
-          setActiveSubTab('cleaning');
-          fetchIcuData();
-        } catch (err) {
-          console.error(err);
-          toastError(extractApiError(err, 'Failed to discharge patient'));
-        } finally {
-          setConfirmModal({ open: false, title: '', message: '', onConfirm: null });
-        }
-      },
-    });
+    setIcuDischarge({ ipdId: ipdRow.id || ipdRow.ipdId, patientName, bedCode });
+  };
+
+  const doIcuDischarge = async (body) => {
+    const { ipdId, patientName, bedCode } = icuDischarge;
+    try {
+      await hospitalService.confirmDischarge(ipdId, body);
+      success(`Patient ${patientName} discharged. Bed ${bedCode} sent to Cleaning Management.`);
+      setIcuDischarge(null);
+      setActiveSubTab('cleaning');
+      fetchIcuData();
+    } catch (err) {
+      console.error(err);
+      toastError(extractApiError(err, 'Failed to discharge patient'));
+    }
   };
 
   // Stats Calculations
   const totalBeds = icuWards.reduce((acc, w) => acc + (w.totalBeds || w.beds?.length || 0), 0);
   const occupiedBeds = icuWards.reduce((acc, w) => acc + (w.occupiedBeds || 0), 0);
   const availableBeds = totalBeds - occupiedBeds;
-  const pendingCleaning = cleaningTasks.filter((t) => t.status === 'PENDING' || t.status === 'IN_PROGRESS').length;
+  const pendingCleaning = cleaningTasks.filter(
+    (t) => t.status === 'PENDING' || t.status === 'IN_PROGRESS'
+  ).length;
 
   return (
     <div className="space-y-6">
@@ -329,15 +322,21 @@ const IcuDashboardView = () => {
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Total ICU Beds</p>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            Total ICU Beds
+          </p>
           <div className="flex items-baseline justify-between mt-2">
             <span className="text-3xl font-extrabold text-gray-900">{totalBeds}</span>
-            <span className="text-xs px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 font-bold">Capacity</span>
+            <span className="text-xs px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 font-bold">
+              Capacity
+            </span>
           </div>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Occupied Beds</p>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            Occupied Beds
+          </p>
           <div className="flex items-baseline justify-between mt-2">
             <span className="text-3xl font-extrabold text-rose-600">{occupiedBeds}</span>
             <span className="text-xs px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 font-bold">
@@ -347,18 +346,28 @@ const IcuDashboardView = () => {
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Available Beds</p>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            Available Beds
+          </p>
           <div className="flex items-baseline justify-between mt-2">
-            <span className="text-3xl font-extrabold text-emerald-600">{availableBeds < 0 ? 0 : availableBeds}</span>
-            <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-bold">Ready</span>
+            <span className="text-3xl font-extrabold text-emerald-600">
+              {availableBeds < 0 ? 0 : availableBeds}
+            </span>
+            <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-bold">
+              Ready
+            </span>
           </div>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Active Cleaning Tasks</p>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            Active Cleaning Tasks
+          </p>
           <div className="flex items-baseline justify-between mt-2">
             <span className="text-3xl font-extrabold text-amber-600">{pendingCleaning}</span>
-            <span className="text-xs px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 font-bold">Pending</span>
+            <span className="text-xs px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 font-bold">
+              Pending
+            </span>
           </div>
         </div>
       </div>
@@ -393,7 +402,9 @@ const IcuDashboardView = () => {
               : 'border-transparent text-gray-500 hover:text-gray-700'
           }`}
         >
-          🧹 Cleaning Management ({cleaningTasks.length})
+          🧹 Cleaning Management (
+          {cleaningTasks.filter((t) => t.status === 'PENDING' || t.status === 'IN_PROGRESS').length}
+          )
         </button>
       </div>
 
@@ -410,17 +421,24 @@ const IcuDashboardView = () => {
                   <div className="text-center py-10 text-gray-400">No ICU wards configured.</div>
                 ) : (
                   icuWards.map((ward) => (
-                    <div key={ward.wardId || ward.id} className="border border-gray-200 rounded-xl p-5 bg-gray-50/50">
+                    <div
+                      key={ward.wardId || ward.id}
+                      className="border border-gray-200 rounded-xl p-5 bg-gray-50/50"
+                    >
                       <div className="flex justify-between items-center mb-4">
                         <div>
-                          <h3 className="text-lg font-bold text-gray-900">{ward.wardName || ward.name}</h3>
+                          <h3 className="text-lg font-bold text-gray-900">
+                            {ward.wardName || ward.name}
+                          </h3>
                           <p className="text-xs text-gray-500">
-                            Floor: {ward.floorNumber || 1} | Incharge: {ward.nurseInchargeName || 'Unassigned'}
+                            Floor: {ward.floorNumber || 1} | Incharge:{' '}
+                            {ward.nurseInchargeName || 'Unassigned'}
                           </p>
                         </div>
                         <div className="text-sm font-semibold text-gray-700">
-                          Occupancy: <span className="text-rose-600 font-bold">{ward.occupiedBeds || 0}</span> /{' '}
-                          {ward.totalBeds || ward.beds?.length || 0}
+                          Occupancy:{' '}
+                          <span className="text-rose-600 font-bold">{ward.occupiedBeds || 0}</span>{' '}
+                          / {ward.totalBeds || ward.beds?.length || 0}
                         </div>
                       </div>
 
@@ -431,8 +449,7 @@ const IcuDashboardView = () => {
                           : Array.from({ length: ward.totalBeds || 0 })
                         ).map((bed, idx) => {
                           const bedCode = bed?.bedCode || bed?.bedNumber || `Bed ${idx + 1}`;
-                          const isOccupied =
-                            bed?.status && bed.status.toLowerCase() === 'occupied';
+                          const isOccupied = bed?.status && bed.status.toLowerCase() === 'occupied';
                           const cleaningInfo = getBedCleaningInfo(ward, bed, bedCode);
 
                           return (
@@ -442,10 +459,10 @@ const IcuDashboardView = () => {
                                 isOccupied
                                   ? 'bg-rose-50 border-rose-200'
                                   : cleaningInfo.status === 'PENDING'
-                                  ? 'bg-amber-50 border-amber-200'
-                                  : cleaningInfo.status === 'IN_PROGRESS'
-                                  ? 'bg-blue-50 border-blue-200'
-                                  : 'bg-emerald-50 border-emerald-200'
+                                    ? 'bg-amber-50 border-amber-200'
+                                    : cleaningInfo.status === 'IN_PROGRESS'
+                                      ? 'bg-blue-50 border-blue-200'
+                                      : 'bg-emerald-50 border-emerald-200'
                               }`}
                             >
                               <div className="text-xs font-bold text-gray-900 uppercase tracking-wider">
@@ -458,7 +475,13 @@ const IcuDashboardView = () => {
                                     isOccupied ? 'bg-rose-500' : 'bg-emerald-500'
                                   }`}
                                 />
-                                <span className={isOccupied ? 'text-rose-700 font-bold' : 'text-emerald-700 font-semibold'}>
+                                <span
+                                  className={
+                                    isOccupied
+                                      ? 'text-rose-700 font-bold'
+                                      : 'text-emerald-700 font-semibold'
+                                  }
+                                >
                                   {isOccupied ? 'Unavailable' : 'Available'}
                                 </span>
                               </div>
@@ -487,7 +510,9 @@ const IcuDashboardView = () => {
             {activeSubTab === 'patients' && (
               <div className="overflow-x-auto">
                 {icuPatients.length === 0 ? (
-                  <div className="text-center py-12 text-gray-400 italic">No patients currently admitted in ICU.</div>
+                  <div className="text-center py-12 text-gray-400 italic">
+                    No patients currently admitted in ICU.
+                  </div>
                 ) : (
                   <table className="w-full text-sm text-left border-collapse">
                     <thead>
@@ -521,18 +546,10 @@ const IcuDashboardView = () => {
                             <td className="px-4 py-3 font-bold text-sky-700">
                               {row.ipdNumber || row.id || `-`}
                             </td>
-                            <td className="px-4 py-3 font-semibold text-gray-900">
-                              {patientName}
-                            </td>
-                            <td className="px-4 py-3 text-gray-700">
-                              {doctorName}
-                            </td>
-                            <td className="px-4 py-3 text-gray-700">
-                              {wardName}
-                            </td>
-                            <td className="px-4 py-3 font-bold text-rose-600">
-                              {bedCode}
-                            </td>
+                            <td className="px-4 py-3 font-semibold text-gray-900">{patientName}</td>
+                            <td className="px-4 py-3 text-gray-700">{doctorName}</td>
+                            <td className="px-4 py-3 text-gray-700">{wardName}</td>
+                            <td className="px-4 py-3 font-bold text-rose-600">{bedCode}</td>
                             <td className="px-4 py-3 text-gray-600">
                               {admTime ? new Date(admTime).toLocaleString() : '-'}
                             </td>
@@ -575,7 +592,9 @@ const IcuDashboardView = () => {
 
                 <div className="overflow-x-auto">
                   {cleaningTasks.length === 0 ? (
-                    <div className="text-center py-12 text-gray-400 italic">No ICU cleaning tasks recorded.</div>
+                    <div className="text-center py-12 text-gray-400 italic">
+                      No ICU cleaning tasks recorded.
+                    </div>
                   ) : (
                     <table className="w-full text-sm text-left border-collapse">
                       <thead>
@@ -593,34 +612,47 @@ const IcuDashboardView = () => {
                       </thead>
                       <tbody className="divide-y divide-gray-100">
                         {cleaningTasks.map((task, idx) => (
-                          <tr key={task.id || idx} className="hover:bg-gray-50/50 transition-colors">
+                          <tr
+                            key={task.id || idx}
+                            className="hover:bg-gray-50/50 transition-colors"
+                          >
                             <td className="px-4 py-3 font-medium text-gray-500">{idx + 1}</td>
-                            <td className="px-4 py-3 font-semibold text-gray-900">{task.wardName || 'ICU'}</td>
-                            <td className="px-4 py-3 font-bold text-gray-800">{task.bedNumber || '-'}</td>
-                            <td className="px-4 py-3 text-gray-800 font-medium">{task.taskDescription}</td>
+                            <td className="px-4 py-3 font-semibold text-gray-900">
+                              {task.wardName || 'ICU'}
+                            </td>
+                            <td className="px-4 py-3 font-bold text-gray-800">
+                              {task.bedNumber || '-'}
+                            </td>
+                            <td className="px-4 py-3 text-gray-800 font-medium">
+                              {task.taskDescription}
+                            </td>
                             <td className="px-4 py-3">
                               <span
                                 className={`px-2 py-0.5 rounded text-[11px] font-bold ${
                                   task.priority === 'URGENT' || task.priority === 'HIGH'
                                     ? 'bg-rose-100 text-rose-700'
                                     : task.priority === 'LOW'
-                                    ? 'bg-gray-100 text-gray-700'
-                                    : 'bg-amber-100 text-amber-700'
+                                      ? 'bg-gray-100 text-gray-700'
+                                      : 'bg-amber-100 text-amber-700'
                                 }`}
                               >
                                 {task.priority || 'MEDIUM'}
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-gray-600">{task.assignedTo || 'Unassigned'}</td>
-                            <td className="px-4 py-3 text-xs text-gray-500">{task.createdBy || '-'}</td>
+                            <td className="px-4 py-3 text-gray-600">
+                              {task.assignedTo || 'Unassigned'}
+                            </td>
+                            <td className="px-4 py-3 text-xs text-gray-500">
+                              {task.createdBy || '-'}
+                            </td>
                             <td className="px-4 py-3">
                               <span
                                 className={`px-2.5 py-1 rounded-full text-xs font-bold ${
                                   task.status === 'COMPLETED'
                                     ? 'bg-emerald-100 text-emerald-800'
                                     : task.status === 'IN_PROGRESS'
-                                    ? 'bg-blue-100 text-blue-800'
-                                    : 'bg-amber-100 text-amber-800'
+                                      ? 'bg-blue-100 text-blue-800'
+                                      : 'bg-amber-100 text-amber-800'
                                 }`}
                               >
                                 {task.status}
@@ -682,7 +714,10 @@ const IcuDashboardView = () => {
 
             <form onSubmit={handleCreateTask} className="space-y-4">
               <div>
-                <label htmlFor="icu-task-ward" className="block text-xs font-semibold text-gray-700 mb-1">
+                <label
+                  htmlFor="icu-task-ward"
+                  className="block text-xs font-semibold text-gray-700 mb-1"
+                >
                   Ward Name
                 </label>
                 <input
@@ -696,7 +731,10 @@ const IcuDashboardView = () => {
               </div>
 
               <div>
-                <label htmlFor="icu-task-bed" className="block text-xs font-semibold text-gray-700 mb-1">
+                <label
+                  htmlFor="icu-task-bed"
+                  className="block text-xs font-semibold text-gray-700 mb-1"
+                >
                   Bed Number
                 </label>
                 <input
@@ -710,7 +748,10 @@ const IcuDashboardView = () => {
               </div>
 
               <div>
-                <label htmlFor="icu-task-description" className="block text-xs font-semibold text-gray-700 mb-1">
+                <label
+                  htmlFor="icu-task-description"
+                  className="block text-xs font-semibold text-gray-700 mb-1"
+                >
                   Task Description *
                 </label>
                 <textarea
@@ -726,7 +767,10 @@ const IcuDashboardView = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="icu-task-assignee" className="block text-xs font-semibold text-gray-700 mb-1">
+                  <label
+                    htmlFor="icu-task-assignee"
+                    className="block text-xs font-semibold text-gray-700 mb-1"
+                  >
                     Assigned To
                   </label>
                   <input
@@ -740,7 +784,10 @@ const IcuDashboardView = () => {
                 </div>
 
                 <div>
-                  <label htmlFor="icu-task-priority" className="block text-xs font-semibold text-gray-700 mb-1">
+                  <label
+                    htmlFor="icu-task-priority"
+                    className="block text-xs font-semibold text-gray-700 mb-1"
+                  >
                     Priority
                   </label>
                   <select
@@ -779,6 +826,9 @@ const IcuDashboardView = () => {
       )}
 
       {/* CONFIRMATION MODAL */}
+      {icuDischarge && (
+        <ConfirmDischargeModal onClose={() => setIcuDischarge(null)} onConfirm={doIcuDischarge} />
+      )}
       <ConfirmationModal
         isOpen={confirmModal.open}
         title={confirmModal.title}

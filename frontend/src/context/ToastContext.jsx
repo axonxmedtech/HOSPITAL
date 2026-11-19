@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
+import { extractApiError, isTransportError } from '../utils/apiError';
 
 const ToastContext = createContext();
 
@@ -8,6 +9,11 @@ export const useToast = () => useContext(ToastContext);
 // from becoming a React child and masking the original business error.
 export const toToastMessage = (message) => {
   if (typeof message === 'string' && message.trim()) return message;
+  // A caught request error passed straight to a toast showed axios's own text
+  // ("Request failed with status code 400"). Show what the server said instead.
+  if (message && typeof message === 'object' && isTransportError(message)) {
+    return extractApiError(message);
+  }
   if (message && typeof message === 'object') {
     if (typeof message.error === 'string' && message.error.trim()) return message.error;
     if (typeof message.message === 'string' && message.message.trim()) return message.message;

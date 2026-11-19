@@ -133,9 +133,19 @@ public class IpdAdmissionController {
     @RequireModule("IPD")
     @PostMapping("/{id}/confirm-discharge")
     @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN')")
-    public ResponseEntity<?> confirmDischarge(@PathVariable("id") Long id) {
-        IpdAdmission ipd = ipdAdmissionService.confirmDischarge(id);
+    public ResponseEntity<?> confirmDischarge(@PathVariable("id") Long id,
+                                              @RequestBody(required = false) java.util.Map<String, String> body) {
+        java.util.Map<String, String> b = body == null ? java.util.Map.of() : body;
+        IpdAdmission ipd = ipdAdmissionService.confirmDischarge(id, b.get("dischargeType"), b.get("dischargeNote"));
         return ResponseEntity.ok(ipd);
+    }
+
+    @RequireModule("IPD")
+    @PostMapping("/{id}/cancel-discharge-plan")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> cancelDischargePlan(@PathVariable("id") Long id,
+                                                 @RequestBody(required = false) java.util.Map<String, String> body) {
+        return ResponseEntity.ok(ipdAdmissionService.cancelDischargePlan(id, body == null ? null : body.get("reason")));
     }
 
     @RequireModule("IPD")
@@ -177,5 +187,21 @@ public class IpdAdmissionController {
                                        @RequestParam(value = "newWardId", required = false) Long newWardId) {
         IpdAdmission updated = ipdAdmissionService.changeBed(id, newBedId, newWardId);
         return ResponseEntity.ok(updated);
+    }
+
+    /** Hands the patient over to another doctor. Body: {"doctorId": 12}. */
+    @RequireModule("IPD")
+    @PutMapping("/{id}/change-doctor")
+    @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> changeDoctor(@PathVariable("id") Long id,
+                                          @RequestBody(required = false) java.util.Map<String, Object> body) {
+        Object d = body == null ? null : body.get("doctorId");
+        Long doctorId;
+        try {
+            doctorId = d == null || String.valueOf(d).isBlank() ? null : Long.valueOf(String.valueOf(d));
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Select the doctor who takes over the patient.");
+        }
+        return ResponseEntity.ok(ipdAdmissionService.changeDoctor(id, doctorId));
     }
 }

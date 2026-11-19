@@ -36,6 +36,9 @@ public class PerformingNurseResolver {
                     .map(NurseProfile::getId).orElse(null);
         }
         if (requestedNurseProfileId == null) {
+            // The admin, like a doctor, may record as themselves -- a facility can run IPD with
+            // no nurses at all. Only nursing staff must name who actually gave the care.
+            if ("HOSPITAL_ADMIN".equals(role)) return null;
             throw new IllegalArgumentException("Performed By nurse is required");
         }
         NurseProfile p = nurseProfileRepository.findById(requestedNurseProfileId)

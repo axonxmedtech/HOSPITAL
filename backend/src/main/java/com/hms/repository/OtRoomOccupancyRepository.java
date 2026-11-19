@@ -18,6 +18,9 @@ public interface OtRoomOccupancyRepository extends JpaRepository<OtRoomOccupancy
     /** The open span for a surgery (theatre still held), if any. */
     Optional<OtRoomOccupancy> findBySurgeryIdAndOccupiedToIsNull(Long surgeryId);
 
+    /** The theatre's most recent finished case, for turnover. */
+    Optional<OtRoomOccupancy> findTopByOtRoomIdAndOccupiedToIsNotNullOrderByOccupiedToDesc(Long otRoomId);
+
     /** Closed while the theatre row is locked during strict surgery completion. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT o FROM OtRoomOccupancy o WHERE o.surgeryId = :surgeryId AND o.occupiedTo IS NULL")

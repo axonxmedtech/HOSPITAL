@@ -403,9 +403,10 @@ public class NurseWorkspaceService {
 
         // Patients
         for (IpdAdmission ipd : ipdAdmissionRepository.findByHospitalIdAndStatusIn(hospitalId,
-                java.util.List.of("ADMITTED", "DISCHARGED"))) {
+                java.util.List.of("ADMITTED", "DISCHARGE_PLANNED", "DISCHARGED"))) {
             if (ipd.getWardId() == null || !wardIds.contains(ipd.getWardId())) continue;
-            if ("ADMITTED".equalsIgnoreCase(ipd.getStatus())) {
+            // A planned discharge is still in the bed and still needs nursing.
+            if (!"DISCHARGED".equalsIgnoreCase(ipd.getStatus())) {
                 dto.getPatients().setTotal(dto.getPatients().getTotal() + 1);
             }
             if (ipd.getAdmissionDatetime() != null && today.equals(ipd.getAdmissionDatetime().toLocalDate())) {

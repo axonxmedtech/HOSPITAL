@@ -34,6 +34,10 @@ public class BedStatusService {
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private AuditLogService auditLogService;
     @Autowired private com.hms.service.RealtimeNotifier notifier;
+    @Autowired private com.hms.repository.IcuCleaningTaskRepository cleaningTaskRepository;
+    @Autowired private com.hms.repository.WardRepository wardRepository;
+
+    private static final List<String> OPEN_TASK = List.of("PENDING", "IN_PROGRESS");
 
     /**
      * E1 (C3) — locks one bed for the rest of the caller's transaction and returns it.
@@ -109,6 +113,8 @@ public class BedStatusService {
         a.setRemarks(remarks);
         auditRepository.save(a);
 
+        syncCleaningTask(bed, previous, newStatus, remarks);
+
         try {
             auditLogService.logAction("BED_STATUS_CHANGED", previous + " -> " + newStatus,
                     securityHelper.getCurrentUserEmail(), bed.getHospitalId(), "BED", String.valueOf(bed.getBedId()), remarks);
@@ -117,6 +123,47 @@ public class BedStatusService {
         // it. Every bed board in the tenant must move at once or two people book the same bed.
         notifier.refresh(bed.getHospitalId());
         return saved;
+    }
+
+    /**
+     * Keeps the cleaning task list in step with the beds. A bed entering CLEANING (discharge,
+     * transfer, theatre turnover) gets one open task; a bed leaving CLEANING by any route closes
+     * its open tasks. Before this, only a discharge created a task, matched later by ward and bed
+     * NAME, while a transfer created none, and marking a bed cleaned left its task pending.
+     */
+    private void syncCleaningTask(Bed bed, String previous, String newStatus, String remarks) {
+        try {
+            boolean entering = BedStatus.CLEANING.equals(newStatus) && !BedStatus.CLEANING.equals(previous);
+            boolean leaving = BedStatus.CLEANING.equals(previous) && !BedStatus.CLEANING.equals(newStatus);
+            if (!entering && !leaving) return;
+            List<com.hms.entity.IcuCleaningTask> open = cleaningTaskRepository
+                    .findByHospitalIdAndBedIdAndStatusIn(bed.getHospitalId(), bed.getBedId(), OPEN_TASK);
+            if (leaving) {
+                for (com.hms.entity.IcuCleaningTask t : open) {
+                    t.setStatus("COMPLETED");
+                    cleaningTaskRepository.save(t);
+                }
+                return;
+            }
+            if (!open.isEmpty()) return;
+            com.hms.entity.IcuCleaningTask t = new com.hms.entity.IcuCleaningTask();
+            t.setHospitalId(bed.getHospitalId());
+            t.setBedId(bed.getBedId());
+            t.setWardId(bed.getWardId());
+            t.setWardName(wardRepository.findByWardIdAndHospitalId(bed.getWardId(), bed.getHospitalId())
+                    .map(com.hms.entity.Ward::getWardName).orElse(null));
+            t.setBedNumber(bed.getBedCode());
+            t.setTaskDescription("Clean and prepare bed" + (remarks != null && !remarks.isBlank() ? " (" + remarks + ")" : ""));
+            t.setPriority("HIGH");
+            t.setStatus("PENDING");
+            String by = securityHelper.getCurrentUserEmail();
+            t.setCreatedBy(by != null ? by : "SYSTEM");
+            t.setCreatedAt(java.time.LocalDateTime.now());
+            cleaningTaskRepository.save(t);
+        } catch (Exception e) {
+            // A missing task must never undo the bed movement itself.
+            logger.warn("Cleaning task sync failed for bed {}: {}", bed.getBedId(), e.getMessage());
+        }
     }
 
     public List<BedStatusAudit> history(Long bedId) {

@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import LoadingSpinner from '../../../components/LoadingSpinner';
+import PatientDocumentsPanel from '../../../components/PatientDocumentsPanel';
 import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
 import formAccessService from '../../../services/formAccessService';
 import nurseService from '../../../services/nurseService';
-import PatientDocumentsPanel from '../../../components/PatientDocumentsPanel';
 import OtNotesSection from '../ot/OtNotesSection';
 import ConsentFormsPanel from './ConsentFormsPanel';
 import InfusionPanel from './InfusionPanel';
@@ -132,6 +132,9 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
   const backLabel =
     authService.getCurrentUser()?.role === 'NURSE_INCHARGE' ? 'My Ward Patients' : 'My Patients';
 
+  // Fluid balance, ventilation, severity scores and infusions are ICU charting: the server
+  // serves them only to a facility with the ICU module, so they are not offered without it.
+  const hasIcuModule = (authService.getCurrentUser()?.modules || []).includes('ICU');
   const tabs = [
     { id: 'overview', label: 'Overview' },
     ...(verdictFor('vitals') !== 'HIDDEN' ? [{ id: 'vitals', label: 'Vitals' }] : []),
@@ -144,9 +147,15 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
       ? [{ id: 'vulnerability', label: 'Vulnerability Assessment' }]
       : []),
     ...(verdictFor('sugar') !== 'HIDDEN' ? [{ id: 'sugar', label: 'Sugar Chart' }] : []),
-    ...(verdictFor('io') !== 'HIDDEN' ? [{ id: 'io', label: 'Intake / Output' }] : []),
-    ...(verdictFor('ventilator') !== 'HIDDEN' ? [{ id: 'ventilator', label: 'Ventilator' }] : []),
-    ...(verdictFor('scores') !== 'HIDDEN' ? [{ id: 'scores', label: 'Severity Scores' }] : []),
+    ...(hasIcuModule && verdictFor('io') !== 'HIDDEN'
+      ? [{ id: 'io', label: 'Intake / Output' }]
+      : []),
+    ...(hasIcuModule && verdictFor('ventilator') !== 'HIDDEN'
+      ? [{ id: 'ventilator', label: 'Ventilator' }]
+      : []),
+    ...(hasIcuModule && verdictFor('scores') !== 'HIDDEN'
+      ? [{ id: 'scores', label: 'Severity Scores' }]
+      : []),
     ...(hasSurgery ? [{ id: 'consent', label: 'Consent Forms' }] : []),
     ...(d?.patientId ? [{ id: 'documents', label: 'Documents' }] : []),
   ];
@@ -242,11 +251,13 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
           {/* Infusions live in the medication workspace, not a page of their own: an infusion is
               medication being given, and the nurse should not look in two places for one
               patient's drugs. */}
-          <InfusionPanel
-            admissionId={admissionId}
-            readOnly={verdictFor('medication') === 'READ_ONLY'}
-            refreshKey={refreshKey}
-          />
+          {hasIcuModule && (
+            <InfusionPanel
+              admissionId={admissionId}
+              readOnly={verdictFor('medication') === 'READ_ONLY'}
+              refreshKey={refreshKey}
+            />
+          )}
         </div>
       )}
 

@@ -44,6 +44,11 @@ public class NurseController {
             return ResponseEntity.badRequest().body("Password must be at least 6 characters");
         }
 
+        // A nurse with no ward is on no in-charge's roster and can never be given a patient.
+        // The admin form requires the ward; so does the API.
+        if (parseWardId(payload.get("wardId")) == null) {
+            throw new IllegalArgumentException("Select the ward this nurse works in");
+        }
         User created = nurseService.createNurse(name, email, password,
                 payload.get("phone"), payload.get("licenseNumber"), parseWardId(payload.get("wardId")),
                 payload.get("shiftTemplatePublicId"),

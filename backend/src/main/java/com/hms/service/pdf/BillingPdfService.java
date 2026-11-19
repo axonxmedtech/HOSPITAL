@@ -120,7 +120,7 @@ public class BillingPdfService {
             String rawHospName = (hospital != null && hospital.getName() != null) ? hospital.getName().toUpperCase() : "HOSPITAL";
             Paragraph hospText = new Paragraph(rawHospName, PdfLayoutHelper.RED_TITLE_FONT);
             hospText.setAlignment(Element.ALIGN_CENTER);
-            String addressText = (hospital != null && hospital.getAddress() != null) ? hospital.getAddress() : "\"Amrutwel\" Near water Tank, Shikrapur, Tal. Shirur, Dist. Pune.";
+            String addressText = PdfLayoutHelper.hospitalAddress(hospital);
             Paragraph addrText = new Paragraph(addressText, FontFactory.getFont(FontFactory.HELVETICA, 8, Font.NORMAL, Color.DARK_GRAY));
             addrText.setAlignment(Element.ALIGN_CENTER);
 
@@ -141,26 +141,32 @@ public class BillingPdfService {
             docTable.setWidths(new float[]{3.5f, 2f});
             docTable.setSpacingBefore(6f);
 
-            String docName = (doctor != null && doctor.getName() != null) ? doctor.getName().toUpperCase() : "B. B. INGALE";
-            String docSpec = (doctor != null && doctor.getSpecialization() != null) ? doctor.getSpecialization() : "M.B.B.S, Diploma in Industrial Health";
-            String docPhone = (doctor != null && doctor.getPhone() != null) ? doctor.getPhone() : "9850914919";
+            // No doctor on the bill and none in the hospital: leave the block out. It used to fall
+            // back to a real doctor's name and mobile number, printed on every tenant's receipts.
+            if (doctor != null) {
+                String docName = PdfLayoutHelper.doctorTitle(doctor.getName());
+                String docSpec = doctor.getSpecialization() != null ? doctor.getSpecialization() : "";
+                String docPhone = doctor.getPhone() != null ? doctor.getPhone() : "-";
 
-            PdfPCell docLeft = new PdfPCell();
-            docLeft.setBorder(Rectangle.NO_BORDER);
-            Paragraph pName = new Paragraph("Dr. " + docName, PdfLayoutHelper.RED_DOCTOR_FONT);
-            Paragraph pSpec = new Paragraph("(" + docSpec + ")", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8, Font.NORMAL, Color.DARK_GRAY));
-            docLeft.addElement(pName);
-            docLeft.addElement(pSpec);
-            docTable.addCell(docLeft);
+                PdfPCell docLeft = new PdfPCell();
+                docLeft.setBorder(Rectangle.NO_BORDER);
+                Paragraph pName = new Paragraph(docName, PdfLayoutHelper.RED_DOCTOR_FONT);
+                docLeft.addElement(pName);
+                if (!docSpec.isBlank()) {
+                    docLeft.addElement(new Paragraph("(" + docSpec + ")",
+                            FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8, Font.NORMAL, Color.DARK_GRAY)));
+                }
+                docTable.addCell(docLeft);
 
-            PdfPCell docRight = new PdfPCell();
-            docRight.setBorder(Rectangle.NO_BORDER);
-            Paragraph pPhone = new Paragraph("Mob. : " + docPhone, PdfLayoutHelper.SMALL_BOLD_FONT);
-            pPhone.setAlignment(Element.ALIGN_RIGHT);
-            docRight.addElement(pPhone);
-            docTable.addCell(docRight);
+                PdfPCell docRight = new PdfPCell();
+                docRight.setBorder(Rectangle.NO_BORDER);
+                Paragraph pPhone = new Paragraph("Mob. : " + docPhone, PdfLayoutHelper.SMALL_BOLD_FONT);
+                pPhone.setAlignment(Element.ALIGN_RIGHT);
+                docRight.addElement(pPhone);
+                docTable.addCell(docRight);
 
-            document.add(docTable);
+                document.add(docTable);
+            }
 
             // Separator Line
             Paragraph borderLine = new Paragraph();
@@ -264,13 +270,17 @@ public class BillingPdfService {
                 for (com.hms.entity.BillingPayment pay : payments) {
                     if (pay.getAmount() != null) paidAmt = paidAmt.add(pay.getAmount());
                 }
-            } else {
-                if ("PAID".equalsIgnoreCase(billing.getPaymentStatus())) {
-                    paidAmt = totalAmt;
-                }
             }
 
-            java.math.BigDecimal balance = totalAmt.subtract(paidAmt);
+            // Discount / concession: Total stays the gross charges; net = total - discount.
+            java.math.BigDecimal discountAmt = billing.getDiscountAmount() == null ? java.math.BigDecimal.ZERO
+                    : billing.getDiscountAmount().max(java.math.BigDecimal.ZERO).min(totalAmt);
+            if ((payments == null || payments.isEmpty()) && "PAID".equalsIgnoreCase(billing.getPaymentStatus())) {
+                paidAmt = totalAmt.subtract(discountAmt); // legacy hand-marked PAID bill
+            }
+            java.math.BigDecimal refundedAmt = com.hms.service.hospital.BillMoney.refunded(payments);
+
+            java.math.BigDecimal balance = totalAmt.subtract(discountAmt).subtract(paidAmt);
 
             // 4. Dynamic Charges Table
             java.util.List<Object[]> chargeRows = helper.buildDynamicChargeRows(items, medicines);
@@ -338,6 +348,12 @@ public class BillingPdfService {
             totalPsCell.setPadding(5f);
             fixedBottomTable.addCell(totalPsCell);
 
+            if (discountAmt.signum() > 0) {
+                String label = billing.getDiscountReason() != null && !billing.getDiscountReason().isBlank()
+                        ? "Discount (" + billing.getDiscountReason().trim() + ")" : "Discount";
+                addMoneyRow(fixedBottomTable, label, discountAmt);
+            }
+
             // Received Row
             long paidRupees = paidAmt.longValue();
             int paidPaise = paidAmt.subtract(java.math.BigDecimal.valueOf(paidRupees)).multiply(java.math.BigDecimal.valueOf(100)).intValue();
@@ -377,6 +393,13 @@ public class BillingPdfService {
             balPsCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
             balPsCell.setPadding(5f);
             fixedBottomTable.addCell(balPsCell);
+            if (refundedAmt.signum() > 0) {
+                // Received is already net of this; shown so the patient's copy explains the figure.
+                addMoneyRow(fixedBottomTable, "Refunded", refundedAmt);
+            }
+            if ("CANCELLED".equalsIgnoreCase(billing.getPaymentStatus())) {
+                addMoneyRow(fixedBottomTable, "BILL CANCELLED", java.math.BigDecimal.ZERO);
+            }
 
             fixedBottomTable.writeSelectedRows(0, -1, 36, 175, writer.getDirectContent());
 
@@ -549,5 +572,24 @@ public class BillingPdfService {
         }
 
         return new ByteArrayInputStream(out.toByteArray());
+    }
+
+    /** One right-aligned "label | Rs | Ps" row in the totals block. */
+    private static void addMoneyRow(PdfPTable table, String label, java.math.BigDecimal amount) {
+        long rupees = amount.longValue();
+        int paise = amount.subtract(java.math.BigDecimal.valueOf(rupees)).multiply(java.math.BigDecimal.valueOf(100)).intValue();
+        PdfPCell l = new PdfPCell(new Phrase(label, PdfLayoutHelper.SMALL_BOLD_FONT));
+        l.setColspan(2);
+        l.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        l.setPadding(5f);
+        table.addCell(l);
+        PdfPCell rs = new PdfPCell(new Phrase(String.valueOf(rupees), PdfLayoutHelper.SMALL_BOLD_FONT));
+        rs.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        rs.setPadding(5f);
+        table.addCell(rs);
+        PdfPCell ps = new PdfPCell(new Phrase(paise == 0 ? "00" : String.format("%02d", paise), PdfLayoutHelper.SMALL_BOLD_FONT));
+        ps.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        ps.setPadding(5f);
+        table.addCell(ps);
     }
 }

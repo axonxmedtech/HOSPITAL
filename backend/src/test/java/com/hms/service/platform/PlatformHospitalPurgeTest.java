@@ -256,8 +256,9 @@ class PlatformHospitalPurgeTest {
 
         // Whoever inherits the id sees the safe defaults, not the previous occupant's grants.
         assertThat(otPermissionService.effectiveFor(reusedId, "DOCTOR"))
-                .as("an inherited id must fall back to the built-in defaults")
-                .isEqualTo(OtPermissions.defaultsFor("DOCTOR"))
+                .as("an inherited id must fall back to the built-in defaults (plus the cover a facility "
+                        + "with no nurses gives its doctors), never the previous occupant's grants")
+                .containsAll(OtPermissions.defaultsFor("DOCTOR"))
                 .doesNotContain(OtPermissions.OT_CANCEL);
     }
 

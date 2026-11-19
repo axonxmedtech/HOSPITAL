@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { TIMEOUT_MESSAGE } from '../utils/apiError';
+import { TIMEOUT_MESSAGE, bodyMessage } from '../utils/apiError';
 
 /**
  * API Service - Axios wrapper for making HTTP requests
@@ -126,6 +126,14 @@ const shouldRetry = (error) => {
 const handleResponseError = (error) => {
   if (isTimeoutError(error)) {
     error.message = TIMEOUT_MESSAGE;
+  }
+  // Carry the server's own explanation ("Outstanding balance must be settled ...") instead of
+  // axios's "Request failed with status code 400", so a console line or any screen that shows
+  // err.message reads as a sentence, and the error is not labelled "AxiosError".
+  const serverMessage = error.response ? bodyMessage(error.response.data) : null;
+  if (serverMessage) {
+    error.message = serverMessage;
+    error.name = 'ApiError';
   }
 
   // If 401 Unauthorized (token expired/missing) on a non-login call, redirect to login

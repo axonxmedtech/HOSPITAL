@@ -205,6 +205,27 @@ class WardControllerRoleMatrixTest {
         mockMvc.perform(get("/hospital/wards")).andExpect(status().isOk());
     }
 
+    /** The OT schedule form lists theatres from the ward list; without this read it was a 403. */
+    @Test
+    @WithMockUser(roles = "OT_INCHARGE")
+    void otInchargeCanListWardsToPickATheatre() throws Exception {
+        when(wardService.getAllWards()).thenReturn(List.of());
+        mockMvc.perform(get("/hospital/wards")).andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "OT_INCHARGE")
+    void otInchargeStillCannotChangeWards() throws Exception {
+        mockMvc.perform(post("/hospital/wards").with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"wardName\":\"OT 2\",\"bedPrice\":1,\"totalBeds\":1}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(delete("/hospital/wards/1").with(csrf()))
+                .andExpect(status().isForbidden());
+        verify(wardService, never()).createWard(any());
+        verify(wardService, never()).deleteWard(anyLong());
+    }
+
     // ---------- tenant behaviour is unchanged for the role that is allowed through ----------
 
     /**

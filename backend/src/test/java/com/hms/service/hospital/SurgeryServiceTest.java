@@ -80,6 +80,7 @@ class SurgeryServiceTest {
 
     private IpdAdmission admission() {
         IpdAdmission a = new IpdAdmission();
+        a.setStatus("ADMITTED");
         a.setId(1L); a.setHospitalId(7L); a.setPatientId(500L); a.setIpdNumber("IPD-1");
         return a;
     }

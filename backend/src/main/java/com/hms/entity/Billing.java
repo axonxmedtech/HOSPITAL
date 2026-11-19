@@ -112,7 +112,8 @@ public class Billing {
 
     /**
      * Payment status: PENDING (nothing collected), PARTIAL (a balance is owed), PAID (ledger
-     * covers the total), CLOSED (written off / cancelled).
+     * covers the net payable), CLOSED (IPD bill finalised at discharge), CANCELLED (voided; any
+     * collected money was refunded).
      *
      * Defaults to PENDING, never PAID: a bill must be paid for, not assumed paid. The old
      * default of "PAID" meant any creator that forgot to set a status produced a silently free
@@ -141,6 +142,30 @@ public class Billing {
 
     @Column(name = "marked_paid_by", length = 100)
     private String markedPaidBy;
+
+    /**
+     * Discount / concession off the gross charges. Net payable = gross - discount; the gross
+     * itself (amount, and the line items) is never rewritten, so the bill still shows what the
+     * services cost and what was waived. Null on bills from before discounts existed = none.
+     */
+    @Column(name = "discount_amount", precision = 10, scale = 2)
+    private BigDecimal discountAmount;
+
+    @Column(name = "discount_reason", length = 255)
+    private String discountReason;
+
+    @Column(name = "discounted_by", length = 150)
+    private String discountedBy;
+
+    /** Set when the bill is cancelled (status CANCELLED); any money taken is refunded first. */
+    @Column(name = "cancel_reason", length = 255)
+    private String cancelReason;
+
+    @Column(name = "cancelled_by", length = 150)
+    private String cancelledBy;
+
+    @Column(name = "cancelled_at")
+    private LocalDateTime cancelledAt;
 
     /**
      * Timestamp when the billing record was created

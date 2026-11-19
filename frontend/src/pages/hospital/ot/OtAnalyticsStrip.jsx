@@ -23,7 +23,11 @@ const Tile = ({ label, value, tone = 'gray' }) => {
   );
 };
 
-const OtAnalyticsStrip = () => {
+/**
+ * refreshKey: anything that changes when the board reloads (its rows). Without it the tiles were
+ * fetched once and lagged a step behind every Start / Complete.
+ */
+const OtAnalyticsStrip = ({ refreshKey } = {}) => {
   const [s, setS] = useState(null);
 
   useEffect(() => {
@@ -37,7 +41,7 @@ const OtAnalyticsStrip = () => {
     return () => {
       active = false;
     };
-  }, []);
+  }, [refreshKey]);
 
   if (!s) return null;
 

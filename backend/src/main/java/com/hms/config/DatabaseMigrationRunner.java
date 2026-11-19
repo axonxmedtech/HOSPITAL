@@ -180,6 +180,24 @@ public class DatabaseMigrationRunner {
         // Per-hospital OPD vitals config + values of hospital-defined custom vitals.
         ensureHospitalVitalsTable();
         addColumnIfMissing("opd", "custom_vitals", "TEXT NULL");
+        // Billing: discount / concession, cancellation, and a refund-aware payment ledger.
+        addColumnIfMissing("billing", "discount_amount", "DECIMAL(10,2) NULL");
+        addColumnIfMissing("billing", "discount_reason", "VARCHAR(255) NULL");
+        addColumnIfMissing("billing", "discounted_by", "VARCHAR(150) NULL");
+        addColumnIfMissing("billing", "cancel_reason", "VARCHAR(255) NULL");
+        addColumnIfMissing("billing", "cancelled_by", "VARCHAR(150) NULL");
+        addColumnIfMissing("billing", "cancelled_at", "DATETIME(6) NULL");
+        addColumnIfMissing("billing_payments", "kind", "VARCHAR(10) NULL DEFAULT 'PAYMENT'");
+        addColumnIfMissing("billing_payments", "recorded_by", "VARCHAR(150) NULL");
+        addColumnIfMissing("billing_payments", "note", "VARCHAR(255) NULL");
+        // IPD discharge outcome (V29).
+        addColumnIfMissing("ipd_admission", "discharge_type", "VARCHAR(20) NULL");
+        addColumnIfMissing("ipd_admission", "discharge_note", "VARCHAR(500) NULL");
+        // OPD visit cancellation (V30).
+        addOpdCancelledStatus();
+        addColumnIfMissing("opd", "cancel_reason", "VARCHAR(255) NULL");
+        addColumnIfMissing("opd", "cancelled_by", "VARCHAR(150) NULL");
+        addColumnIfMissing("opd", "cancelled_at", "DATETIME NULL");
         ensureBedStatusAuditsTable(); // NEW — Nursing Mgmt Phase C1
         makeInventoryItemHospitalIdNullable();
 
@@ -299,6 +317,26 @@ public class DatabaseMigrationRunner {
     private void widenVitalsDecimalColumns() {
         widenDecimal("vitals_records", "weight", "DECIMAL(12,2) NULL", 12);
         widenDecimal("vitals_records", "temperature", "DECIMAL(12,1) NULL", 12);
+    }
+
+    /**
+     * opd.status is a MySQL ENUM created from the Java enum, and ddl-auto=update never widens an
+     * existing ENUM. Without CANCELLED in it, cancelling a visit fails with "Data truncated".
+     */
+    private void addOpdCancelledStatus() {
+        try {
+            String type = jdbcTemplate.queryForObject(
+                    "SELECT COLUMN_TYPE FROM information_schema.COLUMNS "
+                    + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'opd' AND COLUMN_NAME = 'status'",
+                    String.class);
+            if (type != null && type.toLowerCase().startsWith("enum(") && !type.toUpperCase().contains("CANCELLED")) {
+                jdbcTemplate.execute("ALTER TABLE opd MODIFY COLUMN status "
+                        + "ENUM('QUEUED','CONSULTED','COMPLETED','IN_IPD','CANCELLED') NOT NULL");
+                log.info("DB migration applied: opd.status accepts CANCELLED");
+            }
+        } catch (Exception e) {
+            log.warn("Could not add CANCELLED to opd.status: {}", e.getMessage());
+        }
     }
 
     private void widenDecimal(String table, String column, String newType, int wantPrecision) {

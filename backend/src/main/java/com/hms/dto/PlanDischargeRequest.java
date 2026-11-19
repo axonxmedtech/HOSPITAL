@@ -7,6 +7,16 @@ public class PlanDischargeRequest {
     private String treatmentGiven;
     private String dischargeNotes;
     private LocalDate followUpDate;
+    /** NORMAL (default), LAMA, REFERRED, EXPIRED or ABSCONDED. */
+    private String dischargeType;
+    /** Referral hospital, cause / time of death, etc. */
+    private String dischargeTypeNote;
+
+    public String getDischargeType() { return dischargeType; }
+    public void setDischargeType(String dischargeType) { this.dischargeType = dischargeType; }
+
+    public String getDischargeTypeNote() { return dischargeTypeNote; }
+    public void setDischargeTypeNote(String dischargeTypeNote) { this.dischargeTypeNote = dischargeTypeNote; }
 
     public String getFinalDiagnosis() { return finalDiagnosis; }
     public void setFinalDiagnosis(String finalDiagnosis) { this.finalDiagnosis = finalDiagnosis; }

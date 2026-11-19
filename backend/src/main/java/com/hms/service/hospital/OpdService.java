@@ -39,6 +39,8 @@ public class OpdService {
     private BillingService billingService;
     @org.springframework.beans.factory.annotation.Autowired
     private com.hms.repository.HospitalSettingRepository hospitalSettingRepository;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private HospitalStaffing staffing;
 
     private static final com.fasterxml.jackson.databind.ObjectMapper VITALS_JSON =
             new com.fasterxml.jackson.databind.ObjectMapper();
@@ -152,7 +154,15 @@ public class OpdService {
             // would attach another hospital's doctor to this hospital's OPD (and print that
             // doctor on the case paper). Drop any doctor that is not in the caller's hospital.
             docOpt.filter(d -> hospitalId != null && hospitalId.equals(d.getHospitalId()))
+                    .filter(d -> !Boolean.FALSE.equals(d.getIsActive()))
                     .ifPresent(opd::setDoctor);
+        }
+        // A visit without a doctor never reaches anyone's queue and can only be found again in
+        // the OPD list, where nobody can consult it. Refuse it up front instead.
+        if (opd.getDoctor() == null) {
+            throw new IllegalArgumentException(req.getDoctorId() == null || req.getDoctorId().isBlank()
+                    ? "Select the doctor the patient will see."
+                    : "That doctor is not available in this hospital. Select another doctor.");
         }
 
         // Only vitals the hospital has switched ON are captured. Disabled built-ins are
@@ -236,6 +246,137 @@ public class OpdService {
         }
 
         return saved;
+    }
+
+    /** Statuses after which a visit can no longer be cancelled or moved. */
+    private static String closedVisitMessage(Opd opd) {
+        return switch (opd.getStatus()) {
+            case CANCELLED -> "This OPD visit is already cancelled.";
+            case IN_IPD -> "This patient has been admitted. Manage the stay from IPD.";
+            default -> "The doctor has already seen this patient, so the visit can no longer be changed.";
+        };
+    }
+
+    /**
+     * Who may cancel a visit or move it to another doctor: the front desk (reception, the admin,
+     * a doctor covering the desk) for any visit, and a doctor for a visit in their own queue.
+     */
+    private void requireCanManageVisit(Opd opd) {
+        String role = securityHelper.getCurrentUserRole();
+        if ("HOSPITAL_ADMIN".equalsIgnoreCase(role) || "RECEPTIONIST".equalsIgnoreCase(role)) return;
+        if ("DOCTOR".equalsIgnoreCase(role)) {
+            Long hospitalId = securityHelper.getCurrentHospitalId();
+            if (staffing != null && staffing.of(hospitalId).doctorActsAsReception()) return;
+            // By email, like every other "who is this doctor" lookup: findByIdOrUserId tries the id
+            // as a doctor id first and can match a different doctor whose id equals the user id.
+            String email = securityHelper.getCurrentUserEmail();
+            Doctor me = email == null || hospitalId == null ? null
+                    : doctorRepository.findByEmailAndHospitalId(email, hospitalId).orElse(null);
+            if (me != null && opd.getDoctor() != null && me.getId().equals(opd.getDoctor().getId())) return;
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "This patient is in another doctor's queue. Ask reception to change it.");
+        }
+        throw new org.springframework.security.access.AccessDeniedException("Only reception, the admin or the patient's doctor can change an OPD visit.");
+    }
+
+    private Opd lockedVisit(Long id) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        if (hospitalId == null) throw new ResourceNotFoundException("OPD visit not found");
+        return opdRepository.findByIdAndHospitalIdWithPatientAndDoctorForUpdate(id, hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("OPD visit not found"));
+    }
+
+    /**
+     * Cancels a visit the doctor has not seen yet: the patient left without being seen, was
+     * registered twice, or for the wrong doctor. The visit leaves the queue and its bill is
+     * settled by {@link BillingService#settleForCancelledOpd}.
+     *
+     * @return what happened, for the confirmation message (the bill outcome when there is one)
+     */
+    @Transactional
+    public java.util.Map<String, Object> cancelVisit(Long id, String reason, String refundMode) {
+        if (reason == null || reason.isBlank()) {
+            throw new IllegalArgumentException("Give a reason for cancelling the visit, e.g. \"Left without being seen\".");
+        }
+        String why = reason.trim().length() > 255 ? reason.trim().substring(0, 255) : reason.trim();
+        Opd opd = lockedVisit(id);
+        requireCanManageVisit(opd);
+        if (opd.getStatus() != Opd.Status.QUEUED) throw new IllegalArgumentException(closedVisitMessage(opd));
+
+        opd.setStatus(Opd.Status.CANCELLED);
+        opd.setCancelReason(why);
+        opd.setCancelledBy(resolveCurrentEmailQuietly());
+        opd.setCancelledAt(java.time.LocalDateTime.now());
+        opdRepository.save(opd);
+        queueEntryRepository.deleteByOpdId(opd.getId());
+
+        String billNote = billingService == null ? null : billingService.settleForCancelledOpd(opd.getId(), why, refundMode);
+        audit("OPD_CANCELLED", "OPD " + opd.getCaseId() + " cancelled: " + why, opd);
+        broadcastRefresh();
+
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("id", opd.getId());
+        out.put("caseId", opd.getCaseId());
+        out.put("status", opd.getStatus().name());
+        out.put("message", "OPD visit " + opd.getCaseId() + " cancelled." + (billNote == null ? "" : " " + billNote));
+        return out;
+    }
+
+    /** Moves a waiting patient to another doctor's queue (wrong doctor picked, doctor unavailable). */
+    @Transactional
+    public Opd changeDoctor(Long id, String doctorIdOrPublicId) {
+        if (doctorIdOrPublicId == null || doctorIdOrPublicId.isBlank()) {
+            throw new IllegalArgumentException("Select the doctor the patient will see now.");
+        }
+        Opd opd = lockedVisit(id);
+        requireCanManageVisit(opd);
+        if (opd.getStatus() != Opd.Status.QUEUED) throw new IllegalArgumentException(closedVisitMessage(opd));
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        String key = doctorIdOrPublicId.trim();
+        Optional<Doctor> found = key.matches("^\\d+$")
+                ? doctorRepository.findByIdAndHospitalIdAndIsActiveTrue(Long.parseLong(key), hospitalId)
+                : doctorRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(key, hospitalId);
+        Doctor doctor = found.orElseThrow(() -> new IllegalArgumentException(
+                "That doctor is not available in this hospital. Select another doctor."));
+        if (opd.getDoctor() != null && opd.getDoctor().getId().equals(doctor.getId())) {
+            throw new IllegalArgumentException("The patient is already in " + com.hms.util.DoctorNames.withTitle(doctor.getName()) + "'s queue.");
+        }
+        String from = opd.getDoctor() != null ? opd.getDoctor().getName() : "no doctor";
+        opd.setDoctor(doctor);
+        Opd saved = opdRepository.save(opd);
+        // Re-queue under the new doctor. The entry keeps its original time, so the patient does
+        // not lose their place in line for having been sent to the wrong room.
+        java.time.LocalDateTime queuedAt = queueEntryRepository.findByOpd_Id(opd.getId()).stream()
+                .map(QueueEntry::getCreatedAt).filter(java.util.Objects::nonNull).min(java.util.Comparator.naturalOrder())
+                .orElse(null);
+        queueEntryRepository.deleteByOpdId(opd.getId());
+        QueueEntry entry = new QueueEntry();
+        entry.setOpd(saved);
+        entry.setDoctor(doctor);
+        if (queuedAt != null) entry.setCreatedAt(queuedAt);
+        queueEntryRepository.save(entry);
+        if (billingService != null) billingService.moveOpdBillToDoctor(opd.getId(), doctor.getId());
+        audit("OPD_DOCTOR_CHANGED", "OPD " + opd.getCaseId() + " moved from " + from + " to " + doctor.getName(), opd);
+        broadcastRefresh();
+        return saved;
+    }
+
+    private void audit(String action, String details, Opd opd) {
+        try {
+            auditLogService.logAction(action, details, resolveCurrentEmailQuietly(), resolveCurrentHospitalIdQuietly(),
+                    "OPD", opd.getCaseId() != null ? opd.getCaseId() : String.valueOf(opd.getId()), null);
+        } catch (Exception e) {
+            logger.warn("Failed to audit {}", action, e);
+        }
+    }
+
+    private void broadcastRefresh() {
+        try {
+            Long hospitalId = securityHelper.getCurrentHospitalId();
+            if (hospitalId != null) webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}");
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast WebSocket refresh after OPD change", e);
+        }
     }
 
     public java.util.List<QueueEntry> getQueueForDoctor(Long doctorId) {

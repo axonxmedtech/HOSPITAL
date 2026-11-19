@@ -5,6 +5,7 @@ import authService from '../../../services/authService';
 import manufacturersApi from '../../../services/pharmacy/manufacturersApi';
 import medicinesApi from '../../../services/pharmacy/medicinesApi';
 import suppliersApi from '../../../services/pharmacy/suppliersApi';
+import { localIsoDate } from '../../../utils/date';
 
 // Common medicine forms/types for the Type dropdown (a picked medicine's own type is added on top
 // if it isn't already here, so platform-defined types still show).
@@ -35,12 +36,14 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
   const isStandalonePharmacy =
     currentUser?.modules?.includes('PHARMACY') && !currentUser?.modules?.includes('OPD');
   const [suppliers, setSuppliers] = useState([]);
+  // False until the first load finishes, so "no suppliers yet" isn't flashed while loading.
+  const [suppliersLoaded, setSuppliersLoaded] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [header, setHeader] = useState({
     supplierId: '',
     invoiceNumber: '',
-    invoiceDate: new Date().toISOString().split('T')[0],
+    invoiceDate: localIsoDate(),
     subtotal: 0,
     discountAmount: 0,
     gstAmount: 0,
@@ -69,7 +72,7 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
     setHeader({
       supplierId: '',
       invoiceNumber: '',
-      invoiceDate: new Date().toISOString().split('T')[0],
+      invoiceDate: localIsoDate(),
       subtotal: 0,
       discountAmount: 0,
       gstAmount: 0,
@@ -105,6 +108,7 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
     try {
       const resp = await suppliersApi.getAll('', 0, 100);
       setSuppliers(resp.content || []);
+      setSuppliersLoaded(true);
     } catch (err) {
       toast.error('Failed to load suppliers');
     }
@@ -290,6 +294,11 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
                   </option>
                 ))}
               </select>
+              {suppliersLoaded && suppliers.length === 0 && (
+                <p className="text-xs text-amber-700">
+                  No suppliers yet — add one under Suppliers first.
+                </p>
+              )}
             </div>
             <div className="space-y-1">
               <label htmlFor="fld-219" className="text-xs font-bold text-gray-500 uppercase">
@@ -606,6 +615,9 @@ const MedicineSearch = ({ value, usePlatform, onPick }) => {
   const [query, setQuery] = useState(value || '');
   const [results, setResults] = useState([]);
   const [showResults, setShowResults] = useState(false);
+  // An empty or failed search used to render nothing at all, which reads as a frozen field —
+  // on a new hospital the local medicine list is empty, so every search came back blank.
+  const [searchFailed, setSearchFailed] = useState(false);
   // Picking a result sets the query to its name; this flag stops that from re-triggering the
   // search effect (which would reopen the just-closed dropdown).
   const suppressRef = useRef(false);
@@ -622,24 +634,37 @@ const MedicineSearch = ({ value, usePlatform, onPick }) => {
     const timer = setTimeout(async () => {
       if (query.length > 1) {
         try {
+          const fromCatalog = async () =>
+            ((await medicinesApi.searchCatalog(query)) || []).map((m) => ({
+              localId: null,
+              name: m.name,
+              type: m.type,
+            }));
           if (usePlatform) {
-            const data = await medicinesApi.searchCatalog(query);
-            setResults((data || []).map((m) => ({ localId: null, name: m.name, type: m.type })));
+            setResults(await fromCatalog());
           } else {
             const data = await medicinesApi.autocomplete(query);
-            setResults(
-              (data || []).map((m) => ({
-                localId: m.id,
-                name: m.medicineName,
-                type: m.medicineType,
-                strength: m.strength,
-              }))
-            );
+            const local = (data || []).map((m) => ({
+              localId: m.id,
+              name: m.medicineName,
+              type: m.medicineType,
+              strength: m.strength,
+            }));
+            // A medicine the hospital has never stocked has no local record yet, and the screen
+            // that created one was removed. Offer the platform catalog instead: a pick with no
+            // localId makes the backend find-or-create the local medicine when the purchase posts.
+            setResults(local.length > 0 ? local : await fromCatalog());
           }
+          setSearchFailed(false);
           setShowResults(true);
-        } catch (err) {}
+        } catch (err) {
+          setResults([]);
+          setSearchFailed(true);
+          setShowResults(true);
+        }
       } else {
         setResults([]);
+        setSearchFailed(false);
       }
     }, 300);
     return () => clearTimeout(timer);
@@ -655,6 +680,16 @@ const MedicineSearch = ({ value, usePlatform, onPick }) => {
         className="w-full border-b border-transparent group-hover:border-gray-200 focus:border-gray-900 focus:ring-0 text-sm py-1 bg-transparent outline-none font-medium text-gray-900"
         placeholder="Search Medicine..."
       />
+      {showResults && results.length === 0 && query.length > 1 && (
+        <div
+          role="status"
+          className="absolute z-[60] left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-2xl px-4 py-3 text-xs text-gray-600"
+        >
+          {searchFailed
+            ? "Couldn't search medicines. Check your connection and try again."
+            : `No medicine named "${query}" in your stock or the medicine catalog.`}
+        </div>
+      )}
       {showResults && results.length > 0 && (
         <div className="absolute z-[60] left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-2xl max-h-48 overflow-auto py-1">
           {results.map((r, i) => (

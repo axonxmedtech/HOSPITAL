@@ -729,6 +729,30 @@ const hospitalService = {
     return response.data;
   },
 
+  /** Cancel a visit the doctor has not seen yet (left without being seen, duplicate, wrong doctor). */
+  cancelOpd: async (opdId, reason, refundMode) => {
+    const response = await apiClient.post(`/hospital/opd/${opdId}/cancel`, { reason, refundMode });
+    return response.data;
+  },
+
+  /** Move a waiting patient to another doctor's queue. */
+  changeOpdDoctor: async (opdId, doctorId) => {
+    const response = await apiClient.put(`/hospital/opd/${opdId}/doctor`, { doctorId });
+    return response.data;
+  },
+
+  /** Hand an admitted patient over to another doctor. */
+  changeIpdDoctor: async (ipdId, doctorId) => {
+    const response = await apiClient.put(`/hospital/ipd/${ipdId}/change-doctor`, { doctorId });
+    return response.data;
+  },
+
+  /** What a new hospital still has to set up (admin only). */
+  getSetupStatus: async () => {
+    const response = await apiClient.get('/hospital/setup-status');
+    return response.data;
+  },
+
   getOpds: async (search = '', page = 0, size = 10, date = '', status = '') => {
     let url = `/hospital/opd?page=${page}&size=${size}`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
@@ -781,8 +805,13 @@ const hospitalService = {
     const response = await apiClient.post(`/hospital/ipd/${id}/plan-discharge`, payload);
     return response.data;
   },
-  confirmDischarge: async (id) => {
-    const response = await apiClient.post(`/hospital/ipd/${id}/confirm-discharge`);
+  /** body: { dischargeType: NORMAL|LAMA|REFERRED|EXPIRED|ABSCONDED, dischargeNote } */
+  confirmDischarge: async (id, body = {}) => {
+    const response = await apiClient.post(`/hospital/ipd/${id}/confirm-discharge`, body);
+    return response.data;
+  },
+  cancelDischargePlan: async (id, reason) => {
+    const response = await apiClient.post(`/hospital/ipd/${id}/cancel-discharge-plan`, { reason });
     return response.data;
   },
   getIpdBill: async (ipdId) => {
@@ -791,6 +820,39 @@ const hospitalService = {
   },
   payBilling: async (billingId, payload) => {
     const response = await apiClient.post(`/hospital/billing/${billingId}/pay`, payload);
+    return response.data;
+  },
+  /** Discount / concession (amount 0 removes it). Body: { amount, reason }. */
+  discountBill: async (billingId, amount, reason) => {
+    const response = await apiClient.post(`/hospital/billing/${billingId}/discount`, {
+      amount,
+      reason,
+    });
+    return response.data;
+  },
+  /** Admin only. Body: { amount, mode: CASH|CARD|UPI, reason }. */
+  refundBill: async (billingId, amount, mode, reason, reduceBill = false) => {
+    const response = await apiClient.post(`/hospital/billing/${billingId}/refund`, {
+      amount,
+      mode,
+      reason,
+      reduceBill,
+    });
+    return response.data;
+  },
+  /** Admin only. Anything collected is refunded via refundMode. */
+  cancelBill: async (billingId, reason, refundMode) => {
+    const response = await apiClient.post(`/hospital/billing/${billingId}/cancel`, {
+      reason,
+      refundMode,
+    });
+    return response.data;
+  },
+  /** Daily cash-closing report for a YYYY-MM-DD date. */
+  getDailyCollection: async (date) => {
+    const response = await apiClient.get('/hospital/billing/reports/daily-collection', {
+      params: { date },
+    });
     return response.data;
   },
   addIpdFollowup: async (id, payload) => {

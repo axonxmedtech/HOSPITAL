@@ -10,4 +10,5 @@ import java.util.List;
 public interface IcuCleaningTaskRepository extends JpaRepository<IcuCleaningTask, Long> {
     List<IcuCleaningTask> findByHospitalIdOrderByCreatedAtDesc(Long hospitalId);
     List<IcuCleaningTask> findByHospitalIdAndStatusOrderByCreatedAtDesc(Long hospitalId, String status);
+    List<IcuCleaningTask> findByHospitalIdAndBedIdAndStatusIn(Long hospitalId, Long bedId, java.util.Collection<String> statuses);
 }

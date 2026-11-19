@@ -24,6 +24,8 @@ public class BedController {
     @Autowired private BedStatusService bedStatusService;
     @Autowired private NurseInchargeGuard nurseInchargeGuard;
     @Autowired private BedRepository bedRepository;
+    @Autowired private com.hms.security.SecurityContextHelper securityHelper;
+    @Autowired private com.hms.service.hospital.HospitalStaffing hospitalStaffing;
 
     public BedController(BedService bedService) {
         this.bedService = bedService;
@@ -35,8 +37,9 @@ public class BedController {
         return ResponseEntity.ok(bedService.getAvailableBeds(wardId));
     }
 
+    // Reception too: a facility without a nurse in-charge still has to turn its beds over.
     @PostMapping("/{bedId}/cleaned")
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','NURSE_INCHARGE')")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','NURSE_INCHARGE','RECEPTIONIST','DOCTOR')")
     public ResponseEntity<?> markCleaned(@PathVariable Long bedId, @RequestBody(required = false) com.hms.dto.BedStatusChangeRequest req) {
         com.hms.entity.Bed bed = requireBedForWardAccess(bedId);
         if (!com.hms.entity.BedStatus.CLEANING.equals(bed.getStatus()))
@@ -75,6 +78,19 @@ public class BedController {
     private com.hms.entity.Bed requireBedForWardAccess(Long bedId) {
         com.hms.entity.Bed bed = bedRepository.findById(bedId)
                 .orElseThrow(() -> new IllegalArgumentException("Bed not found"));
+        String role = securityHelper.getCurrentUserRole();
+        // A doctor frees beds only where the doctor is also the front desk (Solo / Both mode,
+        // or no receptionist on staff).
+        if ("DOCTOR".equals(role) && !hospitalStaffing.of(securityHelper.getCurrentHospitalId()).doctorActsAsReception()) {
+            throw new org.springframework.security.access.AccessDeniedException("Reception marks beds cleaned in this hospital");
+        }
+        if ("RECEPTIONIST".equals(role) || "DOCTOR".equals(role)) {
+            // Reception works across every ward; only the tenant matters.
+            if (!java.util.Objects.equals(bed.getHospitalId(), securityHelper.getCurrentHospitalId())) {
+                throw new IllegalArgumentException("Bed not found");
+            }
+            return bed;
+        }
         nurseInchargeGuard.assertWardAccess(bed.getWardId());
         return bed;
     }

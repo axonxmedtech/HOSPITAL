@@ -8,6 +8,7 @@ import { validateForm } from '../utils/validation';
 import DateSelect from './DateSelect';
 import DobPicker from './DobPicker';
 import DuplicatePhoneConflictModal from './DuplicatePhoneConflictModal';
+import NoDoctorsHint from './NoDoctorsHint';
 
 /**
  * AppointmentModal - Shared modal for creating appointments
@@ -493,6 +494,7 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
               </select>
             )}
             {errors.doctorId && <p className="text-red-500 text-xs mt-1">{errors.doctorId}</p>}
+            <NoDoctorsHint doctors={doctors} />
           </div>
 
           {/* Date */}

@@ -18,6 +18,9 @@ const PORTAL_CONFIG = {
       { value: 'RECEPTIONIST', label: 'Reception & Registration' },
       { value: 'PHARMACIST', label: 'Pharmacy Services' },
       { value: 'NURSE', label: 'Nurse' },
+      // OT In-charge had no option here and no redirect below, so a hospital could create
+      // the role but its user could never sign in.
+      { value: 'OT_INCHARGE', label: 'Operation Theatre (OT)' },
     ],
   },
   CLINIC: {
@@ -94,7 +97,18 @@ const HospitalLogin = ({ portalType = 'HOSPITAL' }) => {
       if (!isValidRole) {
         authService.logout();
         const roleLabel = config.roles.find((r) => r.value === selectedRole)?.label || selectedRole;
-        setErrors({ submit: `Access Denied: You are not registered as ${roleLabel}.` });
+        // The password was right; only the department was wrong. Say which one this account
+        // uses and pick it, so the user just signs in again instead of guessing.
+        const ownRole = response.role === 'NURSE_INCHARGE' ? 'NURSE' : response.role;
+        const own = config.roles.find((r) => r.value === ownRole);
+        if (own) {
+          setSelectedRole(own.value);
+          setErrors({
+            submit: `This account is not registered for ${roleLabel}. It signs in as "${own.label}" — we've selected that for you. Press Access Portal again.`,
+          });
+        } else {
+          setErrors({ submit: `Access Denied: You are not registered as ${roleLabel}.` });
+        }
         return;
       }
 
@@ -129,13 +143,18 @@ const HospitalLogin = ({ portalType = 'HOSPITAL' }) => {
         navigate('/hospital/nurse');
       } else if (response.role === 'NURSE_INCHARGE') {
         navigate('/hospital/nurse-incharge');
+      } else if (response.role === 'OT_INCHARGE') {
+        navigate('/hospital/ot-incharge');
       } else {
         setErrors({ submit: 'Invalid user role' });
       }
     } catch (err) {
       console.error('Login error:', err);
+      const message = extractApiError(err, 'Login failed. Please check your credentials.');
       setErrors({
-        submit: extractApiError(err, 'Login failed. Please check your credentials.'),
+        submit: /invalid credentials/i.test(message)
+          ? `Wrong email or password. Check both, and that this is the ${config.title.replace(/ Login$/, '').toLowerCase()} login page for your account.`
+          : message,
       });
     } finally {
       setLoading(false);
@@ -308,6 +327,15 @@ const HospitalLogin = ({ portalType = 'HOSPITAL' }) => {
                     )}
                   </button>
                 </div>
+                <details className="text-sm text-gray-600">
+                  <summary className="cursor-pointer select-none text-gray-700 hover:text-gray-900">
+                    Forgot your password?
+                  </summary>
+                  <p className="mt-2">
+                    Staff: ask your administrator to reset it from the Staff screen (Reset
+                    Password). Administrators: contact AxonX support to reset yours.
+                  </p>
+                </details>
               </form>
             </div>
           </div>

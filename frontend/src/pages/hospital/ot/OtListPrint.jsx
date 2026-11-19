@@ -4,6 +4,7 @@ import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
 import otService from '../../../services/otService';
 import { extractApiError } from '../../../utils/apiError';
+import { localIsoDate } from '../../../utils/date';
 import { backdropProps } from '../../../utils/modalA11y';
 import { printHtml } from '../../../utils/printHtml';
 
@@ -19,7 +20,7 @@ const fmtTime = (dt) =>
 const OtListPrint = ({ onClose }) => {
   const { error: toastError } = useToast();
   const user = authService.getCurrentUser();
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(localIsoDate());
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
 

@@ -5,8 +5,9 @@ import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
 import nurseService from '../../../services/nurseService';
 import { extractApiError } from '../../../utils/apiError';
+import { localIsoDate } from '../../../utils/date';
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => localIsoDate();
 const fmtDate = (v) => {
   if (!v) return '—';
   try {

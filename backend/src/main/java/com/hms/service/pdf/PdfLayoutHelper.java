@@ -31,6 +31,23 @@ public class PdfLayoutHelper {
     protected static final Font RED_TITLE_FONT = FontFactory.getFont(FontFactory.TIMES_BOLD, 22, Font.BOLD, NAVY_BLUE);
     protected static final Font RED_DOCTOR_FONT = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, Font.BOLD, NAVY_BLUE);
 
+    private static final java.util.regex.Pattern DOCTOR_TITLE_PREFIX =
+            java.util.regex.Pattern.compile("^\\s*dr\\.?\\s+", java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    /**
+     * The hospital's own letterhead address, or "" when it has none. Letterheads used to fall back
+     * to a specific real clinic's address, which then printed on every other tenant's documents.
+     */
+    static String hospitalAddress(Hospital hospital) {
+        return (hospital != null && hospital.getAddress() != null) ? hospital.getAddress().trim() : "";
+    }
+
+    /** "Dr. NAME" — without doubling a title the stored name already carries ("Dr Asha" → "Dr. ASHA"). */
+    static String doctorTitle(String name) {
+        String bare = DOCTOR_TITLE_PREFIX.matcher(name == null ? "" : name).replaceFirst("").trim();
+        return "Dr. " + (bare.isEmpty() ? "DOCTOR" : bare.toUpperCase());
+    }
+
     protected static BaseFont UNICODE_BASE_FONT;
     public static final Font UNICODE_NORMAL_FONT;
     public static final Font UNICODE_BOLD_FONT;
@@ -177,7 +194,7 @@ public class PdfLayoutHelper {
         left.setBorder(Rectangle.NO_BORDER);
         String hospitalName = (hospital != null && hospital.getName() != null) ? hospital.getName().toUpperCase() : "HOSPITAL";
         left.addElement(new Paragraph(hospitalName, TITLE_FONT));
-        String addr = (hospital != null && hospital.getAddress() != null) ? hospital.getAddress() : "Hospital Location Address Unavailable";
+        String addr = hospitalAddress(hospital);
         left.addElement(new Paragraph(addr, NORMAL_FONT));
         headerTable.addCell(left);
 
@@ -188,11 +205,14 @@ public class PdfLayoutHelper {
 
         PdfPTable contactSubTable = new PdfPTable(2);
         contactSubTable.setWidths(new float[]{1f, 2.5f});
-        String phoneVal = (hospital != null && hospital.getPhone() != null) ? hospital.getPhone() : "-";
-        addHeaderContactRow(contactSubTable, "Phone:", phoneVal);
-        String emailDomain = (hospital != null && hospital.getName() != null) ? hospital.getName().toLowerCase().replaceAll("\\s+", "") : "hospital";
-        addHeaderContactRow(contactSubTable, "E-mail:", "support@" + emailDomain + ".com");
-        right.addElement(contactSubTable);
+        // Only contact details the hospital actually has. An "E-mail: support@<name>.com" row used
+        // to be invented from the hospital name and printed on every invoice — an address that
+        // does not exist (Hospital has no e-mail field).
+        String phoneVal = (hospital != null && hospital.getPhone() != null) ? hospital.getPhone().trim() : "";
+        if (!phoneVal.isEmpty()) {
+            addHeaderContactRow(contactSubTable, "Phone:", phoneVal);
+            right.addElement(contactSubTable);
+        }
         headerTable.addCell(right);
 
         document.add(headerTable);
@@ -418,7 +438,7 @@ public class PdfLayoutHelper {
         String rawHospName = (hospital != null && hospital.getName() != null) ? hospital.getName().toUpperCase() : "HOSPITAL";
         Paragraph hospText = new Paragraph(rawHospName, RED_TITLE_FONT);
         hospText.setAlignment(Element.ALIGN_CENTER);
-        String addressText = (hospital != null && hospital.getAddress() != null) ? hospital.getAddress() : "\"Amrutwel\" Near water Tank, Shikrapur, Tal. Shirur, Dist. Pune.";
+        String addressText = hospitalAddress(hospital);
         Paragraph addrText = new Paragraph(addressText, FontFactory.getFont(FontFactory.HELVETICA, 8, Font.NORMAL, Color.DARK_GRAY));
         addrText.setAlignment(Element.ALIGN_CENTER);
 
@@ -439,16 +459,19 @@ public class PdfLayoutHelper {
         docTable.setWidths(new float[]{3.5f, 2f});
         docTable.setSpacingBefore(6f);
 
-        String docName = (doctor != null && doctor.getName() != null) ? doctor.getName().toUpperCase() : "DOCTOR";
-        String docSpec = (doctor != null && doctor.getSpecialization() != null) ? doctor.getSpecialization() : "M.B.B.S";
+        String docName = doctorTitle(doctor != null ? doctor.getName() : null);
+        // Never invent a qualification: a missing specialization used to print "(M.B.B.S)".
+        String docSpec = (doctor != null && doctor.getSpecialization() != null) ? doctor.getSpecialization().trim() : "";
         String docPhone = (doctor != null && doctor.getPhone() != null) ? doctor.getPhone() : "-";
 
         PdfPCell docLeft = new PdfPCell();
         docLeft.setBorder(Rectangle.NO_BORDER);
-        Paragraph pName = new Paragraph("Dr. " + docName, RED_DOCTOR_FONT);
-        Paragraph pSpec = new Paragraph("(" + docSpec + ")", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8, Font.NORMAL, Color.DARK_GRAY));
+        Paragraph pName = new Paragraph(docName, RED_DOCTOR_FONT);
         docLeft.addElement(pName);
-        docLeft.addElement(pSpec);
+        if (!docSpec.isEmpty()) {
+            docLeft.addElement(new Paragraph("(" + docSpec + ")",
+                    FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8, Font.NORMAL, Color.DARK_GRAY)));
+        }
         docTable.addCell(docLeft);
 
         PdfPCell docRight = new PdfPCell();

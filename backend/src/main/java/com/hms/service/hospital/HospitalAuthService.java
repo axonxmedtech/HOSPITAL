@@ -53,6 +53,9 @@ public class HospitalAuthService {
 
     private static final Logger logger = LoggerFactory.getLogger(HospitalAuthService.class);
 
+    @Autowired(required = false)
+    private HospitalStaffing hospitalStaffing;
+
     @Autowired
     private UserRepository userRepository;
 
@@ -291,7 +294,8 @@ public class HospitalAuthService {
         // Restrict receptionist login if Solo Doctor mode is active
         if ("RECEPTIONIST".equals(user.getRole()) && "SOLO".equals(settings.getReceptionMode())) {
             logger.warn("Login failed - Receptionist login restricted under Solo Doctor mode: {}", LogSanitizer.clean(request.getEmail()));
-            throw new ForbiddenException("Solo Doctor Mode is active. Receptionist login is restricted.");
+            throw new ForbiddenException("Solo Doctor Mode is active, so reception logins are switched off: the doctor runs the desk. "
+                    + "Ask your administrator to change Reception Mode in Settings if you need to sign in.");
         }
 
         // Staff-nurse login requires Separate Nurse Login to be ON. A Nurse Incharge
@@ -304,7 +308,7 @@ public class HospitalAuthService {
         // Verify user account is active (handle null as active for backward compatibility)
         if (user.getIsActive() != null && !user.getIsActive()) {
             logger.warn("Login failed - user account is inactive: {}", LogSanitizer.clean(request.getEmail()));
-            throw new UnauthorizedException("User account is inactive. Please contact administrator.");
+            throw new UnauthorizedException("This account has been deactivated. Ask your administrator to reactivate it.");
         }
 
         logger.info("Login successful for user: {} at hospital: {}", LogSanitizer.clean(request.getEmail()), hospital.getName());
@@ -416,7 +420,8 @@ public class HospitalAuthService {
 
         // Restrict receptionist profile access if Solo Doctor mode is active
         if ("RECEPTIONIST".equals(user.getRole()) && "SOLO".equals(settings.getReceptionMode())) {
-            throw new ForbiddenException("Solo Doctor Mode is active. Receptionist access is restricted.");
+            throw new ForbiddenException("Solo Doctor Mode is active, so reception logins are switched off. "
+                    + "Ask your administrator to change Reception Mode in Settings.");
         }
 
         response.setHospitalId(user.getHospitalId());
@@ -701,6 +706,7 @@ public class HospitalAuthService {
             settings.setDefaultConsultationLanguage(com.hms.service.pdf.PatientInstructionFormatter.normalizeMode(dto.getDefaultConsultationLanguage()));
         }
         hospitalSettingRepository.save(settings);
+        if (hospitalStaffing != null && settings.getHospital() != null) hospitalStaffing.evict(settings.getHospital().getId());
 
         try {
             webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"SETTINGS_UPDATED\"}");
@@ -734,6 +740,7 @@ public class HospitalAuthService {
                 });
         settings.setSeparateNurseLogin(separateNurseLogin);
         hospitalSettingRepository.save(settings);
+        if (hospitalStaffing != null && settings.getHospital() != null) hospitalStaffing.evict(settings.getHospital().getId());
 
         try {
             webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"SETTINGS_UPDATED\"}");
@@ -770,6 +777,7 @@ public class HospitalAuthService {
                 });
         settings.setOtInchargeEnabled(otInchargeEnabled);
         hospitalSettingRepository.save(settings);
+        if (hospitalStaffing != null && settings.getHospital() != null) hospitalStaffing.evict(settings.getHospital().getId());
 
         try {
             webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"SETTINGS_UPDATED\"}");
@@ -808,6 +816,7 @@ public class HospitalAuthService {
                 });
         settings.setBarcodeEnabled(barcodeEnabled);
         hospitalSettingRepository.save(settings);
+        if (hospitalStaffing != null && settings.getHospital() != null) hospitalStaffing.evict(settings.getHospital().getId());
 
         try {
             webSocketHandler.broadcast(user.getHospitalId(), "{\"type\":\"SETTINGS_UPDATED\"}");
@@ -884,6 +893,8 @@ public class HospitalAuthService {
                 billingHandler,
                 inClinic != null ? inClinic : settings.getInClinic()
         );
+        // Reception mode decides who covers the front desk; drop the cached staffing at once.
+        if (hospitalStaffing != null) hospitalStaffing.evict(user.getHospitalId());
 
         // Broadcast so every connected client for this hospital (admin, doctor,
         // receptionist) re-fetches its profile and re-renders tabs in real time —

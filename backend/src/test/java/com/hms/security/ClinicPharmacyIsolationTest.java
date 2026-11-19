@@ -85,6 +85,9 @@ class ClinicPharmacyIsolationTest {
             "PharmacyController",
             "PrescriptionPresetController",
             "ReceptionistController",
+            // New-tenant setup checklist. Admin-only, reads the caller's own hospital; reachable
+            // from /clinic (clinics need doctors and fees too), never /pharmacy.
+            "SetupStatusController",
             "VitalSettingsController",
             "WardController"));
 

@@ -293,9 +293,38 @@ public class DoctorService {
      * @param id Doctor ID
      */
     @Transactional
+    /**
+     * Refuses to remove a doctor who still has patients waiting or admitted: they would sit in a
+     * queue or on a ward list that no active doctor can open. The message says how to move them.
+     */
+    private void assertNoPatientsLeftBehind(Doctor doctor) {
+        java.util.List<String> left = new java.util.ArrayList<>();
+        long queued = opdRepository.countByDoctor_IdAndStatus(doctor.getId(), com.hms.entity.Opd.Status.QUEUED);
+        if (queued > 0) left.add(queued + " patient(s) waiting in OPD (use Change doctor or Cancel on the OPD list)");
+        long admitted = ipdAdmissionRepositoryForDelete.countByHospitalIdAndDoctorIdAndStatusIn(
+                doctor.getHospitalId(), doctor.getId(), java.util.List.of("ADMITTED", "DISCHARGE_PLANNED"));
+        if (admitted > 0) left.add(admitted + " admitted patient(s) (use Change Doctor on each IPD patient)");
+        long upcoming = appointmentRepository
+                .findByDoctorIdAndAppointmentDateGreaterThanEqualAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
+                        doctor.getId(), java.time.LocalDate.now())
+                .stream().filter(a -> java.util.Objects.equals(a.getHospitalId(), doctor.getHospitalId()))
+                .filter(a -> a.getStatus() == null || "SCHEDULED".equalsIgnoreCase(a.getStatus())
+                        || "CONFIRMED".equalsIgnoreCase(a.getStatus()))
+                .count();
+        if (upcoming > 0) left.add(upcoming + " upcoming appointment(s) (edit them to another doctor or cancel them)");
+        if (!left.isEmpty()) {
+            throw new IllegalArgumentException(com.hms.util.DoctorNames.withTitle(doctor.getName()) + " still has " + String.join("; ", left)
+                    + ". Move or close these first, then remove the doctor.");
+        }
+    }
+
+    @Autowired
+    private com.hms.repository.IpdAdmissionRepository ipdAdmissionRepositoryForDelete;
+
     public void deleteDoctor(String publicId, String reason) {
         // Check if doctor exists and belongs to this hospital
         Doctor doctor = getDoctorByPublicId(publicId);
+        assertNoPatientsLeftBehind(doctor);
 
         // Soft delete doctor
         doctor.setIsActive(false);

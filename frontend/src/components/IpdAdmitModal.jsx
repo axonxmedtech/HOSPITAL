@@ -17,6 +17,9 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
   const [doctors, setDoctors] = useState([]);
   const [selectedPatientId, setSelectedPatientId] = useState(null);
   const [selectedDoctorId, setSelectedDoctorId] = useState(null);
+  const [patientQuery, setPatientQuery] = useState('');
+  const [activePatientIds, setActivePatientIds] = useState(() => new Set());
+  const [optionsLoaded, setOptionsLoaded] = useState(false);
 
   const [primaryDiagnosis, setPrimaryDiagnosis] = useState(initialDiagnosis || opd?.problem || '');
   const [loading, setLoading] = useState(false);
@@ -51,19 +54,44 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
             console.error('Failed to load active admissions filter', e);
           }
 
+          setActivePatientIds(activePatientIds);
           setPatients(patList.filter((p) => !activePatientIds.has(Number(p.id))));
 
-          const docRes = await hospitalService.getDoctors();
-          const docList = docRes?.content || docRes || [];
+          const docRes = await hospitalService.getDoctors('', 0, 200);
+          const docList = (docRes?.content || docRes || []).filter((d) => d.isActive !== false);
           setDoctors(docList);
+          if (docList.length === 1) setSelectedDoctorId(Number(docList[0].id));
         }
       } catch (err) {
         console.error('Failed to load admission options', err);
+      } finally {
+        setOptionsLoaded(true);
       }
     };
     loadData().catch((err) => console.error('Failed to load admission options', err));
     setPrimaryDiagnosis(initialDiagnosis || opd?.problem || '');
   }, [isOpen, opd, initialDiagnosis]);
+
+  // Search the whole patient register, not just the 200 most recent, once the user types.
+  useEffect(() => {
+    if (!isOpen || opd) return undefined;
+    const q = patientQuery.trim();
+    if (q.length < 2) return undefined;
+    let live = true;
+    const t = setTimeout(async () => {
+      try {
+        const res = await hospitalService.getPatients(q, 0, 50);
+        const list = res?.content || res || [];
+        if (live) setPatients(list.filter((p) => !activePatientIds.has(Number(p.id))));
+      } catch (err) {
+        console.error('Patient search failed', err);
+      }
+    }, 300);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [patientQuery, isOpen, opd, activePatientIds]);
 
   useEffect(() => {
     setSelectedBed(null);
@@ -110,6 +138,10 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
       toastError('Please select a patient for admission');
       return;
     }
+    if (!opd && !selectedDoctorId) {
+      toastError('Select the doctor the patient is admitted under');
+      return;
+    }
 
     setLoading(true);
     try {
@@ -123,7 +155,7 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
         primaryDiagnosis,
       };
       const res = await hospitalService.createIpdAdmission(payload);
-      success('Patient admitted to ICU / IPD successfully');
+      success('Patient admitted');
       onSuccess && onSuccess(res);
       onClose();
     } catch (err) {
@@ -140,7 +172,7 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto border border-gray-100">
         <div className="flex justify-between items-center mb-5 pb-3 border-b border-gray-100">
           <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-            <span>🏥</span> Admit Patient to ICU / IPD
+            <span>🏥</span> Admit Patient
           </h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 font-bold text-xl">
             ✕
@@ -157,6 +189,14 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
               >
                 Select Patient *
               </label>
+              <input
+                type="search"
+                aria-label="Search patient"
+                value={patientQuery}
+                onChange={(e) => setPatientQuery(e.target.value)}
+                placeholder="Search by name, mobile or ID"
+                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm mb-2 focus:ring-2 focus:ring-sky-500 focus:outline-none"
+              />
               <select
                 id={`${formId}-patient`}
                 className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:outline-none"
@@ -166,10 +206,13 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
                 <option value="">-- Choose Patient --</option>
                 {patients.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name} (ID: {p.customId || p.id}, Mobile: {p.mobile || 'N/A'})
+                    {p.name} (ID: {p.customId || p.id}, Mobile: {p.mobile || p.phone || 'N/A'})
                   </option>
                 ))}
               </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Patient not listed? Register them first under Patients, then admit.
+              </p>
             </div>
           ) : (
             <div className="bg-sky-50 p-3 rounded-xl border border-sky-100 text-xs text-sky-900">
@@ -184,7 +227,7 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
                 htmlFor={`${formId}-doctor`}
                 className="block text-xs font-semibold text-gray-700 mb-1"
               >
-                Attending Doctor (Optional)
+                Attending Doctor *
               </label>
               <select
                 id={`${formId}-doctor`}
@@ -199,6 +242,11 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
                   </option>
                 ))}
               </select>
+              {optionsLoaded && doctors.length === 0 && (
+                <p className="text-xs text-amber-800 bg-amber-50 rounded p-2 mt-1">
+                  No doctors added yet. The admin adds them under Staff → Doctors.
+                </p>
+              )}
             </div>
           )}
 
@@ -210,7 +258,11 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
             >
               Ward *
             </label>
-            {wards && wards.length === 1 ? (
+            {optionsLoaded && wards.length === 0 ? (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+                No wards or beds are set up yet. The admin adds them under Rooms → Wards &amp; Beds.
+              </div>
+            ) : wards && wards.length === 1 ? (
               <div className="w-full px-3 py-2 bg-gray-50 border border-gray-200 text-gray-800 rounded-xl text-sm font-semibold flex items-center justify-between">
                 <span>{wards[0].wardName}</span>
                 <span className="text-xs px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full font-medium">

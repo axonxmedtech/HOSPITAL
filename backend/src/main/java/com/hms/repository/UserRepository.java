@@ -40,6 +40,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
         /** True if any user, active or not, holds this role. */
         boolean existsByRole(String role);
 
+        /** How many ACTIVE users (null isActive counts as active) of one facility hold a role. */
+        @Query("SELECT COUNT(u) FROM User u WHERE u.hospitalId = :hospitalId AND u.role = :role "
+                        + "AND (u.isActive IS NULL OR u.isActive = true)")
+        long countActiveByHospitalIdAndRole(@org.springframework.data.repository.query.Param("hospitalId") Long hospitalId,
+                        @org.springframework.data.repository.query.Param("role") String role);
+
         /**
          * E-mail and stored password hash of every ACTIVE super admin, for the known-default
          * credential check at startup. Active means what the authentication filter means: null
