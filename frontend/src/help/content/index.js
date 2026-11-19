@@ -1,6 +1,7 @@
 import { admin, superAdmin } from './admin';
 import common from './common';
 import doctor from './doctor';
+import extra from './extra';
 import frontDesk from './frontDesk';
 import nursing from './nursing';
 import { ot, pharmacy } from './otPharmacy';
@@ -16,6 +17,7 @@ export const ALL_ENTRIES = [
   ...pharmacy,
   ...admin,
   ...superAdmin,
+  ...extra,
 ];
 
 /**
@@ -32,16 +34,34 @@ export function helpRolesFor(user) {
   return roles;
 }
 
-/** Answers that apply to this user: their roles, and modules their hospital has. */
+const PHARMACY_MODULES = [
+  'PHARMACY',
+  'SINGLE_PHARMACIST_ADMIN',
+  'SINGLE_PHARMACY',
+  'MULTI_PHARMACY',
+];
+
+/**
+ * Whether an answer fits the kind of facility. `types` limits it explicitly; otherwise a
+ * standalone pharmacy only gets answers for everyone or about the pharmacy, never hospital ones.
+ */
+function typeOk(e, type) {
+  if (e.types) return e.types.includes(type);
+  if (type !== 'PHARMACY') return true;
+  return e.roles.includes(ALL) || (e.modules || []).some((m) => PHARMACY_MODULES.includes(m));
+}
+
+/** Answers that apply to this user: their roles, their kind of facility and its modules. */
 export function entriesFor(user) {
   const roles = helpRolesFor(user);
   const modules = new Set(user?.modules || []);
+  const type = user?.hospitalType || 'HOSPITAL';
   const seen = new Set();
   return ALL_ENTRIES.filter((e) => {
     if (seen.has(e.id)) return false;
     const roleOk = e.roles.includes(ALL) || e.roles.some((r) => roles.includes(r));
     const modulesOk = !e.modules || e.modules.every((m) => modules.has(m));
-    if (roleOk && modulesOk) {
+    if (roleOk && modulesOk && typeOk(e, type)) {
       seen.add(e.id);
       return true;
     }

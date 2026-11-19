@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import SetupChecklist from '../components/SetupChecklist';
 import authService from '../services/authService';
 import { entriesFor, suggestionsFor } from './content';
 import { ADMIN, ROLE_NAMES } from './content/roles';
+import Guides from './Guides';
 import { flattenTabs, helpStore, useHelpState } from './helpStore';
 import { CONFIDENT_SCORE, rank } from './search';
 import { shortcutGroups } from './shortcuts';
+import Shot from './Shot';
 
 /**
  * Help & Support: a side panel available to every role. It never covers the page, so a user can
@@ -15,7 +16,7 @@ import { shortcutGroups } from './shortcuts';
  *  - Assistant: ask in your own words; it answers from the help written for your role and setup.
  *  - Topics: every answer for your role, by subject.
  *  - Shortcuts: the keyboard shortcuts.
- *  - Setup guide (admin): what the hospital still has to set up.
+ *  - Guides: setup guides (admin), a first-day guide for each role, and how-to tutorials.
  * Admins can raise a support ticket; other roles are pointed to their admin.
  */
 
@@ -35,6 +36,7 @@ function Answer({ entry, onGo }) {
           ))}
         </ol>
       )}
+      <Shot shotKey={entry.id} />
       {dest && (
         <button
           type="button"
@@ -296,11 +298,12 @@ export default function HelpPanel() {
     if (!helpStore.goTo('support')) navigate('/hospital/admin?tab=support');
   };
 
+  const activeView = panelView === 'setup' ? 'guides' : panelView;
   const views = [
     ['assistant', 'Assistant'],
+    ['guides', 'Guides'],
     ['topics', 'Topics'],
     ['shortcuts', 'Shortcuts'],
-    ...(isAdmin && user.hospitalType !== 'PHARMACY' ? [['setup', 'Setup guide']] : []),
   ];
 
   return (
@@ -330,13 +333,13 @@ export default function HelpPanel() {
             <button
               key={id}
               type="button"
-              aria-pressed={panelView === id}
+              aria-pressed={activeView === id}
               onClick={() => {
                 setPicked(null);
                 helpStore.setView(id);
               }}
               className={`px-3 py-2 text-xs font-semibold border-b-2 ${
-                panelView === id
+                activeView === id
                   ? 'border-sky-600 text-sky-700'
                   : 'border-transparent text-gray-500 hover:text-gray-800'
               }`}
@@ -369,11 +372,7 @@ export default function HelpPanel() {
           />
         )}
         {panelView === 'shortcuts' && <Shortcuts />}
-        {panelView === 'setup' && (
-          <div className="p-4 overflow-y-auto h-full">
-            <SetupChecklist alwaysShown onGo={goTo} />
-          </div>
-        )}
+        {(panelView === 'guides' || panelView === 'setup') && <Guides user={user} onGo={goTo} />}
       </div>
       <footer className="bg-white border-t border-gray-200 px-4 py-2 text-xs text-gray-500">
         {isAdmin ? (

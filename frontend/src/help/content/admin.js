@@ -9,7 +9,7 @@ export const admin = [
     category: 'Setting up',
     roles: A,
     q: 'Where do I start setting up a new hospital?',
-    a: 'Follow the setup guide: Help → Setup guide (also on your Overview). It lists what your hospital still needs — doctors, reception or Solo mode, fees, wards and beds, ICU, theatres, nurses, medicines — each with a "Set up" button, and ticks itself as you go.',
+    a: 'Open Help → Guides. At the top, the setup checklist (also on your Overview) shows what is still missing and ticks itself as you go. Below it, "Set up your hospital / clinic / pharmacy" walks through every step for your plan in order — doctors, front desk, fees, wards, ICU, nurses, theatres, medicines — each with a button to the right screen.',
     tags: ['setup', 'getting started', 'onboarding', 'first time', 'checklist'],
   },
   {
@@ -33,6 +33,7 @@ export const admin = [
   },
   {
     id: 'admin-reset-password',
+    types: ['HOSPITAL', 'CLINIC', 'PHARMACY'],
     category: 'Staff',
     roles: A,
     q: 'How do I reset a staff member’s password?',
@@ -173,6 +174,7 @@ export const admin = [
   },
   {
     id: 'admin-audit',
+    types: ['HOSPITAL', 'CLINIC', 'PHARMACY'],
     category: 'Reports',
     roles: A,
     screens: ['audit-logs'],
@@ -183,6 +185,7 @@ export const admin = [
   },
   {
     id: 'admin-plan-usage',
+    types: ['HOSPITAL', 'CLINIC', 'PHARMACY'],
     category: 'Plan & account',
     roles: A,
     screens: ['plan-usage'],
@@ -193,6 +196,7 @@ export const admin = [
   },
   {
     id: 'admin-support-ticket',
+    types: ['HOSPITAL', 'CLINIC', 'PHARMACY'],
     category: 'Plan & account',
     roles: A,
     screens: ['support'],

@@ -29,6 +29,14 @@ const MODULES = [
   'PHARMACY',
   'HOSPITAL_INVENTORY',
 ];
+// Every module key the backend knows (EntitlementRegistry), including the pharmacy tiers.
+const VALID_MODULES = [
+  ...MODULES,
+  'MEDICAL_INVENTORY',
+  'SINGLE_PHARMACIST_ADMIN',
+  'SINGLE_PHARMACY',
+  'MULTI_PHARMACY',
+];
 
 const user = (role, extra = {}) => ({ role, name: 'Asha Rao', modules: MODULES, ...extra });
 
@@ -65,7 +73,7 @@ describe('help content', () => {
       expect(e.category, e.id).toBeTruthy();
       expect(e.roles?.length, e.id).toBeGreaterThan(0);
       e.roles.forEach((r) => expect(VALID_ROLES.has(r), `${e.id}: role ${r}`).toBe(true));
-      (e.modules || []).forEach((m) => expect(MODULES, `${e.id}: module ${m}`).toContain(m));
+      (e.modules || []).forEach((m) => expect(VALID_MODULES, `${e.id}: module ${m}`).toContain(m));
     }
     expect(ALL_ENTRIES.length).toBeGreaterThan(100);
   });
@@ -86,6 +94,35 @@ describe('help content', () => {
     );
     expect(clinic).toContain('admin-fees');
     expect(clinic).not.toContain('admin-wards');
+  });
+
+  it('a standalone pharmacy gets pharmacy answers, never hospital ones', () => {
+    const owner = entriesFor({
+      role: 'HOSPITAL_ADMIN',
+      hospitalType: 'PHARMACY',
+      modules: ['PHARMACY', 'MULTI_PHARMACY'],
+    }).map((e) => e.id);
+    expect(owner).toEqual(
+      expect.arrayContaining([
+        'pa-branches',
+        'ph-sell',
+        'admin-plan-usage',
+        'common-change-password',
+      ])
+    );
+    [
+      'admin-add-doctor',
+      'admin-reception-mode',
+      'desk-register-patient',
+      'admin-import-patients',
+      'pa-add-pharmacist',
+    ].forEach((id) => expect(owner).not.toContain(id));
+    const pharmacist = entriesFor({
+      role: 'PHARMACIST',
+      hospitalType: 'PHARMACY',
+      modules: ['PHARMACY'],
+    }).map((e) => e.id);
+    expect(pharmacist).not.toContain('ph-dispense');
   });
 
   it('a doctor who runs the desk also gets the front-desk answers', () => {
@@ -156,7 +193,7 @@ describe('help panel', () => {
     expect(
       screen.getAllByRole('button', { name: 'Raise a support ticket' }).length
     ).toBeGreaterThan(0);
-    expect(screen.getByRole('button', { name: 'Setup guide' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Guides' })).toBeInTheDocument();
   });
 
   it('topics open the chosen answer, and the shortcuts are listed', async () => {
@@ -169,7 +206,6 @@ describe('help panel', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Shortcuts' }));
     expect(screen.getByText('Command bar: go to any screen or search help')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Setup guide' })).not.toBeInTheDocument();
   });
 });
 

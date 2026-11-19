@@ -9,7 +9,7 @@ const doctor = [
     category: 'OPD consultation',
     roles: DOC,
     modules: ['OPD'],
-    screens: ['overview', 'opd', 'queue'],
+    screens: ['overview', 'opd'],
     goTo: 'opd',
     q: 'Where do I see the patients waiting for me?',
     a: 'Overview shows your current and next patient and the queue. The OPD screen (Live view) lists every waiting visit with its place in line.',
