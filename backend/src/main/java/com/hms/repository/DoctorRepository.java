@@ -97,4 +97,10 @@ public interface DoctorRepository extends JpaRepository<Doctor, Long> {
             + "OR LOWER(d.specialization) LIKE LOWER(CONCAT('%', :term, '%')))")
     List<Doctor> searchActiveByNameOrSpecialization(@Param("hospitalId") Long hospitalId,
             @Param("term") String term);
+
+    // ── plan limits (PlanLimitService) ──
+    long countByHospitalIdAndIsActiveTrue(Long hospitalId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT d.hospitalId, COUNT(d) FROM Doctor d WHERE d.isActive = true GROUP BY d.hospitalId")
+    java.util.List<Object[]> countActivePerHospital();
 }

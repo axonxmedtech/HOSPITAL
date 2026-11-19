@@ -1,6 +1,8 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { isPhoneViewport, mobileNav, useMobileNavOpen } from '../hooks/useMobileNav';
+import AccessBanner from './plan/AccessBanner';
+import AccessLabel from './plan/AccessLabel';
 import UserMenu from './UserMenu';
 
 const Navbar = ({ title, user, onLogout, onProfile, onSupport, actions, onToggleSidebar }) => {
@@ -55,6 +57,7 @@ const Navbar = ({ title, user, onLogout, onProfile, onSupport, actions, onToggle
             />
           </svg>
         </button>
+        <AccessLabel className="mr-auto ml-1" />
 
         {/* Right side - User menu and single doctor toggle */}
         <div className="flex items-center gap-2 sm:gap-4 min-w-0">
@@ -181,6 +184,7 @@ const Navbar = ({ title, user, onLogout, onProfile, onSupport, actions, onToggle
           <UserMenu user={user} onLogout={onLogout} onProfile={onProfile} onSupport={onSupport} />
         </div>
       </div>
+      <AccessBanner />
     </header>
   );
 };

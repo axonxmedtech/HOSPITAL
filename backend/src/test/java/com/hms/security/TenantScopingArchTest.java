@@ -55,6 +55,12 @@ class TenantScopingArchTest {
             "IpdAdmissionService#changeDoctor",
             // hospitalRepository.findById(the caller's own hospital id from the security context).
             "SetupStatusController#status",
+            // Plan limits and access state: the hospital id is the caller's own (security context)
+            // or, for the Super Admin, the hospital resolved from its public id.
+            "PlanLimitService#limitFor",
+            "PlanLimitService#setOverrides",
+            "PlanLimitService#usage",
+            "TenantAccessService#accessFor",
             "BedStatusService#history",
             "BillingController#downloadReceipt",
             "BillingController#getIpdBill",

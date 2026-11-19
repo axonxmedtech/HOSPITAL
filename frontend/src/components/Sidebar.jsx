@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { mobileNav, useMobileNavOpen } from '../hooks/useMobileNav';
 import { titleCase } from '../utils/text';
+import AccessLabel from './plan/AccessLabel';
 
 // Icon mapping for sidebar menu items
 const menuIcons = {
@@ -985,6 +986,7 @@ const SidebarContent = ({
               >
                 {titleCase(footerData)}
               </p>
+              <AccessLabel className="mt-1" />
             </div>
           </div>
         </div>

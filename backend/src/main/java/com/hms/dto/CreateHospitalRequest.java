@@ -79,4 +79,10 @@ public class CreateHospitalRequest {
     @NotBlank(message = "Billing period is required (MONTHLY or YEARLY)")
     @Pattern(regexp = "^(MONTHLY|YEARLY)$", message = "Billing period must be MONTHLY or YEARLY")
     private String billingPeriod;
+
+    /** Create as a demo account that ends after {@link #demoDays} days. */
+    private Boolean isDemo = false;
+
+    /** Demo length in days (1–365); required when isDemo. */
+    private Integer demoDays;
 }

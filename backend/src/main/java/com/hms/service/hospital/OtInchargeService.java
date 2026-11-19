@@ -22,6 +22,19 @@ import org.slf4j.LoggerFactory;
 
 @Service
 public class OtInchargeService {
+
+    // Setter-injected so every existing construction of this service keeps working; absent in
+    // plain unit tests, where no plan limit applies.
+    private com.hms.service.subscription.PlanLimitService planLimits;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setPlanLimits(com.hms.service.subscription.PlanLimitService planLimits) {
+        this.planLimits = planLimits;
+    }
+
+    private void requireRoom(Long hospitalId, com.hms.entitlement.PlanLimit key, long adding) {
+        if (planLimits != null) planLimits.requireRoom(hospitalId, key, adding);
+    }
     private static final String REFRESH_DATA_MESSAGE = "{\"type\":\"REFRESH_DATA\"}";
     private static final String OT_INCHARGE_NOT_FOUND = "OT Incharge not found";
 
@@ -57,6 +70,7 @@ public class OtInchargeService {
             throw new IllegalArgumentException("Email already exists");
         }
 
+        requireRoom(hospitalId, com.hms.entitlement.PlanLimit.STAFF_LOGINS, 1);
         User otIncharge = new User();
         otIncharge.setName(name);
         otIncharge.setEmail(email);

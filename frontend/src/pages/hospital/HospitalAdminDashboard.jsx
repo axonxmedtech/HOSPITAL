@@ -48,6 +48,7 @@ import PatientFormFields, {
   stripPatientPayload,
 } from '../../components/PatientFormFields';
 import PatientModal from '../../components/PatientModal';
+import PlanUsage from '../../components/plan/PlanUsage';
 import PrescriptionPresetsManager from '../../components/PrescriptionPresetsManager';
 import ProfileModal from '../../components/ProfileModal';
 import SetupChecklist from '../../components/SetupChecklist';
@@ -2282,6 +2283,7 @@ const HospitalAdminDashboard = () => {
     { id: 'analytics', label: 'Reports & Analytics', icon: null, requiredModule: 'REPORTS' },
     { id: 'audit-logs', label: 'Audit Logs', icon: null, requiredModule: null },
     { id: 'settings', label: 'Settings', icon: null, requiredModule: null },
+    { id: 'plan-usage', label: 'Plan & Usage', icon: null, requiredModule: null },
     { id: 'support', label: 'Support', icon: null, requiredModule: null },
     { id: 'quick-notes', label: 'Quick Notes', icon: null, requiredModule: null },
     { id: 'symptom-presets', label: 'Symptom Presets', icon: null, requiredModule: null },
@@ -2318,6 +2320,7 @@ const HospitalAdminDashboard = () => {
       { id: 'pharmacy', label: 'Analytics', icon: null, requiredModule: null },
       pick('audit-logs'),
       pick('settings'),
+      pick('plan-usage'),
       pick('support'),
     ].filter(Boolean);
   } else {
@@ -2387,7 +2390,11 @@ const HospitalAdminDashboard = () => {
         'in-clinic-presets',
       ],
     },
-    { id: 'group-administration', label: 'Administration', tabIds: ['settings', 'support'] },
+    {
+      id: 'group-administration',
+      label: 'Administration',
+      tabIds: ['settings', 'plan-usage', 'support'],
+    },
   ];
 
   const usesGroupedSidebar = user?.hospitalType === 'HOSPITAL' || user?.hospitalType === 'CLINIC';
@@ -3091,6 +3098,7 @@ const HospitalAdminDashboard = () => {
             activeTab !== 'pharmacy' &&
             activeTab !== 'pathology' &&
             activeTab !== 'support' &&
+            activeTab !== 'plan-usage' &&
             activeTab !== 'inventory' &&
             activeTab !== 'hospital-inventory' &&
             activeTab !== 'daily-collection' && (
@@ -5712,6 +5720,8 @@ const HospitalAdminDashboard = () => {
                   )}
                 </div>
               )}
+
+              {activeTab === 'plan-usage' && <PlanUsage />}
 
               {activeTab === 'support' && (
                 <div className="space-y-6">

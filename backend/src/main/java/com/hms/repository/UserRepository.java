@@ -188,4 +188,13 @@ public interface UserRepository extends JpaRepository<User, Long> {
                         @org.springframework.data.repository.query.Param("hospitalId") String hospitalId,
                         @org.springframework.data.repository.query.Param("search") String search,
                         org.springframework.data.domain.Pageable pageable);
+
+        // ── plan limits (PlanLimitService) ──
+        /** Every active login of one facility, the admin included (null isActive counts as active). */
+        @Query("SELECT COUNT(u) FROM User u WHERE u.hospitalId = :hospitalId AND (u.isActive IS NULL OR u.isActive = true)")
+        long countActiveByHospitalId(@org.springframework.data.repository.query.Param("hospitalId") Long hospitalId);
+
+        @Query("SELECT u.hospitalId, COUNT(u) FROM User u WHERE u.hospitalId IS NOT NULL "
+                        + "AND (u.isActive IS NULL OR u.isActive = true) GROUP BY u.hospitalId")
+        java.util.List<Object[]> countActivePerHospital();
 }

@@ -71,6 +71,12 @@ public class GlobalExceptionHandler {
      * Handle an authenticated caller's explicit permission refusal without turning an expected
      * policy decision into the catch-all 500 response.
      */
+    /** A plan limit was reached: refused, with the upgrade contact in the message. */
+    @ExceptionHandler(PlanLimitReachedException.class)
+    public ResponseEntity<ApiResponse<Void>> handlePlanLimit(PlanLimitReachedException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiResponse.error(ex.getMessage()));
+    }
+
     @ExceptionHandler(ForbiddenException.class)
     public ResponseEntity<ApiResponse<Void>> handleForbidden(ForbiddenException ex) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)

@@ -52,4 +52,9 @@ public interface HospitalRepository extends JpaRepository<Hospital, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT h FROM Hospital h WHERE h.id = (SELECT MIN(h2.id) FROM Hospital h2)")
     Optional<Hospital> findGlobalIpdNumberLock();
+
+    /** Locks one hospital row, so plan-limit checks for that hospital run one at a time. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT h FROM Hospital h WHERE h.id = :id")
+    Optional<Hospital> lockById(@Param("id") Long id);
 }

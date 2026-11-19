@@ -208,6 +208,10 @@ public class DatabaseMigrationRunner {
         addColumnIfMissing("opd", "cancel_reason", VARCHAR_255_NULL);
         addColumnIfMissing("opd", "cancelled_by", VARCHAR_150_NULL);
         addColumnIfMissing("opd", "cancelled_at", "DATETIME NULL");
+        // Demo accounts (V31). plan_limits / hospital_limit_overrides are created by Hibernate here.
+        addColumnIfMissing("hospitals", "is_demo", "BIT(1) NOT NULL DEFAULT b'0'");
+        addColumnIfMissing("hospitals", "demo_started_at", "DATETIME(6) NULL");
+        addColumnIfMissing("hospitals", "demo_ends_at", "DATETIME(6) NULL");
         ensureBedStatusAuditsTable(); // NEW — Nursing Mgmt Phase C1
         makeInventoryItemHospitalIdNullable();
 

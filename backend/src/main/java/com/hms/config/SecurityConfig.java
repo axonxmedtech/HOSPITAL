@@ -53,6 +53,9 @@ public class SecurityConfig {
     private JwtAuthenticationFilter jwtAuthenticationFilter;
 
     @Autowired
+    private com.hms.security.TenantAccessGuardFilter tenantAccessGuardFilter;
+
+    @Autowired
     private RateLimitFilter rateLimitFilter;
 
     @Value("${cors.allowed.origins}")
@@ -135,7 +138,9 @@ public class SecurityConfig {
                 // Both custom filters reference the same built-in anchor. Java's stable sort
                 // preserves insertion order, so rateLimitFilter executes first.
                 .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                // Demo ended / plan expired: applied once the caller's tenant is known.
+                .addFilterAfter(tenantAccessGuardFilter, JwtAuthenticationFilter.class);
 
         return http.build();
     }

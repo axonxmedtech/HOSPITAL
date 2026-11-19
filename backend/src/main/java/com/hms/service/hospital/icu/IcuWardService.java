@@ -38,6 +38,19 @@ import java.util.stream.Collectors;
 @Service
 public class IcuWardService {
 
+    // Setter-injected so every existing construction of this service keeps working; absent in
+    // plain unit tests, where no plan limit applies.
+    private com.hms.service.subscription.PlanLimitService planLimits;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setPlanLimits(com.hms.service.subscription.PlanLimitService planLimits) {
+        this.planLimits = planLimits;
+    }
+
+    private void requireRoom(Long hospitalId, com.hms.entitlement.PlanLimit key, long adding) {
+        if (planLimits != null) planLimits.requireRoom(hospitalId, key, adding);
+    }
+
     private static final Logger logger = LoggerFactory.getLogger(IcuWardService.class);
 
     @Autowired private IcuWardRepository icuWardRepository;
@@ -88,6 +101,7 @@ public class IcuWardService {
         baseReq.setTotalBeds(req.getTotalBeds());
         baseReq.setFloorNumber(req.getFloorNumber());
 
+        requireRoom(hospitalId, com.hms.entitlement.PlanLimit.ICU_BEDS, req.getTotalBeds() == null ? 0 : req.getTotalBeds());
         WardResponse baseWard = wardService.createWard(baseReq);
 
         // 2. Set incharge nurse if provided

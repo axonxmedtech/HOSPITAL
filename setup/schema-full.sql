@@ -250,6 +250,9 @@ CREATE TABLE `hospitals` (
   `plan` varchar(20) DEFAULT NULL,
   `public_id` varchar(255) NOT NULL,
   `subscription_status` varchar(20) NOT NULL DEFAULT 'ACTIVE',
+  `is_demo` bit(1) NOT NULL DEFAULT b'0',
+  `demo_started_at` datetime(6) DEFAULT NULL,
+  `demo_ends_at` datetime(6) DEFAULT NULL,
   `type` varchar(20) NOT NULL DEFAULT 'HOSPITAL',
   `is_single_doctor` tinyint(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
@@ -1038,6 +1041,24 @@ CREATE TABLE `plans` (
   `updated_at` datetime(6) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `UK_plans_public_id` (`public_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+DROP TABLE IF EXISTS `plan_limits`;
+CREATE TABLE `plan_limits` (
+  `plan_id` bigint NOT NULL,
+  `limit_key` varchar(40) NOT NULL,
+  `max_value` int DEFAULT NULL,
+  PRIMARY KEY (`plan_id`,`limit_key`),
+  CONSTRAINT `fk_plan_limits_plan` FOREIGN KEY (`plan_id`) REFERENCES `plans` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+DROP TABLE IF EXISTS `hospital_limit_overrides`;
+CREATE TABLE `hospital_limit_overrides` (
+  `hospital_id` bigint NOT NULL,
+  `limit_key` varchar(40) NOT NULL,
+  `max_value` int DEFAULT NULL,
+  PRIMARY KEY (`hospital_id`,`limit_key`),
+  CONSTRAINT `fk_hospital_limit_overrides_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 --

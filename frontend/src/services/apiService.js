@@ -136,6 +136,12 @@ const handleResponseError = (error) => {
     error.name = 'ApiError';
   }
 
+  // A change refused because the demo ended or the plan lapsed: refresh the label and banner now.
+  const code = error.response?.data?.code;
+  if (code === 'DEMO_ENDED' || code === 'PLAN_EXPIRED') {
+    import('../hooks/useAccessStatus').then((m) => m.refreshAccessStatus()).catch(() => {});
+  }
+
   // If 401 Unauthorized (token expired/missing) on a non-login call, redirect to login
   const isLoginEndpoint = error.config?.url?.includes('/login');
   if (error.response?.status === 401 && !isLoginEndpoint) {

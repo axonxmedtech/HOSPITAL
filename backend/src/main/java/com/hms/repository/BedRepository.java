@@ -65,4 +65,17 @@ public interface BedRepository extends JpaRepository<Bed, Long> {
      */
     @Query("SELECT b.status, COUNT(b) FROM Bed b WHERE b.hospitalId = :hospitalId GROUP BY b.status")
     java.util.List<Object[]> countByStatusForHospital(@Param("hospitalId") Long hospitalId);
+
+    // ── plan limits (PlanLimitService) ──
+    long countByHospitalId(Long hospitalId);
+
+    long countByHospitalIdAndWardIdIn(Long hospitalId, java.util.Collection<Long> wardIds);
+
+    /** [hospitalId, beds] for every hospital: the Super Admin overview's usage figures. */
+    @Query("SELECT b.hospitalId, COUNT(b) FROM Bed b GROUP BY b.hospitalId")
+    java.util.List<Object[]> countPerHospital();
+
+    /** [hospitalId, ICU beds]: beds in wards registered as ICU wards. */
+    @Query("SELECT b.hospitalId, COUNT(b) FROM Bed b WHERE b.wardId IN (SELECT i.wardId FROM IcuWard i) GROUP BY b.hospitalId")
+    java.util.List<Object[]> countIcuPerHospital();
 }

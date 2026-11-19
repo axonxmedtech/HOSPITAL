@@ -280,6 +280,8 @@ public final class TenantTables {
         // Facility configuration the existing delete already removes.
         retain("hospital_settings", Ownership.DIRECT);
         retain("hospital_modules", Ownership.DIRECT);
+        // Commercial terms agreed with the facility (extra beds, doctors ...): kept like its modules.
+        retain("hospital_limit_overrides", Ownership.DIRECT);
         retain("wards", Ownership.DIRECT);
         retain("icu_wards", Ownership.DIRECT);
         // Bed cleaning history has direct tenant ownership and an infection-control audit role.
@@ -296,6 +298,7 @@ public final class TenantTables {
         global("plans");
         global("plan_features");
         global("plan_modules");
+        global("plan_limits");
     }
 
     /** Every declared table. */
