@@ -50,7 +50,7 @@ public class OtRoomService {
         if (!OtRoom.CLEANING.equals(room.getStatus())) return;
         int turnover = room.getTurnoverMinutes() == null ? 15 : room.getTurnoverMinutes();
         boolean done = occupancyRepository.findTopByOtRoomIdAndOccupiedToIsNotNullOrderByOccupiedToDesc(room.getId())
-                .map(o -> !o.getOccupiedTo().plusMinutes(turnover).isAfter(java.time.LocalDateTime.now()))
+                .map(o -> !o.getOccupiedTo().plusMinutes(turnover).isAfter(java.time.LocalDateTime.now(java.time.ZoneId.systemDefault())))
                 .orElse(true);
         if (done) {
             room.setStatus(OtRoom.AVAILABLE);

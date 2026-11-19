@@ -62,7 +62,7 @@ class TenantScopingArchTest {
             "BillingController#updateBillItems",
             "BillingController#validateBillingAccess",
             "BillingPdfService#generateBillingReceiptPdf",
-            "BillingSchedulerService#processAdmissionCharge",
+            "BillingSchedulerService#bedPriceOn",
             "BillingService#autoGenerateOpdBill",
             "BillingService#createOpdBill",
             // Reads the admission and ward of an already tenant-scoped bill, and checks both

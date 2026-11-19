@@ -53,7 +53,7 @@ public class BillingSchedulerService {
 
         // Only patients still in the hospital accrue bed days.
         List<IpdAdmission> activeAdmissions = ipdAdmissionRepository.findByStatusIn(ACTIVE);
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(java.time.ZoneId.systemDefault());
 
         int processed = 0;
 
@@ -99,7 +99,7 @@ public class BillingSchedulerService {
         org.springframework.transaction.support.TransactionTemplate own =
                 new org.springframework.transaction.support.TransactionTemplate(transactionTemplate.getTransactionManager());
         own.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-        own.executeWithoutResult(status -> processAdmissionCharge(admission, LocalDate.now()));
+        own.executeWithoutResult(status -> processAdmissionCharge(admission, LocalDate.now(java.time.ZoneId.systemDefault())));
     }
 
     /**
@@ -140,31 +140,13 @@ public class BillingSchedulerService {
         boolean added = false;
         for (LocalDate day = first; !day.isAfter(today); day = day.plusDays(1)) {
             String description = "Daily Bed Charge - " + day.format(DateTimeFormatter.ISO_DATE);
-            if (charged.contains(description)) continue;
-
-            // 3. Resolve price from the ward occupied at the start of that day.
-            BigDecimal bedPrice = BigDecimal.ZERO;
-            Long wardId = wardAt(history, day.atStartOfDay(), admission.getWardId());
-            if (wardId != null) {
-                Ward ward = wardRepository.findById(wardId).orElse(null);
-                if (ward != null && ward.getBedPrice() != null) {
-                    bedPrice = ward.getBedPrice();
-                }
+            // A day already charged is never charged again; a free ward adds nothing.
+            BigDecimal bedPrice = charged.contains(description) ? BigDecimal.ZERO : bedPriceOn(history, day, admission);
+            if (bedPrice.signum() > 0) {
+                addBedCharge(bill, description, bedPrice);
+                charged.add(description);
+                added = true;
             }
-            if (bedPrice.compareTo(BigDecimal.ZERO) <= 0) {
-                logger.info("Bed price is zero for ward linked to admission {}, skipping {}.", admission.getId(), day);
-                continue;
-            }
-
-            // 4. Record the new Billing Item.
-            BillingItem newItem = new BillingItem();
-            newItem.setBillingId(bill.getId());
-            newItem.setHospitalId(bill.getHospitalId());
-            newItem.setDescription(description);
-            newItem.setAmount(bedPrice);
-            billingItemRepository.save(newItem);
-            charged.add(description);
-            added = true;
         }
 
         // 5. Re-derive the total AND the status from the lines and the ledger. Bumping only the
@@ -175,13 +157,34 @@ public class BillingSchedulerService {
         }
     }
 
+    /** Price of the ward occupied at the start of {@code day}, from the bed history; zero if none. */
+    private BigDecimal bedPriceOn(List<IpdBedHistory> history, LocalDate day, IpdAdmission admission) {
+        Long wardId = wardAt(history, day.atStartOfDay(), admission.getWardId());
+        BigDecimal price = wardId == null ? null
+                : wardRepository.findById(wardId).map(Ward::getBedPrice).orElse(null);
+        if (price == null || price.signum() <= 0) {
+            logger.info("Bed price is zero for ward linked to admission {}, skipping {}.", admission.getId(), day);
+            return BigDecimal.ZERO;
+        }
+        return price;
+    }
+
+    private void addBedCharge(Billing bill, String description, BigDecimal bedPrice) {
+        BillingItem item = new BillingItem();
+        item.setBillingId(bill.getId());
+        item.setHospitalId(bill.getHospitalId());
+        item.setDescription(description);
+        item.setAmount(bedPrice);
+        billingItemRepository.save(item);
+    }
+
     /** The ward the patient was in at {@code at}; the current ward when history has no answer. */
     private static Long wardAt(List<IpdBedHistory> history, java.time.LocalDateTime at, Long fallback) {
         Long ward = null;
         for (IpdBedHistory h : history) {
-            if (h.getAssignedAt() == null || h.getAssignedAt().isAfter(at)) continue;
-            if (h.getReleasedAt() != null && !h.getReleasedAt().isAfter(at)) continue;
-            ward = h.getWardId();
+            boolean started = h.getAssignedAt() != null && !h.getAssignedAt().isAfter(at);
+            boolean stillThere = h.getReleasedAt() == null || h.getReleasedAt().isAfter(at);
+            if (started && stillThere) ward = h.getWardId();
         }
         return ward != null ? ward : fallback;
     }

@@ -16,6 +16,12 @@ const MODES = [
   ['UPI', 'UPI / Online'],
 ];
 
+/** Refund reason, or the payment's reference (UTR / card slip). */
+function txnDetail(t) {
+  if (t.kind !== 'REFUND') return t.reference || '—';
+  return t.note ? `Refund: ${t.note}` : 'Refund';
+}
+
 const DailyCollectionReport = () => {
   const [date, setDate] = useState(localIsoDate());
   const [data, setData] = useState(null);
@@ -54,7 +60,7 @@ const DailyCollectionReport = () => {
         </div>
         <div className="flex items-end gap-2 no-print">
           <label className="text-xs font-semibold text-gray-600">
-            Date
+            <span>Date</span>
             <input
               type="date"
               value={date}
@@ -133,8 +139,11 @@ const DailyCollectionReport = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {txns.map((t, i) => (
-                    <tr key={i} className={t.kind === 'REFUND' ? 'bg-red-50/40' : ''}>
+                  {txns.map((t) => (
+                    <tr
+                      key={t.id ?? `${t.time}-${t.billNo}-${t.kind}`}
+                      className={t.kind === 'REFUND' ? 'bg-red-50/40' : ''}
+                    >
                       <td className="px-4 py-2 whitespace-nowrap">
                         {t.time
                           ? new Date(t.time).toLocaleTimeString([], {
@@ -148,11 +157,7 @@ const DailyCollectionReport = () => {
                       </td>
                       <td className="px-4 py-2">{t.patientName}</td>
                       <td className="px-4 py-2">{t.mode}</td>
-                      <td className="px-4 py-2 text-gray-600">
-                        {t.kind === 'REFUND'
-                          ? `Refund${t.note ? `: ${t.note}` : ''}`
-                          : t.reference || '—'}
-                      </td>
+                      <td className="px-4 py-2 text-gray-600">{txnDetail(t)}</td>
                       <td className="px-4 py-2 text-gray-600">{t.recordedBy || '—'}</td>
                       <td
                         className={`px-4 py-2 text-right font-semibold whitespace-nowrap ${t.kind === 'REFUND' ? 'text-red-700' : 'text-gray-900'}`}

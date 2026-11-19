@@ -158,7 +158,7 @@ public class BedStatusService {
             t.setStatus("PENDING");
             String by = securityHelper.getCurrentUserEmail();
             t.setCreatedBy(by != null ? by : "SYSTEM");
-            t.setCreatedAt(java.time.LocalDateTime.now());
+            t.setCreatedAt(java.time.LocalDateTime.now(java.time.ZoneId.systemDefault()));
             cleaningTaskRepository.save(t);
         } catch (Exception e) {
             // A missing task must never undo the bed movement itself.

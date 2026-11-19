@@ -96,7 +96,7 @@ public class IpdClinicalState {
     /** The ventilation status in force now (INVASIVE / NIV / OFF), or null if never recorded. */
     public String ventilationStatus(Long ipdAdmissionId, Long hospitalId) {
         Set<Long> superseded = new HashSet<>(ventilatorRepository.findSupersededIds(ipdAdmissionId, hospitalId));
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(java.time.ZoneId.systemDefault());
         for (IcuVentilatorSetting s : ventilatorRepository
                 .findByIpdAdmissionIdAndHospitalIdAndIsActiveTrueOrderByObservedAtDescIdDesc(ipdAdmissionId, hospitalId)) {
             if (superseded.contains(s.getId())) continue;
@@ -144,7 +144,7 @@ public class IpdClinicalState {
 
     /** Ends what cannot outlive the admission: running infusions, and not-yet-started surgeries. */
     public void closeOutForDischarge(IpdAdmission ipd, String dischargeType) {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(java.time.ZoneId.systemDefault());
         for (IcuInfusion inf : infusionRepository
                 .findByIpdAdmissionIdAndHospitalIdAndIsActiveTrueAndStoppedAtIsNullOrderByStartedAtDesc(
                         ipd.getId(), ipd.getHospitalId())) {

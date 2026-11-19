@@ -39,6 +39,14 @@ public class BillingController {
     private static final String DOCTOR_ROLE = "DOCTOR";
     private static final String AMOUNT = "amount";
 
+    /** The money figures every bill response carries, all from the server's own arithmetic. */
+    private static void putMoney(Map<String, Object> out, com.hms.service.hospital.BillMoney money) {
+        out.put("grossAmount", money.gross());
+        out.put("discountAmount", money.discount());
+        out.put("paidAmount", money.paid());
+        out.put("balance", money.balance());
+    }
+
 
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(BillingController.class);
 
@@ -183,11 +191,8 @@ public class BillingController {
             asMap.put("medicines", medicines);
             // amount = net payable (after discount); grossAmount = the charges before it.
             asMap.put(AMOUNT, money.net());
-            asMap.put("grossAmount", money.gross());
-            asMap.put("discountAmount", money.discount());
-            asMap.put("paidAmount", money.paid());
+            putMoney(asMap, money);
             asMap.put("refundedAmount", com.hms.service.hospital.BillMoney.refunded(payments));
-            asMap.put("balance", money.balance());
             
             if (b.getPatientId() != null) {
                 com.hms.entity.Patient p = patientById.get(b.getPatientId());
@@ -351,12 +356,9 @@ public class BillingController {
         resp.put("billingId", bill.getId());
         resp.put("customId", bill.getCustomId());
         resp.put("status", bill.getPaymentStatus());
-        resp.put("grossAmount", money.gross());
-        resp.put("discountAmount", money.discount());
+        putMoney(resp, money);
         resp.put("discountReason", bill.getDiscountReason());
         resp.put("totalAmount", money.net());
-        resp.put("paidAmount", money.paid());
-        resp.put("balance", money.balance());
         java.util.List<Map<String,Object>> list = new java.util.ArrayList<>();
         for (BillingItem it : items) {
             Map<String,Object> m = new HashMap<>();
@@ -477,7 +479,7 @@ public class BillingController {
             @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE)
             java.time.LocalDate date) {
         validateBillingAccess();
-        return ResponseEntity.ok(billingService.dailyCollection(date != null ? date : java.time.LocalDate.now()));
+        return ResponseEntity.ok(billingService.dailyCollection(date != null ? date : java.time.LocalDate.now(java.time.ZoneId.systemDefault())));
     }
 
     @GetMapping("/patient/{patientPublicId}")
@@ -522,11 +524,8 @@ public class BillingController {
             asMap.put("payments", payments);
             // amount = net payable (after discount); grossAmount = the charges before it.
             asMap.put(AMOUNT, money.net());
-            asMap.put("grossAmount", money.gross());
-            asMap.put("discountAmount", money.discount());
-            asMap.put("paidAmount", money.paid());
+            putMoney(asMap, money);
             asMap.put("refundedAmount", com.hms.service.hospital.BillMoney.refunded(payments));
-            asMap.put("balance", money.balance());
             asMap.put("patientName", patient.getName());
             mapped.add(asMap);
         }

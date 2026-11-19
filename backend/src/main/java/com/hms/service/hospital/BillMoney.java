@@ -7,6 +7,8 @@ import com.hms.entity.BillingPayment;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Objects;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -33,39 +35,35 @@ public record BillMoney(BigDecimal gross, BigDecimal discount, BigDecimal net, B
                                List<BillingPayment> payments,
                                Supplier<BigDecimal> legacyBedPrice) {
         boolean hasLines = (items != null && !items.isEmpty()) || (medicines != null && !medicines.isEmpty());
-        BigDecimal gross = BigDecimal.ZERO;
-        if (hasLines) {
-            if (items != null) {
-                for (BillingItem it : items) {
-                    if (it.getAmount() != null) gross = gross.add(it.getAmount());
-                }
-            }
-            if (medicines != null) {
-                for (BillingMedicine m : medicines) {
-                    if (m.getAmount() != null) gross = gross.add(m.getAmount());
-                }
-            }
-        } else {
-            gross = bill.getAmount() != null ? bill.getAmount() : BigDecimal.ZERO;
-            if (gross.signum() == 0 && legacyBedPrice != null) {
-                BigDecimal bed = legacyBedPrice.get();
-                if (bed != null) gross = bed;
-            }
-        }
-
-        BigDecimal discount = bill.getDiscountAmount() != null ? bill.getDiscountAmount() : BigDecimal.ZERO;
-        if (discount.signum() < 0) discount = BigDecimal.ZERO;
-        if (discount.compareTo(gross) > 0) discount = gross;
-
-        BigDecimal paid = BigDecimal.ZERO;
-        if (payments != null) {
-            for (BillingPayment p : payments) {
-                if (p.getAmount() != null) paid = paid.add(p.getAmount());
-            }
-        }
-
+        BigDecimal gross = hasLines
+                ? sum(items, BillingItem::getAmount).add(sum(medicines, BillingMedicine::getAmount))
+                : unitemisedGross(bill, legacyBedPrice);
+        BigDecimal discount = clamp(orZero(bill.getDiscountAmount()), gross);
+        BigDecimal paid = sum(payments, BillingPayment::getAmount);
         BigDecimal net = gross.subtract(discount);
         return new BillMoney(gross, discount, net, paid, net.subtract(paid));
+    }
+
+    /** A bill with no lines is worth its stored amount; a legacy IPD bill stored at 0, its bed price. */
+    private static BigDecimal unitemisedGross(Billing bill, Supplier<BigDecimal> legacyBedPrice) {
+        BigDecimal stored = orZero(bill.getAmount());
+        if (stored.signum() != 0 || legacyBedPrice == null) return stored;
+        BigDecimal bed = legacyBedPrice.get();
+        return bed != null ? bed : stored;
+    }
+
+    /** A discount never goes below zero or above the charges. */
+    private static BigDecimal clamp(BigDecimal discount, BigDecimal gross) {
+        return discount.max(BigDecimal.ZERO).min(gross);
+    }
+
+    private static BigDecimal orZero(BigDecimal v) {
+        return v != null ? v : BigDecimal.ZERO;
+    }
+
+    private static <T> BigDecimal sum(List<T> rows, Function<T, BigDecimal> amount) {
+        if (rows == null) return BigDecimal.ZERO;
+        return rows.stream().map(amount).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     /** Sum of refund rows, as a positive number. */

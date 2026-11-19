@@ -76,9 +76,8 @@ class OpdVisitChangeTest {
     void setUp() {
         service = new OpdService(opdRepository, queueEntryRepository, patientRepository, doctorRepository,
                 userRepository, medicalRecordRepository, securityHelper, auditLogService, webSocketHandler,
-                vitalSettingsService);
+                vitalSettingsService, staffing);
         ReflectionTestUtils.setField(service, "billingService", billingService);
-        ReflectionTestUtils.setField(service, "staffing", staffing);
         asha = doctor(10L, "Dr Asha", "asha@h.test");
         ravi = doctor(11L, "Ravi", "ravi@h.test");
         visit = new Opd();

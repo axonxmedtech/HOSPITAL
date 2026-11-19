@@ -23,6 +23,8 @@ import java.util.List;
 @Service
 public class NurseWorkspaceService {
 
+    private static final String STATUS_DISCHARGED = "DISCHARGED";
+
     private static final int RECENT_LIMIT = 5;
 
     @Autowired private PatientNurseAssignmentRepository assignmentRepository;
@@ -403,16 +405,16 @@ public class NurseWorkspaceService {
 
         // Patients
         for (IpdAdmission ipd : ipdAdmissionRepository.findByHospitalIdAndStatusIn(hospitalId,
-                java.util.List.of("ADMITTED", "DISCHARGE_PLANNED", "DISCHARGED"))) {
+                java.util.List.of("ADMITTED", "DISCHARGE_PLANNED", STATUS_DISCHARGED))) {
             if (ipd.getWardId() == null || !wardIds.contains(ipd.getWardId())) continue;
             // A planned discharge is still in the bed and still needs nursing.
-            if (!"DISCHARGED".equalsIgnoreCase(ipd.getStatus())) {
+            if (!STATUS_DISCHARGED.equalsIgnoreCase(ipd.getStatus())) {
                 dto.getPatients().setTotal(dto.getPatients().getTotal() + 1);
             }
             if (ipd.getAdmissionDatetime() != null && today.equals(ipd.getAdmissionDatetime().toLocalDate())) {
                 dto.getPatients().setNewAdmissionsToday(dto.getPatients().getNewAdmissionsToday() + 1);
             }
-            if ("DISCHARGED".equalsIgnoreCase(ipd.getStatus()) && ipd.getDischargeDatetime() != null
+            if (STATUS_DISCHARGED.equalsIgnoreCase(ipd.getStatus()) && ipd.getDischargeDatetime() != null
                     && today.equals(ipd.getDischargeDatetime().toLocalDate())) {
                 dto.getPatients().setDischargesToday(dto.getPatients().getDischargesToday() + 1);
             }

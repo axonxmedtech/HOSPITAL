@@ -4,7 +4,6 @@ import jakarta.validation.Valid;
 
 import com.hms.entity.AdmissionForm;
 import com.hms.service.hospital.AdmissionFormService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -21,8 +20,17 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/hospital/nurse/admission-form")
 public class AdmissionFormController {
 
-    @Autowired
-    private AdmissionFormService admissionFormService;
+    private final AdmissionFormService admissionFormService;
+    private final com.hms.security.SecurityContextHelper securityHelper;
+    private final com.hms.service.hospital.HospitalStaffing hospitalStaffing;
+
+    public AdmissionFormController(AdmissionFormService admissionFormService,
+                                   com.hms.security.SecurityContextHelper securityHelper,
+                                   com.hms.service.hospital.HospitalStaffing hospitalStaffing) {
+        this.admissionFormService = admissionFormService;
+        this.securityHelper = securityHelper;
+        this.hospitalStaffing = hospitalStaffing;
+    }
 
     @GetMapping("/admission/{admissionId}")
     @PreAuthorize("hasAnyRole('NURSE','NURSE_INCHARGE','DOCTOR','HOSPITAL_ADMIN','RECEPTIONIST')")
@@ -46,12 +54,6 @@ public class AdmissionFormController {
         admissionFormService.markAdmitted(admissionId);
         return ResponseEntity.ok(java.util.Map.of("admissionConfirmed", true));
     }
-
-    @org.springframework.beans.factory.annotation.Autowired
-    private com.hms.security.SecurityContextHelper securityHelper;
-
-    @org.springframework.beans.factory.annotation.Autowired
-    private com.hms.service.hospital.HospitalStaffing hospitalStaffing;
 
     /** A doctor fills the form only where the doctor is also the front desk (Solo / Both mode). */
     private void assertDoctorIsTheDesk() {

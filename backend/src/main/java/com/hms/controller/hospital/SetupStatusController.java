@@ -69,55 +69,78 @@ public class SetupStatusController {
         Hospital hospital = hospitalId == null ? null : hospitalRepository.findById(hospitalId).orElse(null);
         if (hospital == null) throw new ResourceNotFoundException("Hospital not found");
         Set<String> modules = hospital.getModules() == null ? Set.of() : Set.copyOf(hospital.getModules());
-        HospitalSetting settings = settingRepository.findByHospital_Id(hospitalId).orElse(null);
-        String mode = settings == null || settings.getReceptionMode() == null ? "HAS_RECEPTIONIST" : settings.getReceptionMode();
 
         List<Map<String, Object>> steps = new ArrayList<>();
         boolean clinical = modules.contains("OPD") || modules.contains("IPD") || modules.contains("APPOINTMENTS");
         if (clinical) {
-            steps.add(step("doctors", "Add your doctors",
-                    "Patients can only be registered for OPD, appointments or admission under a doctor.",
-                    !doctorRepository.findByHospitalIdAndIsActiveTrue(hospitalId).isEmpty(), "doctors"));
-            boolean desk = "SOLO".equalsIgnoreCase(mode) || "BOTH".equalsIgnoreCase(mode)
-                    || userRepository.countActiveByHospitalIdAndRole(hospitalId, "RECEPTIONIST") > 0;
-            steps.add(step("reception", "Add a receptionist, or let doctors run the desk",
-                    "Add a receptionist login, or switch Reception Mode to Solo / Both in Settings.",
-                    desk, "receptionists"));
-        }
-        if (modules.contains("BILLING") && clinical) {
-            steps.add(step("fees", "Set your consultation and case-paper fees",
-                    "Until they are set, OPD bills use the default ₹500 + ₹100.",
-                    hospital.getConsultationFee() != null && hospital.getCasePaperFee() != null, "fees"));
+            steps.add(doctorsStep(hospitalId));
+            steps.add(receptionStep(hospitalId));
+            if (modules.contains("BILLING")) steps.add(feesStep(hospital));
         }
         if (modules.contains("IPD")) {
-            steps.add(step("wards", "Add wards and beds",
-                    "A patient can only be admitted into a free bed.",
-                    !wardRepository.findByHospitalId(hospitalId).isEmpty() && !bedRepository.findByHospitalId(hospitalId).isEmpty(),
-                    "wards"));
+            steps.add(wardsStep(hospitalId));
+            if (modules.contains("ICU")) steps.add(icuStep(hospitalId));
+            if (modules.contains("NURSING")) steps.add(nursesStep(hospitalId));
         }
-        if (modules.contains("ICU") && modules.contains("IPD")) {
-            steps.add(step("icu", "Mark your ICU wards",
-                    "ICU charting and the ICU board only work for wards marked as ICU.",
-                    !icuWardRepository.findByHospitalId(hospitalId).isEmpty(), "icu-wards"));
-        }
-        if (modules.contains("OT")) {
-            steps.add(step("ot", "Add an operation theatre",
-                    "Surgeries can only be scheduled into a theatre.",
-                    !otRoomRepository.findByHospitalIdAndIsActiveTrueOrderByNameAsc(hospitalId).isEmpty(), "ot-theatres"));
-        }
-        if (modules.contains("NURSING") && modules.contains("IPD")) {
-            steps.add(step("nurses", "Add nurses to your wards",
-                    "Optional: without nurses, doctors and the admin record vitals and medicines themselves.",
-                    userRepository.countActiveByHospitalIdAndRole(hospitalId, "NURSE") > 0
-                            || userRepository.countActiveByHospitalIdAndRole(hospitalId, "NURSE_INCHARGE") > 0,
-                    "nurses", true));
-        }
-        if (modules.contains("PHARMACY")) {
-            steps.add(step("medicines", "Add medicines and stock",
-                    "The pharmacy can only dispense medicines that are in stock.",
-                    !medicineRepository.findByHospitalId(hospitalId).isEmpty(), "pharmacy"));
-        }
+        if (modules.contains("OT")) steps.add(otStep(hospitalId));
+        if (modules.contains("PHARMACY")) steps.add(medicinesStep(hospitalId));
+        return ResponseEntity.ok(summary(steps));
+    }
 
+    private Map<String, Object> doctorsStep(Long hospitalId) {
+        return step("doctors", "Add your doctors",
+                "Patients can only be registered for OPD, appointments or admission under a doctor.",
+                !doctorRepository.findByHospitalIdAndIsActiveTrue(hospitalId).isEmpty(), "doctors");
+    }
+
+    private Map<String, Object> receptionStep(Long hospitalId) {
+        HospitalSetting settings = settingRepository.findByHospital_Id(hospitalId).orElse(null);
+        String mode = settings == null ? null : settings.getReceptionMode();
+        boolean doctorsRunDesk = "SOLO".equalsIgnoreCase(mode) || "BOTH".equalsIgnoreCase(mode);
+        return step("reception", "Add a receptionist, or let doctors run the desk",
+                "Add a receptionist login, or switch Reception Mode to Solo / Both in Settings.",
+                doctorsRunDesk || userRepository.countActiveByHospitalIdAndRole(hospitalId, "RECEPTIONIST") > 0,
+                "receptionists");
+    }
+
+    private static Map<String, Object> feesStep(Hospital hospital) {
+        return step("fees", "Set your consultation and case-paper fees",
+                "Until they are set, OPD bills use the default ₹500 + ₹100.",
+                hospital.getConsultationFee() != null && hospital.getCasePaperFee() != null, "fees");
+    }
+
+    private Map<String, Object> wardsStep(Long hospitalId) {
+        return step("wards", "Add wards and beds", "A patient can only be admitted into a free bed.",
+                !wardRepository.findByHospitalId(hospitalId).isEmpty() && !bedRepository.findByHospitalId(hospitalId).isEmpty(),
+                "wards");
+    }
+
+    private Map<String, Object> icuStep(Long hospitalId) {
+        return step("icu", "Mark your ICU wards",
+                "ICU charting and the ICU board only work for wards marked as ICU.",
+                !icuWardRepository.findByHospitalId(hospitalId).isEmpty(), "icu-wards");
+    }
+
+    private Map<String, Object> nursesStep(Long hospitalId) {
+        boolean any = userRepository.countActiveByHospitalIdAndRole(hospitalId, "NURSE") > 0
+                || userRepository.countActiveByHospitalIdAndRole(hospitalId, "NURSE_INCHARGE") > 0;
+        return step("nurses", "Add nurses to your wards",
+                "Optional: without nurses, doctors and the admin record vitals and medicines themselves.",
+                any, "nurses", true);
+    }
+
+    private Map<String, Object> otStep(Long hospitalId) {
+        return step("ot", "Add an operation theatre", "Surgeries can only be scheduled into a theatre.",
+                !otRoomRepository.findByHospitalIdAndIsActiveTrueOrderByNameAsc(hospitalId).isEmpty(), "ot-theatres");
+    }
+
+    private Map<String, Object> medicinesStep(Long hospitalId) {
+        return step("medicines", "Add medicines and stock",
+                "The pharmacy can only dispense medicines that are in stock.",
+                !medicineRepository.findByHospitalId(hospitalId).isEmpty(), "pharmacy");
+    }
+
+    private static Map<String, Object> summary(List<Map<String, Object>> steps) {
         long done = steps.stream().filter(s -> Boolean.TRUE.equals(s.get("done"))).count();
         boolean requiredDone = steps.stream()
                 .allMatch(s -> Boolean.TRUE.equals(s.get("done")) || Boolean.TRUE.equals(s.get("optional")));
@@ -126,7 +149,7 @@ public class SetupStatusController {
         out.put("done", done);
         out.put("total", steps.size());
         out.put("complete", requiredDone);
-        return ResponseEntity.ok(out);
+        return out;
     }
 
     private static Map<String, Object> step(String key, String title, String hint, boolean done, String tab) {

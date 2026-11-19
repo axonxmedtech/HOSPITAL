@@ -20,6 +20,15 @@ const btn = 'px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50';
 const input =
   'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-transparent';
 
+/** What happens to the visit's bill, in words, for the cancel dialog. */
+function billOutcome(paid, isAdmin) {
+  if (!(paid > 0)) return 'Any unpaid bill for this visit is cancelled with it.';
+  const amount = `₹${paid.toLocaleString('en-IN')}`;
+  return isAdmin
+    ? `The ${amount} collected will be refunded and the bill cancelled.`
+    : `${amount} was already collected: the bill stays until the admin refunds it from Billing.`;
+}
+
 export const isWaitingVisit = (opd) => opd?.status === 'QUEUED';
 
 const Dialog = ({ id, title, subtitle, onClose, children, footer }) => (
@@ -30,11 +39,11 @@ const Dialog = ({ id, title, subtitle, onClose, children, footer }) => (
       className="absolute inset-0 bg-gray-500/75"
       onClick={onClose}
     />
-    <div
-      role="dialog"
+    <dialog
+      open
       aria-modal="true"
       aria-labelledby={id}
-      className="relative bg-white rounded-xl shadow-xl w-full max-w-md text-left"
+      className="relative m-0 p-0 border-0 text-gray-900 bg-white rounded-xl shadow-xl w-full max-w-md text-left"
     >
       <div className="px-6 pt-5 pb-4">
         <h3 id={id} className="text-lg font-semibold text-gray-900">
@@ -44,7 +53,7 @@ const Dialog = ({ id, title, subtitle, onClose, children, footer }) => (
         <div className="mt-4 space-y-4">{children}</div>
       </div>
       <div className="bg-gray-50 px-6 py-3 flex justify-end gap-2 rounded-b-xl">{footer}</div>
-    </div>
+    </dialog>
   </div>
 );
 
@@ -129,12 +138,7 @@ export function CancelVisitModal({ opd, isAdmin, onClose, onDone }) {
         )}
       </div>
       <p className="text-sm text-gray-600">
-        The patient is taken off the doctor&apos;s queue.
-        {paid > 0
-          ? isAdmin
-            ? ` The ₹${paid.toLocaleString('en-IN')} collected will be refunded and the bill cancelled.`
-            : ` ₹${paid.toLocaleString('en-IN')} was already collected: the bill stays until the admin refunds it from Billing.`
-          : ' Any unpaid bill for this visit is cancelled with it.'}
+        The patient is taken off the doctor&apos;s queue. {billOutcome(paid, isAdmin)}
       </p>
       {paid > 0 && isAdmin && (
         <div>
@@ -226,13 +230,13 @@ export function ChangeDoctorModal({ title, subtitle, currentDoctorId, onSave, on
         </>
       }
     >
-      {doctors === null ? (
-        <p className="text-sm text-gray-500">Loading doctors...</p>
-      ) : doctors.length === 0 ? (
+      {doctors === null && <p className="text-sm text-gray-500">Loading doctors...</p>}
+      {doctors?.length === 0 && (
         <p className="text-sm text-amber-800 bg-amber-50 rounded p-2">
           There is no other doctor to move to. The admin can add one under Staff → Doctors.
         </p>
-      ) : (
+      )}
+      {doctors?.length > 0 && (
         <div>
           <label
             htmlFor="change-doctor-select"

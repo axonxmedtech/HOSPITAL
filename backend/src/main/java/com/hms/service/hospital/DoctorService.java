@@ -306,7 +306,7 @@ public class DoctorService {
         if (admitted > 0) left.add(admitted + " admitted patient(s) (use Change Doctor on each IPD patient)");
         long upcoming = appointmentRepository
                 .findByDoctorIdAndAppointmentDateGreaterThanEqualAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
-                        doctor.getId(), java.time.LocalDate.now())
+                        doctor.getId(), java.time.LocalDate.now(java.time.ZoneId.systemDefault()))
                 .stream().filter(a -> java.util.Objects.equals(a.getHospitalId(), doctor.getHospitalId()))
                 .filter(a -> a.getStatus() == null || "SCHEDULED".equalsIgnoreCase(a.getStatus())
                         || "CONFIRMED".equalsIgnoreCase(a.getStatus()))

@@ -17,6 +17,12 @@ const MODES = [
   { id: 'UPI', label: 'UPI / Online' },
 ];
 
+/** "Patient · BIL12" — whichever parts the bill has. */
+const billSubtitle = (bill) => [bill.patientName, bill.customId].filter(Boolean).join(' · ');
+
+/** True only for a real number above zero (an empty or mistyped amount is NaN). */
+const isPositive = (n) => Number.isFinite(n) && n > 0;
+
 const rupees = (v) => `₹${Number(v || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const num = (v) => Number(v || 0);
 
@@ -28,11 +34,11 @@ const Shell = ({ title, subtitle, onClose, children, footer, labelledBy }) => (
       className="absolute inset-0 bg-gray-500/75"
       onClick={onClose}
     />
-    <div
-      role="dialog"
+    <dialog
+      open
       aria-modal="true"
       aria-labelledby={labelledBy}
-      className="relative bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto"
+      className="relative m-0 p-0 border-0 text-gray-900 bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto"
     >
       <div className="px-6 pt-5 pb-4">
         <h3 id={labelledBy} className="text-lg font-semibold text-gray-900">
@@ -42,7 +48,7 @@ const Shell = ({ title, subtitle, onClose, children, footer, labelledBy }) => (
         <div className="mt-4 space-y-4">{children}</div>
       </div>
       <div className="bg-gray-50 px-6 py-3 flex justify-end gap-2 rounded-b-xl">{footer}</div>
-    </div>
+    </dialog>
   </div>
 );
 
@@ -108,10 +114,14 @@ export const CollectPaymentModal = ({ bill, onClose, onDone }) => {
   const [saving, setSaving] = useState(false);
 
   const amt = Number(amount);
-  const invalid = !(amt > 0) || amt > balance || (mode === 'UPI' && !reference.trim());
+  const isPart = amt > 0 && amt < balance;
+  let collectLabel = `Collect ${rupees(amt || 0)}`;
+  if (saving) collectLabel = 'Saving…';
+  else if (isPart) collectLabel = `Collect ${rupees(amt)} (part)`;
+  const invalid = !isPositive(amt) || amt > balance || (mode === 'UPI' && !reference.trim());
 
   const submit = async () => {
-    if (!(amt > 0)) return toastError('Enter an amount greater than zero');
+    if (!isPositive(amt)) return toastError('Enter an amount greater than zero');
     if (amt > balance) return toastError(`Only ${rupees(balance)} is due on this bill`);
     if (mode === 'UPI' && !reference.trim()) return toastError('Enter the UPI UTR / reference');
     setSaving(true);
@@ -133,7 +143,7 @@ export const CollectPaymentModal = ({ bill, onClose, onDone }) => {
     <Shell
       title="Collect Payment"
       labelledBy="collect-payment-title"
-      subtitle={`${bill.patientName ? `${bill.patientName} · ` : ''}${bill.customId || ''}`}
+      subtitle={billSubtitle(bill)}
       onClose={onClose}
       footer={
         <>
@@ -150,11 +160,7 @@ export const CollectPaymentModal = ({ bill, onClose, onDone }) => {
             disabled={saving || invalid}
             className={`${btn} bg-emerald-600 text-white hover:bg-emerald-700`}
           >
-            {saving
-              ? 'Saving…'
-              : amt > 0 && amt < balance
-                ? `Collect ${rupees(amt)} (part)`
-                : `Collect ${rupees(amt || 0)}`}
+            {collectLabel}
           </button>
         </>
       }
@@ -243,7 +249,7 @@ export const DiscountModal = ({ bill, onClose, onDone }) => {
     <Shell
       title="Discount / Concession"
       labelledBy="discount-title"
-      subtitle={`${bill.patientName ? `${bill.patientName} · ` : ''}${bill.customId || ''}`}
+      subtitle={billSubtitle(bill)}
       onClose={onClose}
       footer={
         <>
@@ -332,7 +338,7 @@ export const RefundModal = ({ bill, onClose, onDone }) => {
 
   const amt = Number(amount || 0);
   const submit = async () => {
-    if (!(amt > 0)) return toastError('Enter a refund amount');
+    if (!isPositive(amt)) return toastError('Enter a refund amount');
     if (amt > paid) return toastError(`Only ${rupees(paid)} has been collected`);
     if (!reason.trim()) return toastError('Enter a reason for the refund');
     setSaving(true);
@@ -357,7 +363,7 @@ export const RefundModal = ({ bill, onClose, onDone }) => {
     <Shell
       title="Refund"
       labelledBy="refund-title"
-      subtitle={`${bill.patientName ? `${bill.patientName} · ` : ''}${bill.customId || ''}`}
+      subtitle={billSubtitle(bill)}
       onClose={onClose}
       footer={
         <>
@@ -406,7 +412,7 @@ export const RefundModal = ({ bill, onClose, onDone }) => {
           className="mt-0.5"
         />
         <span>
-          Patient was overcharged — reduce the bill by this amount
+          Patient was overcharged — reduce the bill by this amount{' '}
           <span className="block text-xs text-gray-500">
             Untick if the money will be collected again (e.g. switching payment method).
           </span>
@@ -459,7 +465,7 @@ export const CancelBillModal = ({ bill, onClose, onDone }) => {
     <Shell
       title="Cancel Bill"
       labelledBy="cancel-bill-title"
-      subtitle={`${bill.patientName ? `${bill.patientName} · ` : ''}${bill.customId || ''}`}
+      subtitle={billSubtitle(bill)}
       onClose={onClose}
       footer={
         <>

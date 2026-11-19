@@ -25,14 +25,11 @@ const OpdBillCell = ({ opd, onChanged, onPaid }) => {
 
   const balance = Number(bill.balance || 0);
   const status = bill.status;
-  const chip =
-    status === 'CANCELLED'
-      ? ['Cancelled', 'bg-gray-100 text-gray-500']
-      : balance <= 0
-        ? ['Paid', 'bg-emerald-50 text-emerald-700']
-        : Number(bill.paidAmount) > 0
-          ? [`Due ${rupees(balance)}`, 'bg-blue-50 text-blue-700']
-          : ['Unpaid', 'bg-amber-50 text-amber-800'];
+  let chip = ['Unpaid', 'bg-amber-50 text-amber-800'];
+  if (status === 'CANCELLED') chip = ['Cancelled', 'bg-gray-100 text-gray-500'];
+  else if (balance <= 0) chip = ['Paid', 'bg-emerald-50 text-emerald-700'];
+  else if (Number(bill.paidAmount) > 0)
+    chip = [`Due ${rupees(balance)}`, 'bg-blue-50 text-blue-700'];
   const canCollect =
     canManageBilling(user) && balance > 0 && status !== 'CANCELLED' && status !== 'CLOSED';
 

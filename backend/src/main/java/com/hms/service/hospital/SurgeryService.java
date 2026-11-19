@@ -149,7 +149,7 @@ public class SurgeryService {
             throw new IllegalArgumentException("Date/time and a theatre are required");
         }
         // A booking is for the future. An hour of slack lets a case that just began be entered.
-        if (req.getScheduledAt().isBefore(LocalDateTime.now().minusHours(1))) {
+        if (req.getScheduledAt().isBefore(LocalDateTime.now(java.time.ZoneId.systemDefault()).minusHours(1))) {
             throw new IllegalArgumentException("The surgery time is in the past. Choose a current or future time.");
         }
         if (s.getIpdAdmissionId() != null) {

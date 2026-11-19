@@ -167,6 +167,39 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
     }
   };
 
+  // Which ward control to show: a hint when nothing is set up, the only ward, or a picker.
+  let wardField = (
+    <select
+      id={`${formId}-ward`}
+      className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:outline-none"
+      value={selectedWard || ''}
+      onChange={(e) => setSelectedWard(Number(e.target.value))}
+    >
+      <option value="">-- Select Ward --</option>
+      {wards.map((w) => (
+        <option key={w.wardId} value={w.wardId}>
+          {w.wardName} ({w.wardType || 'Ward'})
+        </option>
+      ))}
+    </select>
+  );
+  if (optionsLoaded && wards.length === 0) {
+    wardField = (
+      <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+        No wards or beds are set up yet. The admin adds them under Rooms → Wards &amp; Beds.
+      </div>
+    );
+  } else if (wards?.length === 1) {
+    wardField = (
+      <div className="w-full px-3 py-2 bg-gray-50 border border-gray-200 text-gray-800 rounded-xl text-sm font-semibold flex items-center justify-between">
+        <span>{wards[0].wardName}</span>
+        <span className="text-xs px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full font-medium">
+          Selected
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto border border-gray-100">
@@ -258,32 +291,7 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
             >
               Ward *
             </label>
-            {optionsLoaded && wards.length === 0 ? (
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
-                No wards or beds are set up yet. The admin adds them under Rooms → Wards &amp; Beds.
-              </div>
-            ) : wards && wards.length === 1 ? (
-              <div className="w-full px-3 py-2 bg-gray-50 border border-gray-200 text-gray-800 rounded-xl text-sm font-semibold flex items-center justify-between">
-                <span>{wards[0].wardName}</span>
-                <span className="text-xs px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full font-medium">
-                  Selected
-                </span>
-              </div>
-            ) : (
-              <select
-                id={`${formId}-ward`}
-                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                value={selectedWard || ''}
-                onChange={(e) => setSelectedWard(Number(e.target.value))}
-              >
-                <option value="">-- Select Ward --</option>
-                {wards.map((w) => (
-                  <option key={w.wardId} value={w.wardId}>
-                    {w.wardName} ({w.wardType || 'Ward'})
-                  </option>
-                ))}
-              </select>
-            )}
+            {wardField}
           </div>
 
           {/* Bed Selector */}

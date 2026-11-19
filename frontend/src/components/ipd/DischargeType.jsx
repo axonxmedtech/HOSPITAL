@@ -20,12 +20,11 @@ const SHORT = {
 export const dischargeTypeLabel = (t) => SHORT[t] || t || 'Normal';
 
 /** Note is required where the record is meaningless without it. */
-export const dischargeNoteLabel = (t) =>
-  t === 'EXPIRED'
-    ? 'Time and cause of death *'
-    : t === 'REFERRED'
-      ? 'Referred to (hospital) *'
-      : 'Note (optional)';
+const NOTE_LABELS = {
+  EXPIRED: 'Time and cause of death *',
+  REFERRED: 'Referred to (hospital) *',
+};
+export const dischargeNoteLabel = (t) => NOTE_LABELS[t] || 'Note (optional)';
 
 export const dischargeNoteRequired = (t) => t === 'EXPIRED' || t === 'REFERRED';
 
@@ -91,13 +90,13 @@ export function ConfirmDischargeModal({ initialType, initialNote, owing, onClose
   };
 
   return (
-    <div
-      className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="confirm-discharge-title"
-    >
-      <div className="bg-white rounded-lg w-full max-w-lg p-6">
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
+      <dialog
+        open
+        aria-modal="true"
+        aria-labelledby="confirm-discharge-title"
+        className="relative m-0 border-0 text-gray-900 bg-white rounded-lg w-full max-w-lg p-6"
+      >
         <h3 id="confirm-discharge-title" className="text-lg font-semibold mb-3">
           Confirm Discharge
         </h3>
@@ -134,7 +133,7 @@ export function ConfirmDischargeModal({ initialType, initialNote, owing, onClose
             {saving ? 'Discharging...' : 'Confirm Discharge'}
           </button>
         </div>
-      </div>
+      </dialog>
     </div>
   );
 }

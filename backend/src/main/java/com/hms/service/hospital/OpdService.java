@@ -19,6 +19,8 @@ import java.util.Optional;
 @Service
 public class OpdService {
 
+    private static final String DIGITS_ONLY = "^\\d+$";
+
     private static final Logger logger = LoggerFactory.getLogger(OpdService.class);
 
     private final OpdRepository opdRepository;
@@ -39,8 +41,7 @@ public class OpdService {
     private BillingService billingService;
     @org.springframework.beans.factory.annotation.Autowired
     private com.hms.repository.HospitalSettingRepository hospitalSettingRepository;
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private HospitalStaffing staffing;
+    private final HospitalStaffing staffing;
 
     private static final com.fasterxml.jackson.databind.ObjectMapper VITALS_JSON =
             new com.fasterxml.jackson.databind.ObjectMapper();
@@ -54,7 +55,9 @@ public class OpdService {
                       SecurityContextHelper securityHelper,
                       AuditLogService auditLogService,
                       HospitalWebSocketHandler webSocketHandler,
-                      VitalSettingsService vitalSettingsService) {
+                      VitalSettingsService vitalSettingsService,
+                      HospitalStaffing staffing) {
+        this.staffing = staffing;
         this.opdRepository = opdRepository;
         this.queueEntryRepository = queueEntryRepository;
         this.patientRepository = patientRepository;
@@ -117,7 +120,7 @@ public class OpdService {
         if (req.getPatientId() != null && !req.getPatientId().trim().isEmpty()) {
             String pid = req.getPatientId().trim();
             Long hospitalId = securityHelper.getCurrentHospitalId();
-            if (pid.matches("^\\d+$")) {
+            if (pid.matches(DIGITS_ONLY)) {
                 Long numericId = Long.parseLong(pid);
                 patient = patientRepository.findByIdAndHospitalIdAndIsActiveTrue(numericId, hospitalId)
                         .orElseThrow(() -> new IllegalArgumentException("Invalid patient id"));
@@ -144,7 +147,7 @@ public class OpdService {
             String docIdStr = req.getDoctorId().trim();
             java.util.Optional<Doctor> docOpt = java.util.Optional.empty();
             Long hospitalId = securityHelper.getCurrentHospitalId();
-            if (docIdStr.matches("^\\d+$")) {
+            if (docIdStr.matches(DIGITS_ONLY)) {
                 Long numericId = Long.parseLong(docIdStr);
                 docOpt = doctorRepository.findByIdOrUserId(numericId, userRepository);
             } else {
@@ -266,7 +269,7 @@ public class OpdService {
         if ("HOSPITAL_ADMIN".equalsIgnoreCase(role) || "RECEPTIONIST".equalsIgnoreCase(role)) return;
         if ("DOCTOR".equalsIgnoreCase(role)) {
             Long hospitalId = securityHelper.getCurrentHospitalId();
-            if (staffing != null && staffing.of(hospitalId).doctorActsAsReception()) return;
+            if (staffing.of(hospitalId).doctorActsAsReception()) return;
             // By email, like every other "who is this doctor" lookup: findByIdOrUserId tries the id
             // as a doctor id first and can match a different doctor whose id equals the user id.
             String email = securityHelper.getCurrentUserEmail();
@@ -306,7 +309,7 @@ public class OpdService {
         opd.setStatus(Opd.Status.CANCELLED);
         opd.setCancelReason(why);
         opd.setCancelledBy(resolveCurrentEmailQuietly());
-        opd.setCancelledAt(java.time.LocalDateTime.now());
+        opd.setCancelledAt(java.time.LocalDateTime.now(java.time.ZoneId.systemDefault()));
         opdRepository.save(opd);
         queueEntryRepository.deleteByOpdId(opd.getId());
 
@@ -333,7 +336,7 @@ public class OpdService {
         if (opd.getStatus() != Opd.Status.QUEUED) throw new IllegalArgumentException(closedVisitMessage(opd));
         Long hospitalId = securityHelper.getCurrentHospitalId();
         String key = doctorIdOrPublicId.trim();
-        Optional<Doctor> found = key.matches("^\\d+$")
+        Optional<Doctor> found = key.matches(DIGITS_ONLY)
                 ? doctorRepository.findByIdAndHospitalIdAndIsActiveTrue(Long.parseLong(key), hospitalId)
                 : doctorRepository.findByPublicIdAndHospitalIdAndIsActiveTrue(key, hospitalId);
         Doctor doctor = found.orElseThrow(() -> new IllegalArgumentException(
