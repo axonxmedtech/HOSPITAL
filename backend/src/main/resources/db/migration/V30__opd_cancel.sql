@@ -3,6 +3,8 @@
 -- consultation, so a patient who walked out stayed "In Queue" for ever.
 --
 -- Idempotent: DatabaseMigrationRunner applies the same changes on non-Flyway (dev) profiles.
+--
+-- flyway:safety-ack: the MODIFY only widens opd.status by adding CANCELLED; every existing value is kept (MySQL maps ENUM rows by value), it stays NOT NULL, and it runs only when the column is an ENUM without CANCELLED.
 
 SET @t := (SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'opd' AND COLUMN_NAME = 'status');
 SET @s := IF(@t LIKE 'enum(%' AND @t NOT LIKE '%CANCELLED%',
