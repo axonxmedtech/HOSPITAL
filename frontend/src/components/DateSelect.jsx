@@ -49,7 +49,11 @@ const DateSelect = ({
   yearsAhead = 15,
   min, // optional "YYYY-MM-DD" floor: no earlier date can be picked (e.g. appointments = today onward)
   compact = false, // slim padding so the three dropdowns show their values inside narrow table cells
+  // Toolbar filter over past records (OPD / patient lists): keep a readable width inside a
+  // flex header — it used to shrink until "Nov" read "Nc" — and offer no future years.
+  filter = false,
 }) => {
+  if (filter) yearsAhead = 0;
   // Internal state so partial selections (e.g. Year picked, Month/Day not yet) persist.
   const [parts, setParts] = useState(() => splitParts(value));
 
@@ -117,7 +121,11 @@ const DateSelect = ({
     : `input-field cursor-pointer ${hasError ? 'border-error-300 focus:ring-error-500' : ''}`;
 
   return (
-    <div className={`grid grid-cols-3 gap-1 ${compact ? 'min-w-[250px]' : ''}`}>
+    <div
+      className={`grid grid-cols-3 gap-1 ${compact ? 'min-w-[250px]' : ''} ${
+        filter ? 'min-w-[17rem] shrink-0' : ''
+      }`}
+    >
       <select
         aria-label="Day"
         value={parts.d}

@@ -34,6 +34,18 @@ public class BillingPayment {
     @Column(length = 200)
     private String reference;
 
+    /** PAYMENT (money in) or REFUND (money out, stored as a negative amount). */
+    @Column(length = 10)
+    private String kind = "PAYMENT";
+
+    /** Who took (or paid back) the money, for the daily cash-closing report. */
+    @Column(name = "recorded_by", length = 150)
+    private String recordedBy;
+
+    /** Refund reason, or a note on the collection. */
+    @Column(length = 255)
+    private String note;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;

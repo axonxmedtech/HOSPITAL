@@ -8,6 +8,7 @@ import useWebSocket from '../../hooks/useWebSocket';
 import authService from '../../services/authService';
 import nurseScheduleService from '../../services/nurseScheduleService';
 import nurseService from '../../services/nurseService';
+import { localIsoDate } from '../../utils/date';
 import IcuBedBoard from './icu/IcuBedBoard';
 import MyAttendanceView from './nurse/MyAttendanceView';
 import MyPatientsView from './nurse/MyPatientsView';
@@ -54,7 +55,7 @@ const NurseDashboard = () => {
         if (active) setOnShift(false);
       });
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localIsoDate();
     nurseScheduleService
       .getMine(today, today)
       .then((rows) => {

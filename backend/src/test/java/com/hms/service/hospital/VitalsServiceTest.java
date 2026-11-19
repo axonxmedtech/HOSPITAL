@@ -44,6 +44,7 @@ class VitalsServiceTest {
 
     private IpdAdmission admission() {
         IpdAdmission a = new IpdAdmission();
+        a.setStatus("ADMITTED");
         a.setId(1L);
         a.setHospitalId(7L);
         a.setPatientId(500L);
@@ -115,16 +116,48 @@ class VitalsServiceTest {
     }
 
     @Test
-    void create_acceptsHighPulse_noUpperLimit() {
+    void create_acceptsAnAbnormalButPossiblePulse() {
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
         when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(admission()));
         when(vitalsRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         VitalsRequest r = new VitalsRequest();
         r.setIpdAdmissionId(1L);
-        r.setPulse(999); // was rejected as > 250; now allowed — no upper limit
+        r.setPulse(280); // abnormal (e.g. SVT) but real: the limit is plausibility, not normality
 
         VitalsRecord saved = service.create(r);
-        assertThat(saved.getPulse()).isEqualTo(999);
+        assertThat(saved.getPulse()).isEqualTo(280);
+    }
+
+    @Test
+    void create_rejectsAnImpossiblePulse() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(admission()));
+        VitalsRequest r = new VitalsRequest();
+        r.setIpdAdmissionId(1L);
+        r.setPulse(999); // a typing slip
+
+        assertThatThrownBy(() -> service.create(r)).hasMessageContaining("Pulse must be between 0 and 300");
+    }
+
+    @Test
+    void create_rejectsCelsiusInTheFahrenheitField() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(admission()));
+        VitalsRequest r = new VitalsRequest();
+        r.setIpdAdmissionId(1L);
+        r.setTemperature(new java.math.BigDecimal("37.0"));
+
+        assertThatThrownBy(() -> service.create(r)).hasMessageContaining("°F");
+    }
+
+    @Test
+    void create_refusesADischargedAdmission() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        IpdAdmission gone = admission();
+        gone.setStatus("DISCHARGED");
+        when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(gone));
+
+        assertThatThrownBy(() -> service.create(validReq())).hasMessageContaining("already been discharged");
     }
 
     @Test

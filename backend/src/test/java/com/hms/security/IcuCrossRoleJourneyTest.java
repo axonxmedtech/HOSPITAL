@@ -397,6 +397,13 @@ class IcuCrossRoleJourneyTest {
         ok(post("/hospital/beds/" + generalBedId + "/cleaned", inchargeToken, "{}"),
                 "the incharge marks the vacated bed cleaned");
 
+        // A ventilated patient may not step down to a general ward; extubation comes first.
+        assertThat(transfer(generalBedId, receptionToken).getStatusCode().value())
+                .as("a patient still on the ventilator cannot be moved to a ward").isEqualTo(400);
+        ok(post("/hospital/nurse/ventilator", nurseToken,
+                "{\"ipdAdmissionId\":" + admissionId + ",\"ventilationStatus\":\"OFF\"}"),
+                "the staff nurse records the patient extubated");
+
         ok(transfer(generalBedId, receptionToken), "reception transfers the patient back to the ward");
 
         var closed = icuStays.findById(stay.getId()).orElseThrow();

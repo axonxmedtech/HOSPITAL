@@ -19,8 +19,22 @@ const ActionMenu = ({ actions }) => {
       }
     };
 
+    // Follow the button when something scrolls; close only once it has left the screen. Closing
+    // on every scroll made the menu vanish on the first click whenever that click nudged a
+    // horizontally scrolling table, so users had to click "⋮" twice.
     const handleScroll = () => {
-      if (isOpen) setIsOpen(false); // Close on scroll to avoid positioning issues
+      if (!isOpen || !buttonRef.current) return;
+      const rect = buttonRef.current.getBoundingClientRect();
+      if (
+        rect.bottom < 0 ||
+        rect.top > window.innerHeight ||
+        rect.right < 0 ||
+        rect.left > window.innerWidth
+      ) {
+        setIsOpen(false);
+        return;
+      }
+      setPosition({ top: rect.bottom + 5, left: rect.right - 192 });
     };
 
     if (isOpen) {

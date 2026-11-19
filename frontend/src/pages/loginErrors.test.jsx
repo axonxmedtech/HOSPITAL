@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
 import { AxiosError } from 'axios';
+import { MemoryRouter } from 'react-router-dom';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../services/authService', () => ({
   default: {
@@ -12,9 +12,9 @@ vi.mock('../services/authService', () => ({
 }));
 
 import authService from '../services/authService';
+import { NETWORK_MESSAGE } from '../utils/apiError';
 import HospitalLogin from './hospital/HospitalLogin';
 import PlatformLogin from './platform/PlatformLogin';
-import { NETWORK_MESSAGE } from '../utils/apiError';
 
 const response = (status, data) => ({ status, data, headers: {}, config: {} });
 const NGINX_502 = '<html><head><title>502 Bad Gateway</title></head><body>nginx</body></html>';
@@ -78,5 +78,39 @@ describe.each(pages)('%s error messages', (_name, page, loginFn) => {
       await screen.findByText('The server is temporarily unavailable. Please try again shortly.')
     ).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/Bad Gateway|<html/);
+  });
+});
+
+describe('HospitalLogin department mismatch', () => {
+  it('names the department the account signs in with and selects it', async () => {
+    authService.hospitalLogin.mockResolvedValue({ role: 'RECEPTIONIST', modules: ['OPD'] });
+    render(
+      <MemoryRouter>
+        <HospitalLogin />
+      </MemoryRouter>
+    );
+    fireEvent.change(document.getElementById('role'), { target: { value: 'DOCTOR' } });
+    submit();
+    expect(await screen.findByText(/signs in as "Reception & Registration"/)).toBeInTheDocument();
+    expect(document.getElementById('role')).toHaveValue('RECEPTIONIST');
+  });
+
+  it('turns a bare "Invalid credentials" into a hint about the page', async () => {
+    authService.hospitalLogin.mockRejectedValue(
+      new AxiosError(
+        'Request failed with status code 401',
+        'ERR_BAD_REQUEST',
+        {},
+        {},
+        response(401, { error: 'Invalid credentials' })
+      )
+    );
+    render(
+      <MemoryRouter>
+        <HospitalLogin />
+      </MemoryRouter>
+    );
+    submit();
+    expect(await screen.findByText(/Wrong email or password/)).toBeInTheDocument();
   });
 });

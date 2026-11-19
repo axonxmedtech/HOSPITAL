@@ -31,6 +31,7 @@ class OtPermissionServiceTest {
     @Mock RolePermissionRepository repository;
     @Mock SecurityContextHelper securityHelper;
     @Mock AuditLogService auditLogService;
+    @Mock com.hms.service.hospital.HospitalStaffing hospitalStaffing;
     @InjectMocks OtPermissionService service;
 
     /** No rows anywhere for a hospital means "never customised": use the defaults. */
@@ -41,6 +42,38 @@ class OtPermissionServiceTest {
         assertThat(service.effectiveFor(HOSPITAL, "RECEPTIONIST"))
                 .isEqualTo(OtPermissions.defaultsFor("RECEPTIONIST"))
                 .contains(OtPermissions.OT_SCHEDULE);
+    }
+
+    /** Solo mode with no nurses: the doctor is the only one who can run the theatre day. */
+    @Test
+    void effectiveFor_doctorCoversTheDeskAndNursing_whenTheHospitalHasNeither() {
+        when(repository.countByHospitalId(HOSPITAL)).thenReturn(0L);
+        when(hospitalStaffing.of(HOSPITAL)).thenReturn(
+                new com.hms.service.hospital.HospitalStaffing.Snapshot(false, true, false, false, false));
+
+        assertThat(service.effectiveFor(HOSPITAL, "DOCTOR")).contains(
+                OtPermissions.OT_SCHEDULE, OtPermissions.OT_START, OtPermissions.OT_COMPLETE,
+                OtPermissions.OT_CLOSE, OtPermissions.OT_PRE_OP, OtPermissions.OT_TIME_OUT);
+    }
+
+    /** A fully staffed hospital keeps the doctor's default, narrow set. */
+    @Test
+    void effectiveFor_doctorKeepsDefaults_whenReceptionAndNursesExist() {
+        when(repository.countByHospitalId(HOSPITAL)).thenReturn(0L);
+        when(hospitalStaffing.of(HOSPITAL)).thenReturn(
+                new com.hms.service.hospital.HospitalStaffing.Snapshot(true, false, true, true, false));
+
+        assertThat(service.effectiveFor(HOSPITAL, "DOCTOR")).isEqualTo(OtPermissions.defaultsFor("DOCTOR"));
+    }
+
+    /** An OT in-charge runs the theatre; the doctor gains nothing. */
+    @Test
+    void effectiveFor_noCover_whenAnOtInchargeExists() {
+        when(repository.countByHospitalId(HOSPITAL)).thenReturn(0L);
+        when(hospitalStaffing.of(HOSPITAL)).thenReturn(
+                new com.hms.service.hospital.HospitalStaffing.Snapshot(false, true, false, false, true));
+
+        assertThat(service.effectiveFor(HOSPITAL, "DOCTOR")).doesNotContain(OtPermissions.OT_SCHEDULE);
     }
 
     /** Once any override exists, the rows are the ONLY truth for every role. */

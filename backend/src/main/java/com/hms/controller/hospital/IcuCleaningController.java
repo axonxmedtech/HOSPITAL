@@ -33,6 +33,10 @@ public class IcuCleaningController {
     @Autowired
     private SecurityContextHelper securityHelper;
 
+    // Bed status changes go through the audited service, which also keeps tasks in step.
+    @Autowired
+    private com.hms.service.hospital.BedStatusService bedStatusService;
+
     @GetMapping
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'NURSE_INCHARGE', 'NURSE', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<List<IcuCleaningTask>> getTasks(@RequestParam(required = false) String status) {
@@ -61,22 +65,25 @@ public class IcuCleaningController {
             task.setPriority("MEDIUM");
         }
 
-        // Link and set bed status to cleaning
-        findBedForTask(hospitalId, task).ifPresent(b -> {
-            if (!"occupied".equalsIgnoreCase(b.getStatus())) {
-                b.setStatus("cleaning");
-                bedRepository.save(b);
-            }
+        // Link the bed; save the task first so the status change below finds it open and does
+        // not queue a duplicate.
+        java.util.Optional<com.hms.entity.Bed> bed = findBedForTask(hospitalId, task);
+        bed.ifPresent(b -> {
             task.setBedId(b.getBedId());
             task.setWardId(b.getWardId());
         });
-
         IcuCleaningTask saved = cleaningTaskRepository.save(task);
+        bed.ifPresent(b -> {
+            if (com.hms.entity.BedStatus.AVAILABLE.equalsIgnoreCase(b.getStatus())) {
+                bedStatusService.change(b.getBedId(), com.hms.entity.BedStatus.CLEANING, "Cleaning task created");
+            }
+        });
         return ResponseEntity.ok(saved);
     }
 
+    // DOCTOR too: in Solo mode the doctor is the only one at the front desk.
     @PutMapping("/{id}/status")
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'NURSE_INCHARGE', 'NURSE', 'RECEPTIONIST')")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'NURSE_INCHARGE', 'NURSE', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> updateTaskStatus(@PathVariable Long id, @RequestBody Map<String, String> body) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         IcuCleaningTask task = cleaningTaskRepository.findById(id)
@@ -89,10 +96,11 @@ public class IcuCleaningController {
             cleaningTaskRepository.save(task);
 
             if ("COMPLETED".equalsIgnoreCase(status)) {
+                // Only a bed awaiting cleaning becomes available; an occupied bed or one under
+                // maintenance is left as it is.
                 findBedForTask(hospitalId, task).ifPresent(b -> {
-                    if (!"occupied".equalsIgnoreCase(b.getStatus())) {
-                        b.setStatus("available");
-                        bedRepository.save(b);
+                    if (com.hms.entity.BedStatus.CLEANING.equalsIgnoreCase(b.getStatus())) {
+                        bedStatusService.change(b.getBedId(), com.hms.entity.BedStatus.AVAILABLE, "Cleaning task completed");
                     }
                 });
             }
@@ -121,7 +129,7 @@ public class IcuCleaningController {
 
     private Optional<Bed> findBedForTask(Long hospitalId, IcuCleaningTask task) {
         if (task.getBedId() != null) {
-            return bedRepository.findById(task.getBedId());
+            return bedRepository.findById(task.getBedId()).filter(b -> hospitalId.equals(b.getHospitalId()));
         }
         String bedNum = task.getBedNumber() != null ? task.getBedNumber().trim().toLowerCase() : "";
         if (bedNum.isEmpty() || "-".equals(bedNum)) return Optional.empty();

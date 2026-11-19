@@ -206,7 +206,7 @@ public class ReportPdfService {
         String rawHospName = (hospital != null && hospital.getName() != null) ? hospital.getName().toUpperCase() : "HOSPITAL";
         Paragraph hospText = new Paragraph(rawHospName, PdfLayoutHelper.RED_TITLE_FONT);
         hospText.setAlignment(Element.ALIGN_CENTER);
-        String addressText = (hospital != null && hospital.getAddress() != null) ? hospital.getAddress() : "Hospital Location Address";
+        String addressText = PdfLayoutHelper.hospitalAddress(hospital);
         Paragraph addrText = new Paragraph(addressText, FontFactory.getFont(FontFactory.HELVETICA, 8, Font.NORMAL, java.awt.Color.DARK_GRAY));
         addrText.setAlignment(Element.ALIGN_CENTER);
 

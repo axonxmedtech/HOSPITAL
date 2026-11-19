@@ -25,6 +25,8 @@ import java.util.Map;
 @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
 public class NurseController {
 
+    private static final String WARD_ID = "wardId";
+
     @Autowired
     private NurseService nurseService;
 
@@ -44,8 +46,14 @@ public class NurseController {
             return ResponseEntity.badRequest().body("Password must be at least 6 characters");
         }
 
+        // A nurse with no ward is on no in-charge's roster and can never be given a patient.
+        // The admin form requires the ward; so does the API.
+        Long wardId = parseWardId(payload.get(WARD_ID));
+        if (wardId == null) {
+            throw new IllegalArgumentException("Select the ward this nurse works in");
+        }
         User created = nurseService.createNurse(name, email, password,
-                payload.get("phone"), payload.get("licenseNumber"), parseWardId(payload.get("wardId")),
+                payload.get("phone"), payload.get("licenseNumber"), wardId,
                 payload.get("shiftTemplatePublicId"),
                 parseDate(payload.get("shiftFromDate")), parseDate(payload.get("shiftToDate")),
                 parseDaysOfWeek(payload.get("shiftDaysOfWeek")));
@@ -81,7 +89,7 @@ public class NurseController {
         if (name == null || name.trim().isEmpty()) {
             return ResponseEntity.badRequest().body("Name is required");
         }
-        return ResponseEntity.ok(nurseService.updateNurse(id, name, parseWardId(str(payload, "wardId")),
+        return ResponseEntity.ok(nurseService.updateNurse(id, name, parseWardId(str(payload, WARD_ID)),
                 str(payload, "phone"),
                 str(payload, "shiftTemplatePublicId"),
                 parseDate(str(payload, "shiftFromDate")), parseDate(str(payload, "shiftToDate")),

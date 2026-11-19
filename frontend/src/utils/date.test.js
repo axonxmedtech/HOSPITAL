@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatDate, formatDateTime, formatTime } from './date';
+import { formatDate, formatDateTime, formatTime, localIsoDate } from './date';
 
 describe('date formatters', () => {
   it('return a dash for empty/invalid input', () => {
@@ -17,5 +17,16 @@ describe('date formatters', () => {
     expect(formatDate(iso)).not.toBe('-');
     expect(formatDateTime(iso)).not.toBe('-');
     expect(formatTime(iso)).not.toBe('-');
+  });
+});
+
+describe('localIsoDate', () => {
+  it('uses the local calendar day, not the UTC one', () => {
+    // 00:30 local on 17 Nov. In any timezone east of UTC, toISOString() would say the 16th.
+    expect(localIsoDate(new Date(2026, 10, 17, 0, 30))).toBe('2026-11-17');
+  });
+
+  it('zero-pads month and day', () => {
+    expect(localIsoDate(new Date(2026, 0, 5, 12, 0))).toBe('2026-01-05');
   });
 });

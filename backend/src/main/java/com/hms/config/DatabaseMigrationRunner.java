@@ -28,6 +28,16 @@ import java.util.Map;
 @ConditionalOnProperty(name = "hms.migrations.enabled", havingValue = "true", matchIfMissing = true)
 public class DatabaseMigrationRunner {
 
+    // Table names and column types repeated across the add-column-if-missing steps.
+    private static final String BILLING_TABLE = "billing";
+    private static final String NOTE_PRESETS_TABLE = "consultation_note_presets";
+    private static final String BILLING_PAYMENTS_TABLE = "billing_payments";
+    private static final String VARCHAR_20_NULL = "VARCHAR(20) NULL";
+    private static final String VARCHAR_150_NULL = "VARCHAR(150) NULL";
+    private static final String VARCHAR_255_NULL = "VARCHAR(255) NULL";
+    private static final String VARCHAR_500_NULL = "VARCHAR(500) NULL";
+    private static final String DATETIME_6_NULL = "DATETIME(6) NULL";
+
     private static final Logger log = LoggerFactory.getLogger(DatabaseMigrationRunner.class);
 
     @Autowired
@@ -180,6 +190,24 @@ public class DatabaseMigrationRunner {
         // Per-hospital OPD vitals config + values of hospital-defined custom vitals.
         ensureHospitalVitalsTable();
         addColumnIfMissing("opd", "custom_vitals", "TEXT NULL");
+        // Billing: discount / concession, cancellation, and a refund-aware payment ledger.
+        addColumnIfMissing(BILLING_TABLE, "discount_amount", "DECIMAL(10,2) NULL");
+        addColumnIfMissing(BILLING_TABLE, "discount_reason", VARCHAR_255_NULL);
+        addColumnIfMissing(BILLING_TABLE, "discounted_by", VARCHAR_150_NULL);
+        addColumnIfMissing(BILLING_TABLE, "cancel_reason", VARCHAR_255_NULL);
+        addColumnIfMissing(BILLING_TABLE, "cancelled_by", VARCHAR_150_NULL);
+        addColumnIfMissing(BILLING_TABLE, "cancelled_at", DATETIME_6_NULL);
+        addColumnIfMissing(BILLING_PAYMENTS_TABLE, "kind", "VARCHAR(10) NULL DEFAULT 'PAYMENT'");
+        addColumnIfMissing(BILLING_PAYMENTS_TABLE, "recorded_by", VARCHAR_150_NULL);
+        addColumnIfMissing(BILLING_PAYMENTS_TABLE, "note", VARCHAR_255_NULL);
+        // IPD discharge outcome (V29).
+        addColumnIfMissing("ipd_admission", "discharge_type", VARCHAR_20_NULL);
+        addColumnIfMissing("ipd_admission", "discharge_note", VARCHAR_500_NULL);
+        // OPD visit cancellation (V30).
+        addOpdCancelledStatus();
+        addColumnIfMissing("opd", "cancel_reason", VARCHAR_255_NULL);
+        addColumnIfMissing("opd", "cancelled_by", VARCHAR_150_NULL);
+        addColumnIfMissing("opd", "cancelled_at", "DATETIME NULL");
         ensureBedStatusAuditsTable(); // NEW — Nursing Mgmt Phase C1
         makeInventoryItemHospitalIdNullable();
 
@@ -207,13 +235,13 @@ public class DatabaseMigrationRunner {
         ensureMedicineStockTables(); // INV-2/3 — batch-aware medicine stock + append-only ledger
         addColumnIfMissing("prescriptions", "medicine_id", "BIGINT NULL");
         addColumnIfMissing("medicine_purchases", "batch_number", "VARCHAR(100) NULL");
-        addColumnIfMissing("prescriptions", "food_timing", "VARCHAR(20) NULL"); // V15
+        addColumnIfMissing("prescriptions", "food_timing", VARCHAR_20_NULL); // V15
         ensureOpdIdempotencyTable(); // V16 — one OPD registration per logical submission
 
         // V17 — follow-up lifecycle. A NULL status reads as OPEN, so historical consultations
         // stay actionable and nothing is rewritten.
         addColumnIfMissing("medical_records", "follow_up_instructions", "VARCHAR(1000) NULL");
-        addColumnIfMissing("medical_records", "follow_up_status", "VARCHAR(20) NULL");
+        addColumnIfMissing("medical_records", "follow_up_status", VARCHAR_20_NULL);
         addCompositeIndexIfMissing("medical_records", "idx_medical_records_followup",
                 "`hospital_id`, `follow_up_date`");
 
@@ -221,7 +249,7 @@ public class DatabaseMigrationRunner {
         // becoming two visits; NULLs do not collide, so unactioned follow-ups are unaffected.
         addColumnIfMissing("medical_records", "actioned_opd_id", "BIGINT NULL");
         addColumnIfMissing("medical_records", "actioned_by_user_id", "BIGINT NULL");
-        addColumnIfMissing("medical_records", "actioned_at", "DATETIME(6) NULL");
+        addColumnIfMissing("medical_records", "actioned_at", DATETIME_6_NULL);
         addUniqueIndexIfMissing("medical_records", "uk_medical_records_actioned_opd",
                 "`actioned_opd_id`");
 
@@ -245,8 +273,8 @@ public class DatabaseMigrationRunner {
         // Bilingual consultation instructions & statements
         addColumnIfMissing("hospital_settings", "default_consultation_language", "VARCHAR(10) NOT NULL DEFAULT 'EN'");
         addColumnIfMissing("medical_records", "consultation_language", "VARCHAR(10) NOT NULL DEFAULT 'EN'");
-        addColumnIfMissing("consultation_note_presets", "marathi_text", "VARCHAR(500) NULL");
-        addColumnIfMissing("consultation_note_presets", "hindi_text", "VARCHAR(500) NULL");
+        addColumnIfMissing(NOTE_PRESETS_TABLE, "marathi_text", VARCHAR_500_NULL);
+        addColumnIfMissing(NOTE_PRESETS_TABLE, "hindi_text", VARCHAR_500_NULL);
         ensureConsultationStatementsTable();
         ensureIcuCleaningTasksTable();
     }
@@ -299,6 +327,26 @@ public class DatabaseMigrationRunner {
     private void widenVitalsDecimalColumns() {
         widenDecimal("vitals_records", "weight", "DECIMAL(12,2) NULL", 12);
         widenDecimal("vitals_records", "temperature", "DECIMAL(12,1) NULL", 12);
+    }
+
+    /**
+     * opd.status is a MySQL ENUM created from the Java enum, and ddl-auto=update never widens an
+     * existing ENUM. Without CANCELLED in it, cancelling a visit fails with "Data truncated".
+     */
+    private void addOpdCancelledStatus() {
+        try {
+            String type = jdbcTemplate.queryForObject(
+                    "SELECT COLUMN_TYPE FROM information_schema.COLUMNS "
+                    + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'opd' AND COLUMN_NAME = 'status'",
+                    String.class);
+            if (type != null && type.toLowerCase().startsWith("enum(") && !type.toUpperCase().contains("CANCELLED")) {
+                jdbcTemplate.execute("ALTER TABLE opd MODIFY COLUMN status "
+                        + "ENUM('QUEUED','CONSULTED','COMPLETED','IN_IPD','CANCELLED') NOT NULL");
+                log.info("DB migration applied: opd.status accepts CANCELLED");
+            }
+        } catch (Exception e) {
+            log.warn("Could not add CANCELLED to opd.status: {}", e.getMessage());
+        }
     }
 
     private void widenDecimal(String table, String column, String newType, int wantPrecision) {
@@ -1884,7 +1932,7 @@ public class DatabaseMigrationRunner {
      */
     private void ensurePresetDoctorIdColumns() {
         addNullableDoctorIdColumn("prescription_presets");
-        addNullableDoctorIdColumn("consultation_note_presets");
+        addNullableDoctorIdColumn(NOTE_PRESETS_TABLE);
     }
 
     private void addNullableDoctorIdColumn(String table) {
@@ -2223,7 +2271,7 @@ public class DatabaseMigrationRunner {
         }
         addColumnIfMissing("surgeries", "operative_note", "TEXT NULL");
         addColumnIfMissing("surgeries", "operative_note_by_user_id", "BIGINT NULL");
-        addColumnIfMissing("surgeries", "operative_note_at", "DATETIME(6) NULL");
+        addColumnIfMissing("surgeries", "operative_note_at", DATETIME_6_NULL);
     }
 
     /**
@@ -2398,7 +2446,7 @@ public class DatabaseMigrationRunner {
     private void ensureSurgeryWaitlistColumns() {
         addColumnIfMissing("surgeries", "waitlist_priority", "INT NOT NULL DEFAULT 0");
         addColumnIfMissing("surgeries", "target_date", "DATE NULL");
-        addColumnIfMissing("surgeries", "approved_at", "DATETIME(6) NULL");
+        addColumnIfMissing("surgeries", "approved_at", DATETIME_6_NULL);
         try {
             jdbcTemplate.execute("CREATE INDEX idx_surgery_hospital_scheduled ON surgeries(hospital_id, scheduled_at)");
             log.info("DB migration applied: index surgeries(hospital_id, scheduled_at)");
@@ -2484,7 +2532,7 @@ public class DatabaseMigrationRunner {
     private void ensureSurgeryFormProcedureScope() {
         addColumnIfMissing("surgery_forms", "version", "INT NOT NULL DEFAULT 1");
         addColumnIfMissing("surgery_forms", "is_current", "TINYINT(1) DEFAULT 1");
-        addColumnIfMissing("surgery_forms", "signed_at", "DATETIME(6) NULL");
+        addColumnIfMissing("surgery_forms", "signed_at", DATETIME_6_NULL);
         addColumnIfMissing("surgery_forms", "signed_by_user_id", "BIGINT NULL");
         addColumnIfMissing("surgery_forms", "recorded_by_user_id", "BIGINT NULL");
 

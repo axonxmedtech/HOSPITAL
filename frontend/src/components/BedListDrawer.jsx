@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useToast } from '../context/ToastContext';
-import WardService from '../services/wardService';
-import Button from './Button';
-import { extractApiError } from '../utils/apiError';
 import authService from '../services/authService';
+import WardService from '../services/wardService';
+import { extractApiError } from '../utils/apiError';
+import Button from './Button';
 
 const BedListDrawer = ({ open, ward, onClose, onStatusChange }) => {
   const { error: toastError } = useToast();
@@ -28,13 +28,17 @@ const BedListDrawer = ({ open, ward, onClose, onStatusChange }) => {
   };
 
   const [updatingBedId, setUpdatingBedId] = useState(null);
-  const canManageBeds = ['HOSPITAL_ADMIN', 'NURSE_INCHARGE'].includes(authService.getCurrentUser()?.role);
+  const role = authService.getCurrentUser()?.role;
+  const canManageBeds = ['HOSPITAL_ADMIN', 'NURSE_INCHARGE'].includes(role);
+  // Reception may free a cleaned bed (no nurse in-charge needed), but not take one out of service.
+  const canMarkCleaned = canManageBeds || role === 'RECEPTIONIST';
 
-  const makeAvailable = async (bedId) => {
+  const makeAvailable = async (bedId, cleaning = false) => {
     if (updatingBedId) return;
     setUpdatingBedId(bedId);
     try {
-      await WardService.updateBedStatus(bedId, 'Back to available');
+      if (cleaning) await WardService.markBedCleaned(bedId);
+      else await WardService.updateBedStatus(bedId, 'Back to available');
       onStatusChange && onStatusChange();
       fetchBeds();
     } catch (e) {
@@ -69,6 +73,16 @@ const BedListDrawer = ({ open, ward, onClose, onStatusChange }) => {
                   <div className="text-sm text-slate-500">{b.status}</div>
                 </div>
                 <div>
+                  {canMarkCleaned && b.status === 'cleaning' && (
+                    <Button
+                      size="sm"
+                      variant="success"
+                      onClick={() => makeAvailable(b.bedId, true)}
+                      disabled={!!updatingBedId}
+                    >
+                      {updatingBedId === b.bedId ? 'Updating...' : 'Mark Cleaned'}
+                    </Button>
+                  )}
                   {canManageBeds && b.status === 'maintenance' && (
                     <Button
                       size="sm"

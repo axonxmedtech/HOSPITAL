@@ -68,6 +68,8 @@ public class HospitalStatsService {
     
     @Autowired
     private BillingRepository billingRepository;
+    @Autowired
+    private com.hms.repository.BillingPaymentRepository billingPaymentRepository;
 
     @Autowired
     private PharmacySaleRepository pharmacySaleRepository;
@@ -267,11 +269,11 @@ public class HospitalStatsService {
         List<IpdAdmission> ipdList = ipdAdmissionRepository.findByHospitalIdAndAdmissionDatetimeBetween(hospitalId, rangeStart, rangeEnd);
         analytics.put("totalIPDAdmissions", ipdList.size());
 
-        List<Billing> billingList = billingRepository.findByHospitalIdAndCreatedAtAfter(hospitalId, rangeStart);
-        double totalBillingRevenue = billingList.stream()
-                .filter(b -> "PAID".equalsIgnoreCase(b.getPaymentStatus()))
-                .mapToDouble(b -> b.getAmount() != null ? b.getAmount().doubleValue() : 0.0)
-                .sum();
+        // Revenue is money received (the payment ledger), the same measure as the dashboard's
+        // "Collection". Summing bills in status PAID missed every discharged IPD bill (status
+        // CLOSED) and every part-payment, so this page and the dashboard disagreed.
+        double totalBillingRevenue = billingPaymentRepository
+                .sumCollectedInRange(hospitalId, rangeStart, rangeEnd.plusSeconds(1)).doubleValue();
 
         List<PharmacySale> pharmacySalesList = pharmacySaleRepository.findByHospitalIdAndCreatedAtAfter(hospitalId, rangeStart);
         double totalPharmacyRevenue = pharmacySalesList.stream()
@@ -319,10 +321,9 @@ public class HospitalStatsService {
                     .filter(ipd -> ipd.getAdmissionDatetime() != null && ipd.getAdmissionDatetime().format(trendMonthFormatter).equals(yyyyMM))
                     .count();
 
-            double billRev = billingList.stream()
-                    .filter(b -> "PAID".equalsIgnoreCase(b.getPaymentStatus()) && b.getCreatedAt() != null && b.getCreatedAt().format(trendMonthFormatter).equals(yyyyMM))
-                    .mapToDouble(b -> b.getAmount() != null ? b.getAmount().doubleValue() : 0.0)
-                    .sum();
+            LocalDateTime monthStart = mDate.withDayOfMonth(1).atStartOfDay();
+            double billRev = billingPaymentRepository
+                    .sumCollectedInRange(hospitalId, monthStart, monthStart.plusMonths(1)).doubleValue();
 
             double pharmRev = pharmacySalesList.stream()
                     .filter(s -> "PAID".equalsIgnoreCase(s.getPaymentStatus()) && s.getCreatedAt() != null && s.getCreatedAt().format(trendMonthFormatter).equals(yyyyMM))

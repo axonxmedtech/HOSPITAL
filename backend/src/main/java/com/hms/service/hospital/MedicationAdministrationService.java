@@ -171,6 +171,7 @@ public class MedicationAdministrationService {
             throw new IllegalArgumentException("ipdAdmissionId and prescriptionId are required");
         }
         IpdAdmission admission = requireAdmission(req.getIpdAdmissionId(), hospitalId);
+        com.hms.service.hospital.IpdClinicalState.requireActive(admission);
         nurseWriteAccess.assertCanWriteFor(admission.getId());
 
         String status = req.getStatus() == null ? null : req.getStatus().toUpperCase();

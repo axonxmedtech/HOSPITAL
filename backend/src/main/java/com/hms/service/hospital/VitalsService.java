@@ -57,6 +57,7 @@ public class VitalsService {
             throw new IllegalArgumentException("ipdAdmissionId is required");
         }
         IpdAdmission admission = requireAdmission(req.getIpdAdmissionId(), hospitalId);
+        com.hms.service.hospital.IpdClinicalState.requireActive(admission);
         nurseWriteAccess.assertCanWriteFor(admission.getId());
         validate(req);
 
@@ -252,34 +253,41 @@ public class VitalsService {
         if (req.getRecordedAt() != null && req.getRecordedAt().isAfter(LocalDateTime.now().plusMinutes(1))) {
             throw new IllegalArgumentException("Recorded time cannot be in the future");
         }
-        // No upper bounds on vitals — only reject negatives. A value can be anything from 0 up.
-        nonNegative("Temperature (°F)", req.getTemperature());
-        nonNegative("Pulse", req.getPulse());
-        nonNegative("Systolic BP", req.getBpSystolic());
-        nonNegative("Diastolic BP", req.getBpDiastolic());
-        nonNegative("Respiratory rate", req.getRespiratoryRate());
-        nonNegative("SpO2", req.getSpo2());
-        nonNegative("Pain score", req.getPainScore());
-        nonNegative("Weight", req.getWeight());
-        // ICU Phase 4 — same rule as every other vital: reject negatives, impose no clinical
-        // upper bound. Deciding what counts as an abnormal MAP or GCS is not ours to make.
-        nonNegative("MAP", req.getMapMmhg());
-        nonNegative("CVP", req.getCvpCmh2o());
-        nonNegative("Urine output", req.getUrineOutputMl());
-        nonNegative("GCS eye", req.getGcsEye());
-        nonNegative("GCS verbal", req.getGcsVerbal());
-        nonNegative("GCS motor", req.getGcsMotor());
+        // Plausibility limits, not clinical thresholds: anything inside a range is accepted however
+        // abnormal it is; values outside are typing slips (pulse 900, 37 typed into a °F field)
+        // that would otherwise sit in the chart and on the ICU board as if they were real.
+        range("Temperature (°F)", req.getTemperature(), 75, 115,
+                "Temperature is recorded in °F (normal is about 98.6)");
+        range("Pulse", req.getPulse(), 0, 300, null);
+        range("Systolic BP", req.getBpSystolic(), 0, 300, null);
+        range("Diastolic BP", req.getBpDiastolic(), 0, 250, null);
+        if (req.getBpSystolic() != null && req.getBpDiastolic() != null
+                && req.getBpSystolic() > 0 && req.getBpDiastolic() >= req.getBpSystolic()) {
+            throw new IllegalArgumentException("Diastolic BP must be lower than systolic BP");
+        }
+        range("Respiratory rate", req.getRespiratoryRate(), 0, 100, null);
+        range("SpO2", req.getSpo2(), 0, 100, null);
+        range("Pain score", req.getPainScore(), 0, 10, null);
+        range("Weight (kg)", req.getWeight(), 0, 400, null);
+        range("MAP", req.getMapMmhg(), 0, 250, null);
+        range("CVP", req.getCvpCmh2o(), -10, 60, null);
+        range("Urine output (ml)", req.getUrineOutputMl(), 0, 10000, null);
+        range("GCS eye", req.getGcsEye(), 1, 4, null);
+        range("GCS verbal", req.getGcsVerbal(), 1, 5, null);
+        range("GCS motor", req.getGcsMotor(), 1, 6, null);
     }
 
-    private void nonNegative(String name, Integer value) {
-        if (value != null && value < 0) {
-            throw new IllegalArgumentException(name + " cannot be negative");
+    private void range(String name, Integer value, int min, int max, String hint) {
+        if (value != null && (value < min || value > max)) {
+            throw new IllegalArgumentException(name + " must be between " + min + " and " + max
+                    + (hint == null ? "" : ". " + hint));
         }
     }
 
-    private void nonNegative(String name, BigDecimal value) {
-        if (value != null && value.compareTo(BigDecimal.ZERO) < 0) {
-            throw new IllegalArgumentException(name + " cannot be negative");
+    private void range(String name, BigDecimal value, int min, int max, String hint) {
+        if (value != null && (value.compareTo(BigDecimal.valueOf(min)) < 0 || value.compareTo(BigDecimal.valueOf(max)) > 0)) {
+            throw new IllegalArgumentException(name + " must be between " + min + " and " + max
+                    + (hint == null ? "" : ". " + hint));
         }
     }
 

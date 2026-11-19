@@ -42,7 +42,8 @@ class OpdModuleGateTest {
                     .as("mutation %s must carry @RequireModule(\"OPD\")", m.getName()).isTrue();
             assertThat(m.getAnnotation(RequireModule.class).value()).isEqualTo("OPD");
         }
-        assertThat(mutations).as("OpdController should still expose exactly one mutation").isEqualTo(1);
+        // createOpd, cancelOpd and changeOpdDoctor: each changes the queue, so each needs OPD.
+        assertThat(mutations).as("OpdController should expose exactly three mutations").isEqualTo(3);
     }
 
     @Test

@@ -3,6 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import ActionMenu from '../../components/ActionMenu';
 import AppointmentModal from '../../components/AppointmentModal';
+import DailyCollectionReport from '../../components/billing/DailyCollectionReport';
+import OpdBillCell from '../../components/billing/OpdBillCell';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import ConsultationModal from '../../components/ConsultationModal';
 import DataTable from '../../components/DataTable';
@@ -14,6 +16,7 @@ import IpdAdmitModal from '../../components/IpdAdmitModal';
 import LowStockBanner from '../../components/LowStockBanner';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
 import Navbar from '../../components/Navbar';
+import { CancelVisitModal, ChangeDoctorModal } from '../../components/opd/OpdVisitActions';
 import OpdPaymentFields, {
   isPayFirst,
   validateOpdPayment,
@@ -30,6 +33,7 @@ import StatusBadge from '../../components/StatusBadge';
 import { useToast } from '../../context/ToastContext';
 import useDebounce from '../../hooks/useDebounce'; // BUG-017: standardised debounce hook
 import useEnabledVitals from '../../hooks/useEnabledVitals';
+import useOtPermissions from '../../hooks/useOtPermissions';
 import useWebSocket from '../../hooks/useWebSocket';
 import apiClient from '../../services/apiService';
 import authService from '../../services/authService';
@@ -42,6 +46,7 @@ import BillingTable from './BillingTable';
 import IcuBedBoard from './icu/IcuBedBoard';
 import IcuDashboard from './icu/IcuDashboard';
 import OtBoard from './ot/OtBoard';
+import OtWorkspace from './ot/OtWorkspace';
 
 /**
  * DoctorDashboard - Doctor dashboard
@@ -221,6 +226,9 @@ const DoctorDashboard = () => {
   const [doctorRecord, setDoctorRecord] = useState(null);
 
   // --- OT (Operation Theatre) board — visible to all doctors ---
+  // A doctor who also runs the theatre day (Solo mode, or no receptionist / OT in-charge) holds
+  // OT_SCHEDULE and gets the full workspace instead of the read-only "my surgeries" board.
+  const { can: canOt } = useOtPermissions();
   const [otRows, setOtRows] = useState([]);
   const [otLoading, setOtLoading] = useState(false);
 
@@ -923,6 +931,7 @@ const DoctorDashboard = () => {
     { id: 'follow-ups', label: 'Follow-ups', icon: null },
     ...(hasIPD ? [{ id: 'ipd', label: 'IPD', icon: null }] : []),
     ...(hasBilling ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
+    ...(hasBilling ? [{ id: 'daily-collection', label: 'Daily Collection', icon: null }] : []),
     ...(hasOT ? [{ id: 'ot', label: 'Operation Theatre', icon: null }] : []),
     ...(hasICU ? [{ id: 'icu-dashboard', label: 'ICU Dashboard', icon: null }] : []),
     ...(hasICU ? [{ id: 'icu-beds', label: 'ICU Bed Board', icon: null }] : []),
@@ -1522,9 +1531,11 @@ const DoctorDashboard = () => {
           )}
 
           {/* Standardized Header - Hide on overview, inventory and hospital-inventory tabs */}
+          {activeTab === 'daily-collection' && <DailyCollectionReport />}
           {activeTab !== 'overview' &&
             activeTab !== 'inventory' &&
-            activeTab !== 'hospital-inventory' && (
+            activeTab !== 'hospital-inventory' &&
+            activeTab !== 'daily-collection' && (
               <PageHeader
                 title={
                   activeTab === 'appointments'
@@ -1598,7 +1609,7 @@ const DoctorDashboard = () => {
                     </div>
                   ) : activeTab === 'billing' ? (
                     <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
-                      {['PENDING', 'PAID', 'PARTIAL'].map((status) => (
+                      {['PENDING', 'PARTIAL', 'PAID', 'CANCELLED'].map((status) => (
                         <button
                           key={status}
                           onClick={() => {
@@ -1639,6 +1650,7 @@ const DoctorDashboard = () => {
                       </div>
                       {patientTabView === 'Date' && (
                         <DateSelect
+                          filter
                           value={patientDateFilter}
                           onChange={(v) => {
                             setPatientDateFilter(v);
@@ -1650,7 +1662,7 @@ const DoctorDashboard = () => {
                         type="button"
                         onClick={handleDownloadPatientsReport}
                         disabled={loading}
-                        className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px]"
+                        className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px] whitespace-nowrap shrink-0"
                       >
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
@@ -1693,6 +1705,7 @@ const DoctorDashboard = () => {
                       </div>
                       {opdTabView === 'Date' && (
                         <DateSelect
+                          filter
                           value={opdDateFilter}
                           onChange={(v) => {
                             setOpdDateFilter(v);
@@ -1704,7 +1717,7 @@ const DoctorDashboard = () => {
                         type="button"
                         onClick={handleDownloadOpdReport}
                         disabled={loading}
-                        className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px]"
+                        className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px] whitespace-nowrap shrink-0"
                       >
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
@@ -1765,7 +1778,7 @@ const DoctorDashboard = () => {
             </div>
           )}
 
-          {!loading && activeTab !== 'overview' && (
+          {!loading && activeTab !== 'overview' && activeTab !== 'daily-collection' && (
             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
               {activeTab === 'appointments' &&
                 hasAppointments &&
@@ -1800,6 +1813,15 @@ const DoctorDashboard = () => {
                 (opds.length > 0 ? (
                   <DoctorOpdTable
                     opds={opds}
+                    onBillChanged={() => loadData(false)}
+                    onBillPaid={(bill, result) =>
+                      setPaymentSuccessModal({
+                        isOpen: true,
+                        billId: bill.id,
+                        patientName: bill.patientName || '',
+                        amount: Number(result?.collected ?? bill.balance),
+                      })
+                    }
                     queueEntries={queueEntries}
                     onPrintOpd={handlePrintOpd}
                     onStartConsultation={handleStartOpdConsultation}
@@ -2019,6 +2041,15 @@ const DoctorDashboard = () => {
                     onPrint={handlePrintReceipt}
                     printingBillId={docPrintingId}
                     onEditItems={handleOpenEditBillItems}
+                    onChanged={() => loadData(false)}
+                    onPaid={(bill, result) =>
+                      setPaymentSuccessModal({
+                        isOpen: true,
+                        billId: bill.id,
+                        patientName: bill.patientName || '',
+                        amount: Number(result?.collected ?? bill.balance ?? bill.amount),
+                      })
+                    }
                   />
                 ))}
 
@@ -2026,7 +2057,10 @@ const DoctorDashboard = () => {
 
               {activeTab === 'hospital-inventory' && <HospitalInventoryTab />}
 
+              {activeTab === 'ot' && canOt('OT_SCHEDULE') && <OtWorkspace />}
+
               {activeTab === 'ot' &&
+                !canOt('OT_SCHEDULE') &&
                 (otLoading ? (
                   <div className="text-center text-gray-400 py-16">Loading…</div>
                 ) : (
@@ -2781,7 +2815,7 @@ const DoctorDashboard = () => {
                   <div className="space-y-4">
                     <div className="flex justify-between items-center">
                       <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wide">
-                        Clinic Charges & Services
+                        Charges &amp; Services
                       </h4>
                       <button
                         type="button"
@@ -3305,8 +3339,12 @@ const DoctorOpdTable = ({
   hasIPD,
   startIndex = 0,
   pagination,
+  onBillChanged,
+  onBillPaid,
 }) => {
   const columnHelper = createColumnHelper();
+  // A waiting visit can be cancelled or moved to another doctor (patient left, wrong doctor).
+  const [visitAction, setVisitAction] = useState(null);
 
   const getQueuePosition = (opdId) => {
     if (!queueEntries || queueEntries.length === 0) return null;
@@ -3351,6 +3389,13 @@ const DoctorOpdTable = ({
     columnHelper.accessor('createdAt', {
       header: 'CREATED',
       cell: (info) => new Date(info.getValue()).toLocaleString(),
+    }),
+    columnHelper.display({
+      id: 'bill',
+      header: 'BILL',
+      cell: (info) => (
+        <OpdBillCell opd={info.row.original} onChanged={onBillChanged} onPaid={onBillPaid} />
+      ),
     }),
     columnHelper.display({
       id: 'actions',
@@ -3469,6 +3514,26 @@ const DoctorOpdTable = ({
           }
         }
 
+        const deskDoctor = user?.receptionMode === 'SOLO' || user?.receptionMode === 'BOTH';
+        const ownVisit =
+          !!user?.email &&
+          !!opd.doctor?.email &&
+          opd.doctor.email.toLowerCase() === user.email.toLowerCase();
+        if (
+          opd.status === 'QUEUED' &&
+          (deskDoctor || ownVisit || user?.role === 'HOSPITAL_ADMIN')
+        ) {
+          actions.push({
+            label: 'Change doctor',
+            onClick: () => setVisitAction({ kind: 'doctor', opd }),
+          });
+          actions.push({
+            label: 'Cancel visit',
+            onClick: () => setVisitAction({ kind: 'cancel', opd }),
+            danger: true,
+          });
+        }
+
         return (
           <div className="text-right">
             <ActionMenu actions={actions} />
@@ -3478,7 +3543,29 @@ const DoctorOpdTable = ({
     }),
   ];
 
-  return <DataTable data={opds} columns={columns} pagination={pagination} />;
+  return (
+    <>
+      <DataTable data={opds} columns={columns} pagination={pagination} />
+      {visitAction?.kind === 'cancel' && (
+        <CancelVisitModal
+          opd={visitAction.opd}
+          isAdmin={user?.role === 'HOSPITAL_ADMIN'}
+          onClose={() => setVisitAction(null)}
+          onDone={onBillChanged}
+        />
+      )}
+      {visitAction?.kind === 'doctor' && (
+        <ChangeDoctorModal
+          title="Change doctor"
+          subtitle={`${visitAction.opd.caseId || 'OPD'} · ${visitAction.opd.patient?.name || ''}`}
+          currentDoctorId={visitAction.opd.doctor?.id}
+          onSave={(doctorId) => hospitalService.changeOpdDoctor(visitAction.opd.id, doctorId)}
+          onClose={() => setVisitAction(null)}
+          onDone={onBillChanged}
+        />
+      )}
+    </>
+  );
 };
 
 // Doctor Queue Table (Client-side Paginated)

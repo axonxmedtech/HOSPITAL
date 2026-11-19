@@ -1,12 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { DiscountModal } from '../../components/billing/BillActionModals';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import DateSelect from '../../components/DateSelect';
 import EmptyState from '../../components/EmptyState';
 import FrequencyInput from '../../components/FrequencyInput';
 import IcuAdmitModal from '../../components/IcuAdmitModal';
 import IcuDischargeToIpdModal from '../../components/IcuDischargeToIpdModal';
+import {
+  ConfirmDischargeModal,
+  DischargeTypeFields,
+  dischargeNoteRequired,
+  dischargeTypeLabel,
+} from '../../components/ipd/DischargeType';
 import Navbar from '../../components/Navbar';
+import { ChangeDoctorModal } from '../../components/opd/OpdVisitActions';
 import PageHeader from '../../components/PageHeader';
 import ProfileModal from '../../components/ProfileModal';
 import Sidebar from '../../components/Sidebar';
@@ -44,6 +52,11 @@ const IpdDetails = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
+  // MedicationPanel fetches its own chart once; bump this after prescribing or stopping a
+  // medicine so it reloads instead of saying "No prescriptions yet" beside the new order.
+  const [medChartVersion, setMedChartVersion] = useState(0);
+  // The admission's bill, loaded when Discount is opened (DiscountModal needs gross/paid).
+  const [discountBill, setDiscountBill] = useState(null);
   const [user, setUser] = useState(() => authService.getCurrentUser() || {});
   const isDoctor = authService.isDoctor();
   const isNurse = user?.role === 'NURSE' || user?.role === 'NURSE_INCHARGE';
@@ -54,6 +67,7 @@ const IpdDetails = () => {
   const { success, error: toastError } = useToast();
   const [otSurgery, setOtSurgery] = useState(null);
   const [otModalOpen, setOtModalOpen] = useState(false);
+  const [changeDoctorOpen, setChangeDoctorOpen] = useState(false);
   const hasOT = (user?.modules || []).includes('OT');
 
   // ICU admission & discharge state
@@ -99,6 +113,9 @@ const IpdDetails = () => {
   const verdictFor = (tabId) => formVerdicts[FORM_KEY_BY_TAB[tabId]] || 'EDITABLE';
   const admissionId = Number(id);
 
+  // Fluid balance, ventilation, severity scores and infusions are ICU charting: the server
+  // serves them only to a facility with the ICU module, so they are not offered without it.
+  const hasIcuModule = (authService.getCurrentUser()?.modules || []).includes('ICU');
   const tabs = [
     { id: 'overview', label: 'Overview' },
     ...(verdictFor('vitals') !== 'HIDDEN' ? [{ id: 'vitals', label: 'Vitals' }] : []),
@@ -110,9 +127,15 @@ const IpdDetails = () => {
       ? [{ id: 'vulnerability', label: 'Vulnerability Assessment' }]
       : []),
     ...(verdictFor('sugar') !== 'HIDDEN' ? [{ id: 'sugar', label: 'Sugar Chart' }] : []),
-    ...(verdictFor('io') !== 'HIDDEN' ? [{ id: 'io', label: 'Intake / Output' }] : []),
-    ...(verdictFor('ventilator') !== 'HIDDEN' ? [{ id: 'ventilator', label: 'Ventilator' }] : []),
-    ...(verdictFor('scores') !== 'HIDDEN' ? [{ id: 'scores', label: 'Severity Scores' }] : []),
+    ...(hasIcuModule && verdictFor('io') !== 'HIDDEN'
+      ? [{ id: 'io', label: 'Intake / Output' }]
+      : []),
+    ...(hasIcuModule && verdictFor('ventilator') !== 'HIDDEN'
+      ? [{ id: 'ventilator', label: 'Ventilator' }]
+      : []),
+    ...(hasIcuModule && verdictFor('scores') !== 'HIDDEN'
+      ? [{ id: 'scores', label: 'Severity Scores' }]
+      : []),
     ...(hasOT && otSurgery ? [{ id: 'consent', label: 'Consent Forms' }] : []),
   ];
   // If the active tab got hidden by a Files & Access change, fall back to Overview.
@@ -371,7 +394,7 @@ const IpdDetails = () => {
     try {
       const [resp, stays] = await Promise.all([
         hospitalService.getIpdDetails(id),
-        icuService.getStaysForAdmission(id).catch(() => []),
+        hasIcuModule ? icuService.getStaysForAdmission(id).catch(() => []) : [],
       ]);
       setData(resp);
       setIcuStays(Array.isArray(stays) ? stays : []);
@@ -461,6 +484,7 @@ const IpdDetails = () => {
         try {
           await hospitalService.stopPrescription(prescriptionId);
           success('Medicine stopped');
+          setMedChartVersion((v) => v + 1);
           setLoading(true);
           const resp = await hospitalService.getIpdDetails(id);
           setData(resp);
@@ -474,6 +498,8 @@ const IpdDetails = () => {
     });
   };
 
+  const [confirmDischargeOpen, setConfirmDischargeOpen] = useState(false);
+
   const onPlanDischarge = () => {
     setDischargeModal({
       isOpen: true,
@@ -481,12 +507,44 @@ const IpdDetails = () => {
       treatmentGiven: '',
       dischargeNotes: '',
       followUpDate: '',
+      dischargeType: 'NORMAL',
+      dischargeTypeNote: '',
       saving: false,
+    });
+  };
+
+  const onCancelDischargePlan = () => {
+    setConfirmState({
+      open: true,
+      title: 'Cancel planned discharge',
+      message:
+        'The patient stays admitted and returns to normal care. You can plan the discharge again later.',
+      onConfirm: async () => {
+        try {
+          setLoading(true);
+          await hospitalService.cancelDischargePlan(id);
+          success('Discharge plan cancelled');
+          setData(await hospitalService.getIpdDetails(id));
+        } catch (err) {
+          toastError(parseError(err, 'Failed to cancel the discharge plan'));
+        } finally {
+          setLoading(false);
+        }
+      },
     });
   };
 
   const savePlanDischarge = async () => {
     if (!dischargeModal.finalDiagnosis) return toastError('Final diagnosis is required');
+    if (
+      dischargeNoteRequired(dischargeModal.dischargeType) &&
+      !dischargeModal.dischargeTypeNote?.trim()
+    )
+      return toastError(
+        dischargeModal.dischargeType === 'EXPIRED'
+          ? 'Enter the time and cause of death'
+          : 'Enter the hospital the patient is referred to'
+      );
     setDischargeModal((prev) => ({ ...prev, saving: true }));
     try {
       const payload = {
@@ -494,6 +552,8 @@ const IpdDetails = () => {
         treatmentGiven: dischargeModal.treatmentGiven,
         dischargeNotes: dischargeModal.dischargeNotes,
         followUpDate: dischargeModal.followUpDate || null,
+        dischargeType: dischargeModal.dischargeType || 'NORMAL',
+        dischargeTypeNote: dischargeModal.dischargeTypeNote?.trim() || null,
       };
       await hospitalService.planDischarge(id, payload);
       success('Discharge planned');
@@ -517,25 +577,33 @@ const IpdDetails = () => {
     }
   };
 
-  const onConfirmDischarge = () => {
-    setConfirmState({
-      open: true,
-      title: 'Confirm Discharge',
-      message: 'Confirm discharge? This will finalize the admission and free the bed.',
-      onConfirm: async () => {
-        try {
-          setLoading(true);
-          await hospitalService.confirmDischarge(id);
-          success('Discharge completed');
-          navigate('/');
-        } catch (err) {
-          console.error('Failed to confirm discharge', err);
-          toastError(parseError(err, 'Failed to confirm discharge'));
-        } finally {
-          setLoading(false);
-        }
-      },
-    });
+  // Every unpaid bill of the patient blocks a normal discharge — the IPD bill and the OPD bill
+  // from the consultation that led to admission. The server lists them; show them up front.
+  const owingText = () => {
+    const owing = data?.billing?.outstandingBills || [];
+    const balance = Number(data?.billing?.balance) || 0;
+    return owing.length
+      ? owing.map((o) => `${o.customId} (${o.billingType}) ₹${o.balance}`).join(', ')
+      : balance > 0
+        ? `₹${balance} on this admission's bill`
+        : '';
+  };
+
+  const onConfirmDischarge = () => setConfirmDischargeOpen(true);
+
+  const doConfirmDischarge = async (body) => {
+    try {
+      setLoading(true);
+      await hospitalService.confirmDischarge(id, body);
+      setConfirmDischargeOpen(false);
+      success('Discharge completed');
+      navigate('/');
+    } catch (err) {
+      console.error('Failed to confirm discharge', err);
+      toastError(parseError(err, 'Failed to confirm discharge'));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const openBillModal = async () => {
@@ -543,9 +611,11 @@ const IpdDetails = () => {
     try {
       const b = await hospitalService.getIpdBill(id);
       setBillModal({ isOpen: true, loading: false, bill: b });
+      // Start from the balance due; the user can lower it for a part payment.
+      const due = Number(b?.balance) || 0;
+      setPayment((prev) => ({ ...prev, amount: due > 0 ? String(due) : '' }));
     } catch (err) {
-      console.error('Failed to load bill', err);
-      toastError('Failed to load bill');
+      toastError(extractApiError(err, 'Failed to load bill'));
       setBillModal({ isOpen: false, loading: false, bill: null });
     }
   };
@@ -628,7 +698,12 @@ const IpdDetails = () => {
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
                   <PageHeader
-                    title={`IPD ${data.ipdNumber || ''}`}
+                    title={
+                      // ipdNumber already carries the prefix ("IPD-1"); don't print "IPD IPD-1".
+                      /^IPD/i.test(data.ipdNumber || '')
+                        ? data.ipdNumber
+                        : `IPD ${data.ipdNumber || ''}`.trim()
+                    }
                     subtitle={`${data.patient?.name || ''} • ${data.patient?.age || ''} • ${data.patient?.gender || ''}`}
                   />
                 </div>
@@ -642,7 +717,7 @@ const IpdDetails = () => {
                     </button>
                   )}
                   {/* The admission form is commonly filled and signed at the admission desk. */}
-                  {(isReceptionist || isAdmin) &&
+                  {(isReceptionist || isAdmin || isSoloDoctor) &&
                     !data.admission?.admissionConfirmed &&
                     (data.status === 'ADMITTED' || data.status === 'DISCHARGE_PLANNED') && (
                       <button
@@ -707,6 +782,14 @@ const IpdDetails = () => {
                       className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white bg-yellow-600 hover:bg-yellow-700 whitespace-nowrap"
                     >
                       Plan Discharge
+                    </button>
+                  )}
+                  {(isDoctor || isAdmin) && data.status === 'DISCHARGE_PLANNED' && (
+                    <button
+                      onClick={onCancelDischargePlan}
+                      className="px-3 py-1.5 rounded-lg text-sm font-semibold text-yellow-800 bg-yellow-50 border border-yellow-300 hover:bg-yellow-100 whitespace-nowrap"
+                    >
+                      Cancel Discharge Plan
                     </button>
                   )}
                   {(isReceptionist || isSoloDoctor || isAdmin) &&
@@ -825,6 +908,17 @@ const IpdDetails = () => {
                         </div>
                         <div>
                           <strong>Doctor:</strong> {data.admission?.doctor || '-'}
+                          {(isReceptionist || isAdmin || isDoctor) &&
+                            (data.status === 'ADMITTED' || data.status === 'DISCHARGE_PLANNED') && (
+                              <button
+                                type="button"
+                                onClick={() => setChangeDoctorOpen(true)}
+                                aria-label="Change doctor"
+                                className="ml-2 text-xs font-semibold text-sky-700 hover:underline"
+                              >
+                                Change
+                              </button>
+                            )}
                         </div>
                         <div>
                           <strong>Diagnosis:</strong> {data.admission?.primaryDiagnosis || '-'}
@@ -851,6 +945,16 @@ const IpdDetails = () => {
                         </div>
                         <div>
                           <strong>Status:</strong> {data.status || '-'}
+                          {data.dischargeType &&
+                            (data.status === 'DISCHARGE_PLANNED' ||
+                              data.status === 'DISCHARGED') && (
+                              <span
+                                className={`ml-2 text-xs px-2 py-0.5 rounded-full ${data.dischargeType === 'EXPIRED' ? 'bg-gray-800 text-white' : data.dischargeType === 'NORMAL' ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-800'}`}
+                              >
+                                {dischargeTypeLabel(data.dischargeType)}
+                                {data.dischargeNote ? ` — ${data.dischargeNote}` : ''}
+                              </span>
+                            )}
                         </div>
                       </div>
 
@@ -874,16 +978,14 @@ const IpdDetails = () => {
                       )}
 
                       <div className="mt-3 flex items-center gap-2">
-                        {isDoctor &&
-                          data.status !== 'DISCHARGE_PLANNED' &&
-                          data.status !== 'DISCHARGED' && (
-                            <button
-                              className="px-3 py-1 bg-green-700 text-white rounded hover:bg-green-800"
-                              onClick={onAddFollowUp}
-                            >
-                              + Add Follow-up
-                            </button>
-                          )}
+                        {isDoctor && data.status !== 'DISCHARGED' && (
+                          <button
+                            className="px-3 py-1 bg-green-700 text-white rounded hover:bg-green-800"
+                            onClick={onAddFollowUp}
+                          >
+                            + Add Follow-up
+                          </button>
+                        )}
                       </div>
                     </>
                   )}
@@ -1263,6 +1365,7 @@ const IpdDetails = () => {
                                     await hospitalService.addIpdPrescription(id, payload);
                                     success('Medicine prescribed successfully');
                                     setMedicineModal((prev) => ({ ...prev, isOpen: false }));
+                                    setMedChartVersion((v) => v + 1);
                                     await load(false); // Silent reload to show updated prescriptions
                                   } catch (err) {
                                     console.error('Failed to add medicine', err);
@@ -1874,36 +1977,36 @@ const IpdDetails = () => {
                           </div>
                         )}
 
-                      {isDoctor &&
-                        data.status !== 'DISCHARGE_PLANNED' &&
-                        data.status !== 'DISCHARGED' && (
-                          <div className="mt-3">
-                            <button
-                              className="px-3 py-1 bg-blue-600 text-white rounded"
-                              onClick={onAddMedicine}
-                            >
-                              + Add Medicine
-                            </button>
-                          </div>
-                        )}
+                      {isDoctor && data.status !== 'DISCHARGED' && (
+                        <div className="mt-3">
+                          <button
+                            className="px-3 py-1 bg-blue-600 text-white rounded"
+                            onClick={onAddMedicine}
+                          >
+                            + Add Medicine
+                          </button>
+                        </div>
+                      )}
 
                       {/* Medication Administration Record — read-only here; nurses record it. */}
                       <hr className="my-4" />
                       <h3 className="font-semibold mb-2">
                         Medication Administration History (MAR)
                       </h3>
-                      <MedicationPanel admissionId={admissionId} readOnly />
+                      <MedicationPanel key={medChartVersion} admissionId={admissionId} readOnly />
 
                       {/* Continuous infusions sit with the MAR. Unlike the MAR above — which is
                           read-only here because nurses record administration — infusions follow
                           Files & Access like every other panel on this page, so whoever the
                           server lets edit MEDICATION can start and titrate one from the case. */}
                       <hr className="my-4" />
-                      <InfusionPanel
-                        admissionId={admissionId}
-                        readOnly={verdictFor('medication') === 'READ_ONLY'}
-                        refreshKey={panelRefreshKey}
-                      />
+                      {hasIcuModule && (
+                        <InfusionPanel
+                          admissionId={admissionId}
+                          readOnly={verdictFor('medication') === 'READ_ONLY'}
+                          refreshKey={panelRefreshKey}
+                        />
+                      )}
                     </>
                   )}
                 </div>
@@ -1911,7 +2014,9 @@ const IpdDetails = () => {
                 <aside className="bg-white border rounded p-4">
                   {/* Discharge + Create Surgery Request now live in the case header (top right). */}
                   {/* ICU-10: renders nothing unless this admission has an ICU stay. */}
-                  <IcuStayCard admissionId={admissionId} refreshKey={panelRefreshKey} />
+                  {hasIcuModule && (
+                    <IcuStayCard admissionId={admissionId} refreshKey={panelRefreshKey} />
+                  )}
                   {hasOT && otSurgery && (
                     <>
                       <h3 className="font-semibold mb-2">Operation Theatre</h3>
@@ -1998,6 +2103,11 @@ const IpdDetails = () => {
                           <div>
                             <strong>Total:</strong> ₹{data.billing.totalAmount}
                           </div>
+                          {Number(data.billing.discountAmount) > 0 && (
+                            <div className="text-emerald-700">
+                              <strong>Discount:</strong> ₹{data.billing.discountAmount} (included)
+                            </div>
+                          )}
                           <div>
                             <strong>Paid:</strong> ₹{data.billing.paidAmount}
                           </div>
@@ -2014,6 +2124,18 @@ const IpdDetails = () => {
                           onClick={openBillModal}
                         >
                           Take Payment
+                        </button>
+                        <button
+                          className="px-3 py-1 border border-gray-300 text-gray-700 rounded hover:bg-gray-50"
+                          onClick={async () => {
+                            try {
+                              setDiscountBill(await hospitalService.getIpdBill(id));
+                            } catch (err) {
+                              toastError(parseError(err, 'Could not load the bill'));
+                            }
+                          }}
+                        >
+                          Discount
                         </button>
                         <button
                           className="px-3 py-1 bg-gray-600 text-white rounded disabled:opacity-50"
@@ -2089,6 +2211,26 @@ const IpdDetails = () => {
                 />
               )}
 
+              {changeDoctorOpen && (
+                <ChangeDoctorModal
+                  title="Change attending doctor"
+                  subtitle={`${data.patient?.name || ''} · now under ${data.admission?.doctor || 'no doctor'}`}
+                  currentDoctorId={data.admission?.doctorId}
+                  onSave={(doctorId) => hospitalService.changeIpdDoctor(id, doctorId)}
+                  onClose={() => setChangeDoctorOpen(false)}
+                  onDone={() => load(false)}
+                />
+              )}
+              {confirmDischargeOpen && (
+                <ConfirmDischargeModal
+                  initialType={data.dischargeType}
+                  initialNote={data.dischargeNote}
+                  owing={owingText()}
+                  onClose={() => setConfirmDischargeOpen(false)}
+                  onConfirm={doConfirmDischarge}
+                />
+              )}
+
               {/* Discharge Modal */}
               {dischargeModal.isOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
@@ -2136,6 +2278,15 @@ const IpdDetails = () => {
                         rows={3}
                       />
                     </div>
+                    <DischargeTypeFields
+                      type={dischargeModal.dischargeType || 'NORMAL'}
+                      note={dischargeModal.dischargeTypeNote || ''}
+                      onType={(v) => setDischargeModal((prev) => ({ ...prev, dischargeType: v }))}
+                      onNote={(v) =>
+                        setDischargeModal((prev) => ({ ...prev, dischargeTypeNote: v }))
+                      }
+                      idPrefix="plan-dt"
+                    />
                     <div className="mb-3">
                       <label htmlFor="fld-120" className="block text-sm font-medium mb-1">
                         Follow-up Date
@@ -2264,6 +2415,12 @@ const IpdDetails = () => {
                         <div className="mb-3 text-sm">
                           <div>
                             <strong>Total:</strong> ₹{billModal.bill.totalAmount}
+                            {Number(billModal.bill.discountAmount) > 0 && (
+                              <span className="text-emerald-700 text-xs">
+                                {' '}
+                                (after ₹{billModal.bill.discountAmount} discount)
+                              </span>
+                            )}
                           </div>
                           <div>
                             <strong>Paid:</strong> ₹{billModal.bill.paidAmount}
@@ -2306,6 +2463,23 @@ const IpdDetails = () => {
                               <option value="UPI">UPI</option>
                             </select>
                           </div>
+                          {payment.mode !== 'CASH' && (
+                            <input
+                              value={payment.reference || ''}
+                              onChange={(e) =>
+                                setPayment((prev) => ({ ...prev, reference: e.target.value }))
+                              }
+                              aria-label={
+                                payment.mode === 'UPI' ? 'UTR / reference' : 'Card reference'
+                              }
+                              placeholder={
+                                payment.mode === 'UPI'
+                                  ? 'UTR / transaction reference (required)'
+                                  : 'Card reference / last 4 digits (optional)'
+                              }
+                              className="border p-2 rounded w-full mt-3"
+                            />
+                          )}
                           {Number(payment.amount) > billModal.bill.balance && (
                             <p className="text-xs text-amber-600 font-semibold mt-2">
                               ⚠️ Warning: The bill is less than the payment amount
@@ -2333,7 +2507,14 @@ const IpdDetails = () => {
                                 }
                                 setPayment((prev) => ({ ...prev, saving: true }));
                                 try {
-                                  const payload = { amount: amountVal, mode: payment.mode };
+                                  if (payment.mode === 'UPI' && !(payment.reference || '').trim()) {
+                                    return toastError('Enter the UPI UTR / reference');
+                                  }
+                                  const payload = {
+                                    amount: amountVal,
+                                    mode: payment.mode,
+                                    reference: (payment.reference || '').trim() || null,
+                                  };
                                   const resp = await hospitalService.payBilling(
                                     billModal.bill.billingId,
                                     payload
@@ -2455,6 +2636,16 @@ const IpdDetails = () => {
       {/* Profile Settings Modal */}
       <ProfileModal isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
 
+      {discountBill && (
+        <DiscountModal
+          bill={{ ...discountBill, patientName: data?.patient?.name }}
+          onClose={() => setDiscountBill(null)}
+          onDone={async () => {
+            setDiscountBill(null);
+            await load(false);
+          }}
+        />
+      )}
       <ConfirmationModal
         isOpen={confirmState.open}
         title={confirmState.title}

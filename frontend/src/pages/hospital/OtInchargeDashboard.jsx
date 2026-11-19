@@ -9,10 +9,10 @@ import useWebSocket from '../../hooks/useWebSocket';
 import authService from '../../services/authService';
 import otService from '../../services/otService';
 import { extractApiError } from '../../utils/apiError';
+import AnaesthesiaClearanceModal from './ot/AnaesthesiaClearanceModal';
 import OtAnalyticsStrip from './ot/OtAnalyticsStrip';
 import OtBoard from './ot/OtBoard';
 import OtDayBoard from './ot/OtDayBoard';
-import AnaesthesiaClearanceModal from './ot/AnaesthesiaClearanceModal';
 import RecoveryModal from './ot/RecoveryModal';
 import ScheduleSurgeryModal from './ot/ScheduleSurgeryModal';
 import SurgeryExecutionModal from './ot/SurgeryExecutionModal';
@@ -65,7 +65,8 @@ const OtInchargeDashboard = () => {
     setLoading(true);
     setLoadError(null);
     try {
-      const data = activeTab === 'requests' ? await otService.getRequests() : await otService.getBoard();
+      const data =
+        activeTab === 'requests' ? await otService.getRequests() : await otService.getBoard();
       setRows(Array.isArray(data) ? data : []);
     } catch (e) {
       // A failed read is its own state. Showing an empty board would say "no surgeries today",
@@ -128,7 +129,7 @@ const OtInchargeDashboard = () => {
         />
 
         <main className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 bg-gray-50/50">
-          <OtAnalyticsStrip />
+          <OtAnalyticsStrip refreshKey={rows} />
 
           {!permsLoaded ? (
             <div className="text-center text-gray-400 py-16">Loading…</div>
@@ -139,8 +140,8 @@ const OtInchargeDashboard = () => {
             >
               <p className="text-sm font-semibold text-amber-900">No theatre access</p>
               <p className="mt-1 text-sm text-amber-800">
-                Your hospital has not granted this account access to the operation theatre. Ask
-                your administrator to review the OT permission matrix.
+                Your hospital has not granted this account access to the operation theatre. Ask your
+                administrator to review the OT permission matrix.
               </p>
             </div>
           ) : activeTab === 'day' ? (
@@ -187,9 +188,7 @@ const OtInchargeDashboard = () => {
         </main>
       </div>
 
-      {teamTarget && (
-        <SurgeryTeamModal surgery={teamTarget} onClose={() => setTeamTarget(null)} />
-      )}
+      {teamTarget && <SurgeryTeamModal surgery={teamTarget} onClose={() => setTeamTarget(null)} />}
       {execTarget && (
         <SurgeryExecutionModal
           surgery={execTarget}

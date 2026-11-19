@@ -45,6 +45,7 @@ class OpdControllerIpdRequestsTest {
     @MockBean private JwtUtil jwtUtil;
     @MockBean private com.hms.security.SecurityContextHelper securityContextHelper;
     @MockBean private com.hms.service.PdfService pdfService;
+    @MockBean private com.hms.service.hospital.BillingService billingService;
     @MockBean private com.hms.repository.HospitalSettingRepository hospitalSettingRepository;
     @MockBean private com.hms.repository.DoctorRepository doctorRepository;
     @MockBean private com.hms.repository.MedicalRecordRepository medicalRecordRepository;

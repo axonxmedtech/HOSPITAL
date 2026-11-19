@@ -19,6 +19,8 @@ import {
 import ActionMenu from '../../components/ActionMenu';
 import AdminOverviewAnalytics from '../../components/AdminOverviewAnalytics';
 import AppointmentModal from '../../components/AppointmentModal';
+import DailyCollectionReport from '../../components/billing/DailyCollectionReport';
+import OpdBillCell from '../../components/billing/OpdBillCell';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import DataTable from '../../components/DataTable';
 import DateSelect from '../../components/DateSelect';
@@ -32,7 +34,9 @@ import IpdAdmitModal from '../../components/IpdAdmitModal';
 import LowStockBanner from '../../components/LowStockBanner';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
 import Navbar from '../../components/Navbar';
+import NoDoctorsHint from '../../components/NoDoctorsHint';
 import NotePresetsManager from '../../components/NotePresetsManager';
+import OpdVisitActions from '../../components/opd/OpdVisitActions';
 import OpdPaymentFields, {
   isPayFirst,
   validateOpdPayment,
@@ -46,6 +50,7 @@ import PatientFormFields, {
 import PatientModal from '../../components/PatientModal';
 import PrescriptionPresetsManager from '../../components/PrescriptionPresetsManager';
 import ProfileModal from '../../components/ProfileModal';
+import SetupChecklist from '../../components/SetupChecklist';
 import Sidebar from '../../components/Sidebar';
 import {
   SkeletonDashboard,
@@ -72,6 +77,7 @@ import salesApi from '../../services/pharmacy/salesApi';
 import timeSlotService from '../../services/timeSlotService';
 import wardService from '../../services/wardService';
 import { safeLoadMessage, extractApiError } from '../../utils/apiError';
+import { localIsoDate } from '../../utils/date';
 import { extractPhoneConflicts } from '../../utils/duplicatePhone';
 import { backdropProps } from '../../utils/modalA11y';
 import { describeShift, isOnShiftNow } from '../../utils/nurseShift';
@@ -87,6 +93,7 @@ import HospitalCalendar from './HospitalCalendar';
 import IcuBedBoard from './icu/IcuBedBoard';
 import IcuDashboard from './icu/IcuDashboard';
 import IcuWardsAndBeds from './icu/IcuWardsAndBeds';
+import IcuDashboardView from './IcuDashboardView';
 import OtAnalyticsCard from './OtAnalyticsCard';
 import OtPermissionsCard from './OtPermissionsCard';
 import OtPoliciesCard from './OtPoliciesCard';
@@ -99,7 +106,6 @@ import TimeSlotsView from './TimeSlotsView';
 import VentilatorSettingsCard from './VentilatorSettingsCard';
 import VitalsSettingsCard from './VitalsSettingsCard';
 import WardsAndBeds from './WardsAndBeds';
-import IcuDashboardView from './IcuDashboardView';
 /**
  * HospitalAdminDashboard - Hospital Admin dashboard
  *
@@ -344,7 +350,7 @@ const HospitalAdminDashboard = () => {
     paymentMethod: 'CASH',
     paymentReference: '',
   });
-  const { isOn, customs } = useEnabledVitals();
+  const { isOn, customs } = useEnabledVitals({ skip: isPharmacyTenant });
   const [adminOpdPatientSearch, setAdminOpdPatientSearch] = useState('');
   const [adminOpdSubmitting, setAdminOpdSubmitting] = useState(false);
   // Patients this hospital already has on the number typed into the OPD intake form. Set means
@@ -1353,7 +1359,7 @@ const HospitalAdminDashboard = () => {
         } else if (activeTab === 'doctors') {
           if (doctorSubView === 'Deleted') {
             const data = await hospitalService.getDeletedDoctors();
-            const deletedList = Array.isArray(data) ? data : (data?.content || []);
+            const deletedList = Array.isArray(data) ? data : data?.content || [];
             setDeletedDoctors(deletedList);
             setTotalPages(data?.totalPages || 1);
             setTotalElements(data?.totalElements || deletedList.length);
@@ -2023,8 +2029,7 @@ const HospitalAdminDashboard = () => {
       success('Password reset successfully');
       setResetPasswordModal({ isOpen: false, staff: null, role: '' });
     } catch (err) {
-      const errorMsg =
-        extractApiError(err, 'Failed to reset password');
+      const errorMsg = extractApiError(err, 'Failed to reset password');
       setResetPasswordForm((f) => ({
         ...f,
         submitting: false,
@@ -2060,10 +2065,7 @@ const HospitalAdminDashboard = () => {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute(
-      'download',
-      `Hospital_Analytics_Report_${new Date().toISOString().split('T')[0]}.csv`
-    );
+    link.setAttribute('download', `Hospital_Analytics_Report_${localIsoDate()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -2264,6 +2266,7 @@ const HospitalAdminDashboard = () => {
     // Financial
     { id: 'billing', label: 'Billing', icon: null, requiredModule: 'BILLING' },
     { id: 'fees', label: 'Fees', icon: null, requiredModule: 'BILLING' },
+    { id: 'daily-collection', label: 'Daily Collection', icon: null, requiredModule: 'BILLING' },
     // Staff
     { id: 'doctors', label: 'Doctors', icon: null, requiredModule: 'OPD' },
     { id: 'receptionists', label: 'Receptionists', icon: null, requiredModule: 'OPD' },
@@ -2371,7 +2374,7 @@ const HospitalAdminDashboard = () => {
     },
     { id: 'group-pharmacy', label: 'Pharmacy', tabIds: ['pharmacy'] },
     { id: 'group-inventory', label: 'Inventory', tabIds: ['inventory', 'hospital-inventory'] },
-    { id: 'group-finance', label: 'Finance', tabIds: ['billing', 'fees'] },
+    { id: 'group-finance', label: 'Finance', tabIds: ['billing', 'daily-collection', 'fees'] },
     { id: 'group-reports', label: 'Reports', tabIds: ['analytics', 'ot-analytics', 'audit-logs'] },
     {
       id: 'group-presets',
@@ -2440,6 +2443,9 @@ const HospitalAdminDashboard = () => {
     amount: null,
     patientName: '',
   });
+  // UTR for an Online/UPI collection, typed in the dialog. It used to be a window.prompt(),
+  // which looks like a browser error in front of a patient and is blocked by some browsers.
+  const [upiRef, setUpiRef] = useState('');
   const [paymentSuccessModal, setPaymentSuccessModal] = useState({
     isOpen: false,
     billId: null,
@@ -2451,6 +2457,7 @@ const HospitalAdminDashboard = () => {
   const [billStatusUpdating, setBillStatusUpdating] = useState(null);
   const handleBillStatus = async (id, status, billObj = null) => {
     if (status === 'PAID') {
+      setUpiRef('');
       setPaymentModal({
         isOpen: true,
         billId: id,
@@ -2479,8 +2486,8 @@ const HospitalAdminDashboard = () => {
       const pm = method === 'Online' ? 'UPI' : 'CASH';
       let reference = null;
       if (pm === 'UPI') {
-        reference = window.prompt('Enter UTR / transaction reference (required for UPI):');
-        if (!reference || !reference.trim()) {
+        reference = upiRef.trim();
+        if (!reference) {
           toastError('UTR / reference is required for UPI payments');
           setPaymentProcessing(false);
           return;
@@ -2488,6 +2495,7 @@ const HospitalAdminDashboard = () => {
       }
       await hospitalService.updateBillStatus(paymentModal.billId, 'PAID', pm, reference);
       // Close Payment Modal
+      setUpiRef('');
       setPaymentModal({ isOpen: false, billId: null, amount: null, patientName: '' });
 
       // Open Success Modal immediately
@@ -2837,6 +2845,7 @@ const HospitalAdminDashboard = () => {
             activeTab === 'overview' &&
             !loading && (
               <div className="space-y-6">
+                {user?.role === 'HOSPITAL_ADMIN' && <SetupChecklist onGo={setActiveTab} />}
                 {/* A clinic reaches this same dashboard, but the analytics endpoint is HOSPITAL-only
                     and apiService rewrites /hospital/** to /clinic/** for a clinic session, so the
                     request would not even reach it. Clinics therefore keep the Overview they had. */}
@@ -3083,7 +3092,8 @@ const HospitalAdminDashboard = () => {
             activeTab !== 'pathology' &&
             activeTab !== 'support' &&
             activeTab !== 'inventory' &&
-            activeTab !== 'hospital-inventory' && (
+            activeTab !== 'hospital-inventory' &&
+            activeTab !== 'daily-collection' && (
               <PageHeader
                 title={tabs.find((t) => t.id === activeTab)?.label}
                 subtitle={
@@ -3095,7 +3105,7 @@ const HospitalAdminDashboard = () => {
                         ? 'Manage currently admitted patients in general wards'
                         : activeTab === 'icu'
                           ? 'Manage critical-care patients currently admitted to ICU'
-                          : `Manage hospital ${activeTab} records`
+                          : `Manage ${isPharmacyTenant ? 'pharmacy' : user?.hospitalType === 'CLINIC' ? 'clinic' : 'hospital'} ${activeTab} records`
                 }
                 onSearch={
                   activeTab === 'fees' || activeTab === 'settings'
@@ -3111,32 +3121,41 @@ const HospitalAdminDashboard = () => {
                     ? () => setIsAdminOpdModalOpen(true)
                     : activeTab === 'nurse-tasks'
                       ? () => setCreateTaskModal(true)
-: activeTab === 'doctors' && doctorSubView === 'Deleted'
+                      : activeTab === 'doctors' && doctorSubView === 'Deleted'
                         ? null
-                        : activeTab === 'ipd' || activeTab === 'icu'
-                          ? null
-                          : activeTab !== 'billing' &&
-                              activeTab !== 'audit-logs' &&
-                              activeTab !== 'fees' &&
-                              activeTab !== 'settings' &&
-                              activeTab !== 'ot' &&
-                              activeTab !== 'time-slots' &&
-                              activeTab !== 'calendar' &&
-                              activeTab !== 'icu-wards' &&
-                              activeTab !== 'icu-dashboard' &&
-                              activeTab !== 'icu-beds' &&
-                              user?.role === 'HOSPITAL_ADMIN'
-                            ? handleAdd
-                            : null
+                        : activeTab === 'ipd'
+                          ? () => {
+                              setAdminIpdOpdForAdmit(null);
+                              setIsAdminIpdAdmitOpen(true);
+                            }
+                          : activeTab === 'icu'
+                            ? null
+                            : activeTab !== 'billing' &&
+                                activeTab !== 'audit-logs' &&
+                                activeTab !== 'fees' &&
+                                activeTab !== 'settings' &&
+                                activeTab !== 'ot' &&
+                                activeTab !== 'time-slots' &&
+                                activeTab !== 'calendar' &&
+                                activeTab !== 'icu-wards' &&
+                                activeTab !== 'icu-dashboard' &&
+                                activeTab !== 'icu-beds' &&
+                                user?.role === 'HOSPITAL_ADMIN'
+                              ? handleAdd
+                              : null
                 }
                 addLabel={
                   activeTab === 'opd'
                     ? 'New OPD'
-                    : activeTab === 'nurse-tasks'
-                      ? 'New Task'
-                      : activeTab === 'fees' || activeTab === 'settings' || (activeTab === 'doctors' && doctorSubView === 'Deleted')
-                        ? ''
-                        : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'nurses' ? 'Nurse' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'ot-incharges' ? 'OT Incharge' : activeTab === 'appointments' && hasAppointments ? 'Appointment' : activeTab === 'wards' ? 'Ward' : ''}`
+                    : activeTab === 'ipd'
+                      ? 'Admit Patient'
+                      : activeTab === 'nurse-tasks'
+                        ? 'New Task'
+                        : activeTab === 'fees' ||
+                            activeTab === 'settings' ||
+                            (activeTab === 'doctors' && doctorSubView === 'Deleted')
+                          ? ''
+                          : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'nurses' ? 'Nurse' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'ot-incharges' ? 'OT Incharge' : activeTab === 'appointments' && hasAppointments ? 'Appointment' : activeTab === 'wards' ? 'Ward' : ''}`
                 }
                 filter={
                   activeTab === 'doctors' && user?.role === 'HOSPITAL_ADMIN' ? (
@@ -3193,6 +3212,7 @@ const HospitalAdminDashboard = () => {
                       </div>
                       {patientTabView === 'Date' && (
                         <DateSelect
+                          filter
                           value={patientDateFilter}
                           onChange={(v) => setPatientDateFilter(v)}
                         />
@@ -3201,7 +3221,7 @@ const HospitalAdminDashboard = () => {
                         type="button"
                         onClick={handleDownloadPatientsReport}
                         disabled={loading}
-                        className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px]"
+                        className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px] whitespace-nowrap shrink-0"
                       >
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
@@ -3243,13 +3263,17 @@ const HospitalAdminDashboard = () => {
                         ))}
                       </div>
                       {opdTabView === 'Date' && (
-                        <DateSelect value={opdDateFilter} onChange={(v) => setOpdDateFilter(v)} />
+                        <DateSelect
+                          filter
+                          value={opdDateFilter}
+                          onChange={(v) => setOpdDateFilter(v)}
+                        />
                       )}
                       <button
                         type="button"
                         onClick={handleDownloadOpdReport}
                         disabled={loading}
-                        className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px]"
+                        className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px] whitespace-nowrap shrink-0"
                       >
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
@@ -3290,7 +3314,7 @@ const HospitalAdminDashboard = () => {
                     </div>
                   ) : activeTab === 'billing' ? (
                     <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
-                      {['PENDING', 'PAID', 'PARTIAL'].map((status) => (
+                      {['PENDING', 'PARTIAL', 'PAID', 'CANCELLED'].map((status) => (
                         <button
                           key={status}
                           onClick={() => setBillingStatus(status)}
@@ -3366,6 +3390,7 @@ const HospitalAdminDashboard = () => {
                 activeTab === 'icu-dashboard' ||
                 activeTab === 'icu-beds' ||
                 activeTab === 'billing' ||
+                activeTab === 'daily-collection' ||
                 activeTab === 'fees' ||
                 activeTab === 'opd' ||
                 (activeTab === 'appointments' && hasAppointments) ||
@@ -3624,7 +3649,21 @@ const HospitalAdminDashboard = () => {
                       updatingBillId={billStatusUpdating}
                       printingBillId={printingReceiptId}
                       onEditItems={handleOpenEditBillItems}
+                      onChanged={() => loadData(page, pageSize, false)}
+                      onPaid={(bill, result) =>
+                        setPaymentSuccessModal({
+                          isOpen: true,
+                          billId: bill.id,
+                          patientName: bill.patientName || '',
+                          amount: Number(result?.collected ?? bill.balance ?? bill.amount),
+                        })
+                      }
                     />
+                  )}
+                  {activeTab === 'daily-collection' && (
+                    <div className="p-4 md:p-6">
+                      <DailyCollectionReport />
+                    </div>
                   )}
                   {activeTab === 'fees' && (
                     <div className="p-6 max-w-6xl mx-auto">
@@ -3840,6 +3879,15 @@ const HospitalAdminDashboard = () => {
                     ) : opds.length > 0 ? (
                       <AdminOpdTable
                         opds={opds}
+                        onBillChanged={() => loadData(page, pageSize, false)}
+                        onBillPaid={(bill, result) =>
+                          setPaymentSuccessModal({
+                            isOpen: true,
+                            billId: bill.id,
+                            patientName: bill.patientName || '',
+                            amount: Number(result?.collected ?? bill.balance),
+                          })
+                        }
                         onPrintOpd={handlePrintOpd}
                         onAdmitToIpd={
                           hasIPD
@@ -5155,9 +5203,8 @@ const HospitalAdminDashboard = () => {
                                   </svg>
                                 </div>
                               </div>
-                              <div className="mt-4 text-xs font-medium text-emerald-600 flex items-center gap-1">
-                                <span>+8.4%</span>
-                                <span className="text-gray-600">vs last month</span>
+                              <div className="mt-4 text-xs text-gray-500">
+                                All registered patients
                               </div>
                             </div>
 
@@ -5187,10 +5234,10 @@ const HospitalAdminDashboard = () => {
                                   </svg>
                                 </div>
                               </div>
-                              <div className="mt-4 text-xs font-medium text-emerald-600 flex items-center gap-1">
-                                <span>+12.1%</span>
-                                <span className="text-gray-600">vs last month</span>
-                              </div>
+                              <MonthOverMonth
+                                trends={analyticsData.monthlyTrends}
+                                field="opdCount"
+                              />
                             </div>
 
                             <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden group hover:shadow-md transition-all duration-300">
@@ -5251,10 +5298,10 @@ const HospitalAdminDashboard = () => {
                                   </svg>
                                 </div>
                               </div>
-                              <div className="mt-4 text-xs font-medium text-emerald-600 flex items-center gap-1">
-                                <span>+15.3%</span>
-                                <span className="text-gray-600">vs last month</span>
-                              </div>
+                              <MonthOverMonth
+                                trends={analyticsData.monthlyTrends}
+                                field="totalRevenue"
+                              />
                             </div>
                           </div>
 
@@ -5647,7 +5694,7 @@ const HospitalAdminDashboard = () => {
                   <EmptyState
                     icon={null}
                     title="No IPD Admissions"
-                    message="No IPD admissions found for this hospital."
+                    message="Use Admit Patient (top right) to admit a patient, or Admit to IPD on an OPD visit the doctor recommended."
                   />
                 ))}
               {activeTab === 'icu' && <IcuDashboardView />}
@@ -6329,6 +6376,7 @@ const HospitalAdminDashboard = () => {
                       </option>
                     ))}
                   </select>
+                  <NoDoctorsHint doctors={doctors} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -6886,6 +6934,20 @@ const HospitalAdminDashboard = () => {
                           ₹{paymentModal.amount}
                         </div>
                       </div>
+                      <label
+                        className="block text-xs font-medium text-gray-600 mb-1"
+                        htmlFor="upi-ref"
+                      >
+                        UTR / reference (needed for Online / UPI)
+                      </label>
+                      <input
+                        id="upi-ref"
+                        type="text"
+                        value={upiRef}
+                        onChange={(e) => setUpiRef(e.target.value)}
+                        placeholder="e.g. 4321 8765 0912"
+                        className="w-full mb-3 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                      />
                       <div className="grid grid-cols-2 gap-4">
                         <button
                           onClick={() => handleProcessPayment('Cash')}
@@ -7111,7 +7173,7 @@ const HospitalAdminDashboard = () => {
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
                     <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wide">
-                      Clinic Charges & Services
+                      Charges &amp; Services
                     </h4>
                     <button
                       type="button"
@@ -7613,13 +7675,34 @@ const DoctorsTable = ({
 };
 
 // Deleted Doctors Table Component
-const DeletedDoctorsTable = ({
-  doctors,
-  onRestore,
-  onViewDetails,
-  startIndex = 0,
-  pagination,
-}) => {
+/**
+ * This month vs last month for one series of the analytics monthlyTrends (oldest → newest).
+ * Replaces hard-coded "+8.4% / +12.1% / +15.3% vs last month" badges that every hospital saw
+ * whatever its real numbers were. With no figure for last month there is nothing honest to compare.
+ */
+const MonthOverMonth = ({ trends, field }) => {
+  const n = Array.isArray(trends) ? trends.length : 0;
+  const current = n > 0 ? Number(trends[n - 1]?.[field]) || 0 : 0;
+  const previous = n > 1 ? Number(trends[n - 2]?.[field]) || 0 : 0;
+  if (previous <= 0) {
+    return <div className="mt-4 text-xs text-gray-500">No data for last month yet</div>;
+  }
+  const pct = ((current - previous) / previous) * 100;
+  const up = pct >= 0;
+  return (
+    <div
+      className={`mt-4 text-xs font-medium flex items-center gap-1 ${up ? 'text-emerald-600' : 'text-red-600'}`}
+    >
+      <span>
+        {up ? '+' : ''}
+        {pct.toFixed(1)}%
+      </span>
+      <span className="text-gray-600">vs last month</span>
+    </div>
+  );
+};
+
+const DeletedDoctorsTable = ({ doctors, onRestore, onViewDetails, startIndex = 0, pagination }) => {
   const columnHelper = createColumnHelper();
 
   const columns = [
@@ -7638,7 +7721,9 @@ const DeletedDoctorsTable = ({
       cell: (info) => (
         <div className="flex items-center gap-2">
           <span className="font-medium text-gray-900">{info.getValue()}</span>
-          <span className="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded-full font-medium">Deleted</span>
+          <span className="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded-full font-medium">
+            Deleted
+          </span>
         </div>
       ),
     }),
@@ -7678,8 +7763,19 @@ const DeletedDoctorsTable = ({
             onClick={() => onRestore(info.row.original)}
             className="px-3 py-1 text-xs font-semibold text-white bg-green-600 hover:bg-green-700 rounded-md shadow-sm transition-colors flex items-center gap-1"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-3.5 w-3.5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
             </svg>
             Restore
           </button>
@@ -10560,7 +10656,15 @@ const PharmacistsTable = ({
   return <DataTable data={pharmacists} columns={columns} pagination={pagination} />;
 };
 
-const AdminOpdTable = ({ opds, onPrintOpd, onAdmitToIpd, startIndex = 0, pagination }) => {
+const AdminOpdTable = ({
+  opds,
+  onPrintOpd,
+  onAdmitToIpd,
+  startIndex = 0,
+  pagination,
+  onBillChanged,
+  onBillPaid,
+}) => {
   const columnHelper = createColumnHelper();
 
   const columns = [
@@ -10601,20 +10705,34 @@ const AdminOpdTable = ({ opds, onPrintOpd, onAdmitToIpd, startIndex = 0, paginat
                   ? 'bg-indigo-100 text-indigo-800'
                   : info.getValue() === 'COMPLETED'
                     ? 'bg-emerald-100 text-emerald-800'
-                    : 'bg-slate-100 text-slate-800'
+                    : info.getValue() === 'CANCELLED'
+                      ? 'bg-red-50 text-red-700'
+                      : 'bg-slate-100 text-slate-800'
           }`}
+          title={info.row.original.cancelReason || undefined}
         >
           {info.getValue() === 'QUEUED'
             ? '⏳ In Queue'
             : info.getValue() === 'CONSULTING'
               ? '🩺 Consulting'
-              : info.getValue()}
+              : info.getValue() === 'CANCELLED'
+                ? 'Cancelled'
+                : info.getValue() === 'IN_IPD'
+                  ? 'Admitted'
+                  : info.getValue()}
         </span>
       ),
     }),
     columnHelper.accessor('createdAt', {
       header: 'REGISTERED AT',
       cell: (info) => new Date(info.getValue()).toLocaleString(),
+    }),
+    columnHelper.display({
+      id: 'bill',
+      header: 'BILL',
+      cell: (info) => (
+        <OpdBillCell opd={info.row.original} onChanged={onBillChanged} onPaid={onBillPaid} />
+      ),
     }),
     columnHelper.display({
       id: 'actions',
@@ -10639,6 +10757,7 @@ const AdminOpdTable = ({ opds, onPrintOpd, onAdmitToIpd, startIndex = 0, paginat
             </svg>
             Print
           </button>
+          <OpdVisitActions opd={info.row.original} isAdmin onChanged={onBillChanged} />
           {info.row.original.status !== 'IN_IPD' && info.row.original.ipdAdmitRecommended && (
             <button
               onClick={() => onAdmitToIpd && onAdmitToIpd(info.row.original)}

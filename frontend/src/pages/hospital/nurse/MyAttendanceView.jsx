@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import attendanceService from '../../../services/attendanceService';
+import { localIsoDate } from '../../../utils/date';
 
 /** MyAttendanceView - the logged-in nurse's own attendance for the last 30 days. */
 const STATUS_STYLE = {
@@ -32,7 +33,7 @@ const MyAttendanceView = ({ refreshKey }) => {
     const to = new Date();
     const from = new Date();
     from.setDate(from.getDate() - 30);
-    const iso = (d) => d.toISOString().slice(0, 10);
+    const iso = (d) => localIsoDate(d);
     setLoading(true);
     attendanceService
       .getMine(iso(from), iso(to))

@@ -398,7 +398,7 @@ public class IcuStayService {
                 ipdAdmissionId, hospitalId, IcuStay.ACTIVE);
     }
 
-    private boolean isCriticalCare(Long wardId, Long hospitalId) {
+    public boolean isCriticalCare(Long wardId, Long hospitalId) {
         if (wardId == null) return false;
         return icuWardRepository.findByWardIdAndHospitalId(wardId, hospitalId).isPresent();
     }

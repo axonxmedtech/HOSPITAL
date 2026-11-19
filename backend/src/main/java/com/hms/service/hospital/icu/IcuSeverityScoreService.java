@@ -91,6 +91,7 @@ public class IcuSeverityScoreService {
             throw new IllegalArgumentException("ipdAdmissionId is required");
         }
         IpdAdmission admission = requireAdmission(req.getIpdAdmissionId(), hospitalId);
+        com.hms.service.hospital.IpdClinicalState.requireActive(admission);
         nurseWriteAccess.assertCanWriteFor(admission.getId());
 
         SeverityScoreRegistry.ScoreType type = requireEnabledType(req.getScoreType(), hospitalId);

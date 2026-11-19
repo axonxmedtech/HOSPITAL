@@ -46,6 +46,17 @@ public class IpdAdmission {
     @Column(name = "discharge_datetime")
     private LocalDateTime dischargeDatetime;
 
+    /**
+     * How the patient left: NORMAL (discharged home), LAMA (left against medical advice),
+     * REFERRED (transferred to another hospital), EXPIRED (death) or ABSCONDED. Set at discharge.
+     */
+    @Column(name = "discharge_type", length = 20)
+    private String dischargeType;
+
+    /** Referral hospital, cause / time of death, or any other note about the discharge. */
+    @Column(name = "discharge_note", length = 500)
+    private String dischargeNote;
+
     @Column(name = "ward_id", nullable = false)
     private Long wardId;
 

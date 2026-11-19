@@ -66,11 +66,14 @@ public class Opd {
      *  QUEUED    — case created, patient waiting for the doctor. Shown as "In Queue".
      *  COMPLETED — the doctor finished the consultation. Set by DoctorService, not by payment.
      *  IN_IPD    — the case was admitted and continues as an IPD admission.
+     *  CANCELLED — the visit was called off before the doctor saw the patient (left without being
+     *              seen, registered twice, wrong doctor). It leaves the queue; its unpaid bill is
+     *              cancelled with it. See OpdService.cancelVisit.
      *  CONSULTED — LEGACY. Nothing writes it. It used to mean "doctor done, bill not yet collected",
      *              back when payment was what marked a case COMPLETED. Kept only so old rows still
      *              deserialise; DatabaseMigrationRunner promotes them to COMPLETED on boot.
      */
-    public enum Status { QUEUED, CONSULTED, COMPLETED, IN_IPD }
+    public enum Status { QUEUED, CONSULTED, COMPLETED, IN_IPD, CANCELLED }
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
@@ -81,6 +84,15 @@ public class Opd {
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
+
+    @Column(name = "cancel_reason", length = 255)
+    private String cancelReason;
+
+    @Column(name = "cancelled_by", length = 150)
+    private String cancelledBy;
+
+    @Column(name = "cancelled_at")
+    private LocalDateTime cancelledAt;
 
     public Opd() {
         this.createdAt = LocalDateTime.now();
@@ -121,4 +133,10 @@ public class Opd {
     public void setHeight(Double height) { this.height = height; }
     public String getCustomVitals() { return customVitals; }
     public void setCustomVitals(String customVitals) { this.customVitals = customVitals; }
+    public String getCancelReason() { return cancelReason; }
+    public void setCancelReason(String cancelReason) { this.cancelReason = cancelReason; }
+    public String getCancelledBy() { return cancelledBy; }
+    public void setCancelledBy(String cancelledBy) { this.cancelledBy = cancelledBy; }
+    public LocalDateTime getCancelledAt() { return cancelledAt; }
+    public void setCancelledAt(LocalDateTime cancelledAt) { this.cancelledAt = cancelledAt; }
 }

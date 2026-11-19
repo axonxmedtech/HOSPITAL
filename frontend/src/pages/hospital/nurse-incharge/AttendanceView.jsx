@@ -4,6 +4,7 @@ import { useToast } from '../../../context/ToastContext';
 import attendanceService from '../../../services/attendanceService';
 import nurseService from '../../../services/nurseService';
 import { extractApiError } from '../../../utils/apiError';
+import { localIsoDate } from '../../../utils/date';
 
 /**
  * AttendanceView - the Nurse Incharge's daily attendance sheet for a ward.
@@ -21,7 +22,7 @@ const STATUS_LABEL = {
   LATE: 'Late',
 };
 const hhmm = (t) => (t ? String(t).slice(0, 5) : '');
-const todayStr = () => new Date().toISOString().slice(0, 10);
+const todayStr = () => localIsoDate();
 
 const AttendanceView = () => {
   const { success, error: toastError } = useToast();

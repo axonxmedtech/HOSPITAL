@@ -3014,7 +3014,12 @@ const HospitalsTable = ({
   return (
     <DataTable
       data={hospitals}
-      columns={columns}
+      columns={
+        // "Single Doctor" is a hospital/clinic setting; it means nothing for a pharmacy.
+        entityType === 'PHARMACY'
+          ? columns.filter((col) => col.accessorKey !== 'isSingleDoctor')
+          : columns
+      }
       pagination={pagination}
       emptyState={
         <div className="p-12 text-center">
@@ -3032,7 +3037,13 @@ const HospitalsTable = ({
               d="M3 10l9-6 9 6v7a2 2 0 01-2 2H5a2 2 0 01-2-2v-7z"
             />
           </svg>
-          <p className="text-gray-500">No hospitals registered yet</p>
+          <p className="text-gray-500">
+            {entityType === 'CLINIC'
+              ? 'No clinics registered yet'
+              : entityType === 'PHARMACY'
+                ? 'No pharmacies registered yet'
+                : 'No hospitals registered yet'}
+          </p>
         </div>
       }
     />
