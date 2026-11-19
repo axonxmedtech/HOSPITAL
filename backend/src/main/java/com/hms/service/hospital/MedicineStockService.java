@@ -263,6 +263,38 @@ public class MedicineStockService {
         return allocations;
     }
 
+    /**
+     * Puts back exactly what an earlier {@link #consumeFefo} posting took, batch by batch (an undone
+     * medicine dose). Idempotent: a second call for the same posting finds its own return and stops.
+     *
+     * @return units returned
+     */
+    @Transactional
+    public int returnConsumption(String consumedKey, String remarks) {
+        Long hospitalId = requireHospitalId();
+        if (consumedKey == null || consumedKey.isBlank()) return 0;
+        String returnKey = consumedKey + "-RETURN";
+        if (findReplay(hospitalId, returnKey) != null) return 0;
+        int returned = 0;
+        Long medicineId = null;
+        for (StockMovement out : movementRepository.findByHospitalIdAndIdempotencyKeyOrderByIdAsc(hospitalId, consumedKey)) {
+            if (out.getBatchId() == null || !StockMovement.OUT.equals(out.getDirection())) continue;
+            MedicineStockBatch b = batchRepository.findByIdAndHospitalId(out.getBatchId(), hospitalId).orElse(null);
+            if (b == null) continue;
+            batchRepository.addAtomically(b.getId(), hospitalId, out.getQuantity());
+            postMovement(hospitalId, out.getItemId(), b.getId(), StockMovement.RETURN_IN, StockMovement.IN,
+                    out.getQuantity(), b.getCurrentQuantity() + out.getQuantity(), out.getReferenceType(),
+                    out.getReferenceId(), returnKey, remarks);
+            returned += out.getQuantity();
+            medicineId = out.getItemId();
+        }
+        if (medicineId != null) {
+            medicineRepository.findByIdAndHospitalId(medicineId, hospitalId)
+                    .ifPresent(m -> syncLegacyAggregate(m, hospitalId));
+        }
+        return returned;
+    }
+
     // ------------------------------------------------------------ helpers
 
     /**

@@ -34,4 +34,11 @@ public class MedicationAdminRequest {
 
     @Positive
     private Long performedByNurseId; // optional; required when Separate Nurse Login is OFF
+
+    /** Units given; defaults to the order's quantity per dose (1). */
+    @Positive
+    private Integer quantity;
+
+    /** The patient brought it (own supply): recorded, but nothing taken from stock or billed. */
+    private Boolean ownSupply;
 }

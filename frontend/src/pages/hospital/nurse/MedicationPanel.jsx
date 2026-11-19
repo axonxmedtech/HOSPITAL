@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import LoadingSpinner from '../../../components/LoadingSpinner';
+import GiveExtraItem from '../../../components/stock/GiveExtraItem';
+import { StockBadge } from '../../../components/stock/StockPicker';
 import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
 import nurseService from '../../../services/nurseService';
@@ -12,7 +14,10 @@ import { describeFoodTiming } from '../../../utils/foodTiming';
  * its course progress and a "pending today" reminder while the course runs.
  * Recording is only allowed against ACTIVE orders.
  */
-/** readOnly: hide the "Record Administration" form (e.g. a doctor viewing the MAR). */
+/**
+ * readOnly forces view-only. Otherwise recording is shown to whoever the hospital allows
+ * (Settings → who may record medicines; all clinical roles by default).
+ */
 const MedicationPanel = ({ admissionId, readOnly = false }) => {
   const { success, error: toastError } = useToast();
   const currentUser = authService.getCurrentUser();
@@ -28,6 +33,12 @@ const MedicationPanel = ({ admissionId, readOnly = false }) => {
   const [status, setStatus] = useState('GIVEN');
   const [administeredTime, setAdministeredTime] = useState('');
   const [remarks, setRemarks] = useState('');
+  const [quantity, setQuantity] = useState(1);
+  const [ownSupply, setOwnSupply] = useState(false);
+  const [access, setAccess] = useState(null);
+  const [showExtra, setShowExtra] = useState(false);
+  const [undoing, setUndoing] = useState(null); // { publicId, reason }
+  const canRecord = !readOnly && !!access?.canRecord;
 
   // Separate Nurse Login OFF ("Shared Login") -> a required "Performed By
   // Nurse" dropdown is shown and its selection is sent with the payload.
@@ -37,6 +48,11 @@ const MedicationPanel = ({ admissionId, readOnly = false }) => {
   const [performedByNurseId, setPerformedByNurseId] = useState('');
 
   const activeMeds = chart.filter((c) => (c.status || '').toUpperCase() === 'ACTIVE');
+  const selectedOrder = chart.find(
+    (c) => String(c.prescriptionId) === String(selectedPrescriptionId)
+  );
+  // Orders made before stock sources existed carry only a medicine id: that is medicine stock.
+  const stocked = !!(selectedOrder && (selectedOrder.stockSource || selectedOrder.medicineId));
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -61,9 +77,27 @@ const MedicationPanel = ({ admissionId, readOnly = false }) => {
     loadData();
   }, [loadData]);
 
-  // Both only feed the (hidden) record form, and hit nurse-only endpoints.
   useEffect(() => {
-    if (readOnly) return;
+    if (readOnly) return undefined;
+    let live = true;
+    nurseService
+      .getMedicationAccess()
+      .then((a) => live && setAccess(a))
+      .catch(() => live && setAccess({ canRecord: false }));
+    return () => {
+      live = false;
+    };
+  }, [readOnly]);
+
+  // A new order selected: start from its quantity per dose, from stock.
+  useEffect(() => {
+    setQuantity(selectedOrder?.quantityPerDose || 1);
+    setOwnSupply(false);
+  }, [selectedPrescriptionId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Both only feed the nurse's "performed by" choice, and hit nurse-only endpoints.
+  useEffect(() => {
+    if (readOnly || !isNurse) return;
     let active = true;
     nurseService
       .getAdmissionForm(admissionId)
@@ -74,10 +108,10 @@ const MedicationPanel = ({ admissionId, readOnly = false }) => {
     return () => {
       active = false;
     };
-  }, [admissionId, readOnly]);
+  }, [admissionId, readOnly, isNurse]);
 
   useEffect(() => {
-    if (readOnly) return;
+    if (readOnly || !isNurse) return;
     let active = true;
     nurseService
       .getSeparateNurseLogin()
@@ -88,7 +122,7 @@ const MedicationPanel = ({ admissionId, readOnly = false }) => {
     return () => {
       active = false;
     };
-  }, [readOnly]);
+  }, [readOnly, isNurse]);
 
   useEffect(() => {
     if (isNurse && separateLogin === false && wardId) {
@@ -115,7 +149,7 @@ const MedicationPanel = ({ admissionId, readOnly = false }) => {
       toastError('Please select a medicine');
       return;
     }
-    if (separateLogin === false && !performedByNurseId) {
+    if (isNurse && separateLogin === false && !performedByNurseId) {
       toastError('Select the nurse who performed this');
       return;
     }
@@ -126,12 +160,20 @@ const MedicationPanel = ({ admissionId, readOnly = false }) => {
       remarks: remarks.trim() || null,
     };
     if (administeredTime) payload.administeredTime = new Date(administeredTime).toISOString();
-    if (separateLogin === false) payload.performedByNurseId = Number(performedByNurseId);
+    if (isNurse && separateLogin === false) payload.performedByNurseId = Number(performedByNurseId);
+    if (status === 'GIVEN') {
+      payload.quantity = Number(quantity) || 1;
+      payload.ownSupply = ownSupply || !stocked;
+    }
 
     setSubmitting(true);
     try {
-      await nurseService.recordMedication(payload);
-      success('Medication administration recorded');
+      const saved = await nurseService.recordMedication(payload);
+      let note = 'Medication recorded';
+      if (status === 'GIVEN' && saved?.ownSupply)
+        note = "Recorded as given from the patient's own supply";
+      else if (status === 'GIVEN') note = 'Given — taken from stock and added to the bill';
+      success(note);
       setRemarks('');
       setPerformedByNurseId('');
       loadData();
@@ -141,6 +183,29 @@ const MedicationPanel = ({ admissionId, readOnly = false }) => {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const confirmUndo = async () => {
+    if (!undoing?.reason?.trim()) return toastError('Give a reason for undoing this entry');
+    try {
+      await nurseService.undoMedication(undoing.publicId, undoing.reason.trim());
+      success('Entry undone — stock and bill corrected');
+      setUndoing(null);
+      loadData();
+    } catch (err) {
+      toastError(extractApiError(err, 'Could not undo this entry'));
+    }
+  };
+
+  /** Where a GIVEN dose came from, for the history. */
+  const givenFrom = (mar) => {
+    if (mar.status !== 'GIVEN') return null;
+    if (mar.ownSupply) return "Patient's own supply";
+    if (!mar.stockSource) return null;
+    const qty = mar.quantity ? `${mar.quantity} from stock` : 'From stock';
+    const charge =
+      mar.chargeAmount > 0 ? ` · ₹${Number(mar.chargeAmount).toLocaleString('en-IN')} billed` : '';
+    return qty + charge;
   };
 
   const medName = (presId) => {
@@ -204,6 +269,16 @@ const MedicationPanel = ({ admissionId, readOnly = false }) => {
    */
   const stockBadge = (c) => {
     const status = c.inventoryStatus;
+    if (status === 'LINKED_AVAILABLE' && c.lowStock) {
+      return (
+        <span
+          className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-800"
+          title="At or below the reorder level — ask for it to be reordered"
+        >
+          LOW STOCK · {c.availableQuantity}
+        </span>
+      );
+    }
     if (status === 'LINKED_AVAILABLE') {
       return (
         <span
@@ -227,9 +302,9 @@ const MedicationPanel = ({ admissionId, readOnly = false }) => {
     return (
       <span
         className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-gray-100 text-gray-600"
-        title="No inventory item selected for this order — stock is unknown, not zero"
+        title="Not in the hospital's stock — the patient brings it from a medical store"
       >
-        NOT LINKED
+        PATIENT BRINGS
       </span>
     );
   };
@@ -248,9 +323,32 @@ const MedicationPanel = ({ admissionId, readOnly = false }) => {
   return (
     <div className="space-y-5">
       {/* Record Section (ACTIVE orders only) — hidden for read-only viewers (e.g. doctors) */}
-      {!readOnly && (
+      {canRecord && showExtra && (
+        <GiveExtraItem
+          admissionId={admissionId}
+          needsNurse={isNurse && separateLogin === false}
+          performedByNurseId={performedByNurseId}
+          onCancel={() => setShowExtra(false)}
+          onDone={() => {
+            setShowExtra(false);
+            loadData();
+          }}
+        />
+      )}
+      {canRecord && (
         <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <h3 className="font-bold text-gray-800 text-sm mb-4">Record Medication Administration</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-gray-800 text-sm">Record Medication Administration</h3>
+            {!showExtra && (
+              <button
+                type="button"
+                onClick={() => setShowExtra(true)}
+                className="px-3 py-1 text-xs font-semibold rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-100"
+              >
+                + Give extra item
+              </button>
+            )}
+          </div>
           {activeMeds.length === 0 ? (
             <p className="text-sm text-gray-500">
               No active prescriptions available to administer.
@@ -320,7 +418,59 @@ const MedicationPanel = ({ admissionId, readOnly = false }) => {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                 />
               </div>
-              {separateLogin === false && (
+              {status === 'GIVEN' && selectedOrder && (
+                <div className="flex flex-wrap items-end gap-4 bg-gray-50 border border-gray-100 rounded-lg p-3">
+                  <label className="text-xs font-medium text-gray-600">
+                    Quantity
+                    <input
+                      type="number"
+                      min="1"
+                      value={quantity}
+                      onChange={(e) => setQuantity(e.target.value)}
+                      className="mt-1 block w-24 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                  </label>
+                  {stocked ? (
+                    <>
+                      <label className="flex items-center gap-2 text-sm text-gray-700 pb-2">
+                        <input
+                          type="checkbox"
+                          checked={ownSupply}
+                          onChange={(e) => setOwnSupply(e.target.checked)}
+                        />
+                        Patient&apos;s own supply
+                      </label>
+                      <p className="text-xs text-gray-600 pb-2 flex items-center gap-2">
+                        {ownSupply ? (
+                          'Recorded only — nothing taken from stock or billed.'
+                        ) : (
+                          <>
+                            From{' '}
+                            {selectedOrder.stockSource === 'HOSPITAL_ITEM'
+                              ? 'hospital'
+                              : 'medicine'}{' '}
+                            inventory
+                            <StockBadge
+                              option={{
+                                available: selectedOrder.availableQuantity ?? 0,
+                                low: selectedOrder.lowStock,
+                                outOfStock: (selectedOrder.availableQuantity ?? 0) <= 0,
+                              }}
+                            />
+                            {selectedOrder.unitPrice != null &&
+                              `· ₹${Number(selectedOrder.unitPrice).toLocaleString('en-IN')} each, added to the bill`}
+                          </>
+                        )}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-xs text-gray-600 pb-2">
+                      Not in the hospital&apos;s stock — recorded as the patient&apos;s own supply.
+                    </p>
+                  )}
+                </div>
+              )}
+              {isNurse && separateLogin === false && (
                 <div>
                   <label htmlFor="fld-165" className="block text-xs font-medium text-gray-600 mb-1">
                     Performed By Nurse <span className="text-red-600">*</span>
@@ -466,10 +616,45 @@ const MedicationPanel = ({ admissionId, readOnly = false }) => {
                       </span>
                     )}
                   </div>
+                  {givenFrom(mar) && <div className="text-xs text-gray-600">{givenFrom(mar)}</div>}
                   {mar.remarks && (
                     <p className="text-xs text-gray-600 bg-gray-50 p-2 rounded mt-2 border border-gray-100 italic">
                       Remarks: {mar.remarks}
                     </p>
+                  )}
+                  {canRecord && mar.publicId && undoing?.publicId !== mar.publicId && (
+                    <button
+                      type="button"
+                      onClick={() => setUndoing({ publicId: mar.publicId, reason: '' })}
+                      className="text-xs font-semibold text-red-700 hover:underline"
+                    >
+                      Undo
+                    </button>
+                  )}
+                  {undoing?.publicId === mar.publicId && (
+                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                      <input
+                        aria-label="Reason for undoing"
+                        value={undoing.reason}
+                        onChange={(e) => setUndoing({ ...undoing, reason: e.target.value })}
+                        placeholder="Why? e.g. entered on the wrong patient"
+                        className="flex-1 min-w-[200px] px-2 py-1 border border-gray-300 rounded text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={confirmUndo}
+                        className="px-2 py-1 text-xs font-semibold rounded bg-red-600 text-white"
+                      >
+                        Undo entry
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setUndoing(null)}
+                        className="px-2 py-1 text-xs rounded border border-gray-300"
+                      >
+                        Keep
+                      </button>
+                    </div>
                   )}
                 </div>
               </li>

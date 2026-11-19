@@ -212,6 +212,21 @@ public class DatabaseMigrationRunner {
         addColumnIfMissing("hospitals", "is_demo", "BIT(1) NOT NULL DEFAULT b'0'");
         addColumnIfMissing("hospitals", "demo_started_at", "DATETIME(6) NULL");
         addColumnIfMissing("hospitals", "demo_ends_at", "DATETIME(6) NULL");
+        // IPD medicines given from stock (V32).
+        addColumnIfMissing("prescriptions", "stock_source", "VARCHAR(20) NULL");
+        addColumnIfMissing("prescriptions", "hospital_item_name", "VARCHAR(150) NULL");
+        addColumnIfMissing("prescriptions", "quantity_per_dose", "INT NULL");
+        addColumnIfMissing("medication_administrations", "quantity", "INT NULL");
+        addColumnIfMissing("medication_administrations", "own_supply", "BIT(1) NULL");
+        addColumnIfMissing("medication_administrations", "stock_source", "VARCHAR(20) NULL");
+        addColumnIfMissing("medication_administrations", "charge_amount", "DECIMAL(10,2) NULL");
+        addColumnIfMissing("medication_administrations", "billing_item_id", "BIGINT NULL");
+        addColumnIfMissing("medication_administrations", "billing_medicine_id", "BIGINT NULL");
+        addColumnIfMissing("medication_administrations", "stock_detail", "VARCHAR(1000) NULL");
+        addColumnIfMissing("medication_administrations", "undone_at", "DATETIME(6) NULL");
+        addColumnIfMissing("medication_administrations", "undone_by", "VARCHAR(150) NULL");
+        addColumnIfMissing("medication_administrations", "undo_reason", "VARCHAR(255) NULL");
+        addColumnIfMissing("hospital_settings", "med_record_roles", "VARCHAR(200) NULL");
         ensureBedStatusAuditsTable(); // NEW — Nursing Mgmt Phase C1
         makeInventoryItemHospitalIdNullable();
 

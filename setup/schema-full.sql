@@ -709,6 +709,9 @@ CREATE TABLE `prescriptions` (
   `start_date` date DEFAULT NULL,
   `status` varchar(255) NOT NULL,
   `type` varchar(255) NOT NULL,
+  `stock_source` varchar(20) default null,
+  `hospital_item_name` varchar(150) default null,
+  `quantity_per_dose` int default null,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -1132,6 +1135,7 @@ CREATE TABLE `hospital_settings` (
   -- FIRST = charge consultation + case-paper at OPD entry; LAST = current flow.
   `bill_payment_timing` varchar(10) NOT NULL DEFAULT 'LAST',
   `default_consultation_language` varchar(10) NOT NULL DEFAULT 'EN',
+  `med_record_roles` varchar(200) default null,
   PRIMARY KEY (`id`),
   UNIQUE KEY `UK_hospital_settings_hospital_id` (`hospital_id`),
   CONSTRAINT `FK_hospital_settings_hospital_id` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`)
@@ -1536,6 +1540,16 @@ CREATE TABLE `medication_administrations` (
   `remarks` varchar(500) DEFAULT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT '1',
   `created_at` datetime(6) NOT NULL,
+  `quantity` int default null,
+  `own_supply` bit(1) DEFAULT NULL,
+  `stock_source` varchar(20) default null,
+  `charge_amount` decimal(10,2) default null,
+  `billing_item_id` bigint default null,
+  `billing_medicine_id` bigint default null,
+  `stock_detail` varchar(1000) default null,
+  `undone_at` datetime(6) default null,
+  `undone_by` varchar(150) default null,
+  `undo_reason` varchar(255) default null,
   PRIMARY KEY (`id`),
   UNIQUE KEY `UK_mar_public_id` (`public_id`),
   KEY `idx_mar_admission_time` (`ipd_admission_id`,`administered_time`),

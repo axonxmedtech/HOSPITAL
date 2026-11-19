@@ -63,6 +63,7 @@ import {
 } from '../../components/Skeleton';
 import StaffDetailsModal from '../../components/StaffDetailsModal';
 import StatusBadge from '../../components/StatusBadge';
+import MedicationAccessCard from '../../components/stock/MedicationAccessCard';
 import WardModal from '../../components/WardModal';
 import { useToast } from '../../context/ToastContext';
 import useDebounce from '../../hooks/useDebounce'; // BUG-017: standardised debounce hook
@@ -4023,6 +4024,16 @@ const HospitalAdminDashboard = () => {
                               },
                             ]
                           : []),
+                        ...(modules.includes('IPD')
+                          ? [
+                              {
+                                view: 'medication',
+                                title: 'Medicines',
+                                desc: 'Who can record a medicine or saline as given — taken off stock and billed.',
+                                iconClass: 'bg-sky-50 text-sky-600',
+                              },
+                            ]
+                          : []),
                         {
                           view: 'print-payment',
                           title: 'Print & Payment',
@@ -4599,6 +4610,11 @@ const HospitalAdminDashboard = () => {
                   {modules.includes('OT') && settingsView === 'permissions' && (
                     <div className="max-w-4xl mx-auto my-4">
                       <OtPermissionsCard />
+                    </div>
+                  )}
+                  {modules.includes('IPD') && settingsView === 'medication' && (
+                    <div className="max-w-4xl mx-auto my-4">
+                      <MedicationAccessCard />
                     </div>
                   )}
                   {modules.includes('OT') && settingsView === 'policies' && (

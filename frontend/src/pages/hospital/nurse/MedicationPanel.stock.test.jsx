@@ -9,6 +9,7 @@ vi.mock('../../../services/nurseService', () => ({
     getAdmissionForm: vi.fn().mockResolvedValue({ wardId: 1 }),
     getSeparateNurseLogin: vi.fn().mockResolvedValue(true),
     getWardStaffNurses: vi.fn().mockResolvedValue([]),
+    getMedicationAccess: vi.fn().mockResolvedValue({ canRecord: true }),
   },
 }));
 
@@ -53,7 +54,7 @@ describe('MedicationPanel — inventory reconciliation', () => {
     return cell.closest('tr');
   };
 
-  it('shows unknown stock as NOT LINKED, never as an empty shelf', async () => {
+  it('shows an unstocked order as PATIENT BRINGS, never as an empty shelf', async () => {
     nurseService.getMedicationChart.mockResolvedValue([
       row({ prescriptionId: 1, medicineName: 'Handwritten mixture', inventoryStatus: 'UNLINKED' }),
     ]);
@@ -61,21 +62,27 @@ describe('MedicationPanel — inventory reconciliation', () => {
     render(<MedicationPanel admissionId={7} />);
 
     const tr = await rowFor('Handwritten mixture');
-    expect(within(tr).getByText('NOT LINKED')).toBeInTheDocument();
+    expect(within(tr).getByText('PATIENT BRINGS')).toBeInTheDocument();
     expect(within(tr).queryByText(/NO USABLE STOCK/)).not.toBeInTheDocument();
     expect(within(tr).queryByText(/·\s*0/)).not.toBeInTheDocument();
   });
 
   it('distinguishes an empty shelf from an unlinked order', async () => {
     nurseService.getMedicationChart.mockResolvedValue([
-      row({ prescriptionId: 2, medicineName: 'Metformin', medicineId: 9, inventoryStatus: 'LINKED_NO_STOCK', availableQuantity: 0 }),
+      row({
+        prescriptionId: 2,
+        medicineName: 'Metformin',
+        medicineId: 9,
+        inventoryStatus: 'LINKED_NO_STOCK',
+        availableQuantity: 0,
+      }),
     ]);
 
     render(<MedicationPanel admissionId={7} />);
 
     const tr = await rowFor('Metformin');
     expect(within(tr).getByText('NO USABLE STOCK')).toBeInTheDocument();
-    expect(within(tr).queryByText('NOT LINKED')).not.toBeInTheDocument();
+    expect(within(tr).queryByText('PATIENT BRINGS')).not.toBeInTheDocument();
   });
 
   it('shows the usable count and the lot that would go out first', async () => {
@@ -100,9 +107,21 @@ describe('MedicationPanel — inventory reconciliation', () => {
 
   it('keeps every medication on the chart whatever inventory says', async () => {
     nurseService.getMedicationChart.mockResolvedValue([
-      row({ prescriptionId: 1, medicineName: 'Linked drug', medicineId: 4, inventoryStatus: 'LINKED_AVAILABLE', availableQuantity: 12 }),
+      row({
+        prescriptionId: 1,
+        medicineName: 'Linked drug',
+        medicineId: 4,
+        inventoryStatus: 'LINKED_AVAILABLE',
+        availableQuantity: 12,
+      }),
       row({ prescriptionId: 2, medicineName: 'Unlinked drug', inventoryStatus: 'UNLINKED' }),
-      row({ prescriptionId: 3, medicineName: 'Out of stock drug', medicineId: 5, inventoryStatus: 'LINKED_NO_STOCK', availableQuantity: 0 }),
+      row({
+        prescriptionId: 3,
+        medicineName: 'Out of stock drug',
+        medicineId: 5,
+        inventoryStatus: 'LINKED_NO_STOCK',
+        availableQuantity: 0,
+      }),
     ]);
 
     render(<MedicationPanel admissionId={7} />);
@@ -112,7 +131,7 @@ describe('MedicationPanel — inventory reconciliation', () => {
     expect(screen.getByText('Out of stock drug')).toBeInTheDocument();
   });
 
-  it('falls back to NOT LINKED when the server sends no reconciliation at all', async () => {
+  it('falls back to PATIENT BRINGS when the server sends no reconciliation at all', async () => {
     // An older server, or a chart built before this field existed: the safe reading of silence is
     // "unknown", not "none in stock".
     nurseService.getMedicationChart.mockResolvedValue([
@@ -122,6 +141,6 @@ describe('MedicationPanel — inventory reconciliation', () => {
     render(<MedicationPanel admissionId={7} />);
 
     const tr = await rowFor('Legacy order');
-    expect(within(tr).getByText('NOT LINKED')).toBeInTheDocument();
+    expect(within(tr).getByText('PATIENT BRINGS')).toBeInTheDocument();
   });
 });

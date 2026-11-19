@@ -59,6 +59,41 @@ public class MedicationAdministration {
     @Column(name = "remarks", length = 500)
     private String remarks;
 
+    // ── stock and billing of a GIVEN dose ──
+    /** Units given (taken from stock unless own supply). */
+    @Column(name = "quantity")
+    private Integer quantity;
+
+    /** The patient's own supply (brought from a medical store): nothing taken from stock or billed. */
+    @Column(name = "own_supply")
+    private Boolean ownSupply;
+
+    /** MEDICINE or HOSPITAL_ITEM when taken from stock. */
+    @Column(name = "stock_source", length = 20)
+    private String stockSource;
+
+    @Column(name = "charge_amount", precision = 10, scale = 2)
+    private java.math.BigDecimal chargeAmount;
+
+    @Column(name = "billing_item_id")
+    private Long billingItemId;
+
+    @Column(name = "billing_medicine_id")
+    private Long billingMedicineId;
+
+    /** Hospital-inventory rows taken, as "rowId:qty,rowId:qty", so an undo puts back exactly those. */
+    @Column(name = "stock_detail", length = 1000)
+    private String stockDetail;
+
+    @Column(name = "undone_at")
+    private LocalDateTime undoneAt;
+
+    @Column(name = "undone_by", length = 150)
+    private String undoneBy;
+
+    @Column(name = "undo_reason", length = 255)
+    private String undoReason;
+
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
 
