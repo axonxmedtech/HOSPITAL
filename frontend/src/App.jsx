@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'r
 import ErrorBoundary from './components/ErrorBoundary';
 import PageMeta from './components/PageMeta';
 import { ToastProvider } from './context/ToastContext';
+import HelpRoot from './help/HelpRoot';
 import authService from './services/authService';
 
 // Code-split all large dashboard components to reduce initial bundle size (BUG-023)
@@ -350,6 +351,9 @@ function App() {
             />
           </Routes>
         </RouteShell>
+        <ErrorBoundary>
+          <HelpRoot />
+        </ErrorBoundary>
       </Router>
     </ToastProvider>
   );
