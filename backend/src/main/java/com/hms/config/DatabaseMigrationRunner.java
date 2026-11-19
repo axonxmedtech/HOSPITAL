@@ -30,6 +30,7 @@ public class DatabaseMigrationRunner {
 
     // Table names and column types repeated across the add-column-if-missing steps.
     private static final String BILLING_TABLE = "billing";
+    private static final String NOTE_PRESETS_TABLE = "consultation_note_presets";
     private static final String BILLING_PAYMENTS_TABLE = "billing_payments";
     private static final String VARCHAR_20_NULL = "VARCHAR(20) NULL";
     private static final String VARCHAR_150_NULL = "VARCHAR(150) NULL";
@@ -272,8 +273,8 @@ public class DatabaseMigrationRunner {
         // Bilingual consultation instructions & statements
         addColumnIfMissing("hospital_settings", "default_consultation_language", "VARCHAR(10) NOT NULL DEFAULT 'EN'");
         addColumnIfMissing("medical_records", "consultation_language", "VARCHAR(10) NOT NULL DEFAULT 'EN'");
-        addColumnIfMissing("consultation_note_presets", "marathi_text", VARCHAR_500_NULL);
-        addColumnIfMissing("consultation_note_presets", "hindi_text", VARCHAR_500_NULL);
+        addColumnIfMissing(NOTE_PRESETS_TABLE, "marathi_text", VARCHAR_500_NULL);
+        addColumnIfMissing(NOTE_PRESETS_TABLE, "hindi_text", VARCHAR_500_NULL);
         ensureConsultationStatementsTable();
         ensureIcuCleaningTasksTable();
     }
@@ -1931,7 +1932,7 @@ public class DatabaseMigrationRunner {
      */
     private void ensurePresetDoctorIdColumns() {
         addNullableDoctorIdColumn("prescription_presets");
-        addNullableDoctorIdColumn("consultation_note_presets");
+        addNullableDoctorIdColumn(NOTE_PRESETS_TABLE);
     }
 
     private void addNullableDoctorIdColumn(String table) {

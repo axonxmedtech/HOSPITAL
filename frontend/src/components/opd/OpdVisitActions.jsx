@@ -22,7 +22,8 @@ const input =
 
 /** What happens to the visit's bill, in words, for the cancel dialog. */
 function billOutcome(paid, isAdmin) {
-  if (!(paid > 0)) return 'Any unpaid bill for this visit is cancelled with it.';
+  if (!Number.isFinite(paid) || paid <= 0)
+    return 'Any unpaid bill for this visit is cancelled with it.';
   const amount = `₹${paid.toLocaleString('en-IN')}`;
   return isAdmin
     ? `The ${amount} collected will be refunded and the bill cancelled.`

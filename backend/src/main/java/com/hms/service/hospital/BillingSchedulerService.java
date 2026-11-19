@@ -112,27 +112,14 @@ public class BillingSchedulerService {
         // 1. Fetch existing bill for this IPD
         List<Billing> bills = billingRepository.findByIpdAdmissionId(admission.getId());
         Billing bill = (bills != null && !bills.isEmpty()) ? bills.get(0) : null;
-
-        if (bill == null) {
-            logger.warn("No primary bill found for IPD admission {}, skipping bed charge.", admission.getId());
-            return;
-        }
-
-        // A written-off or cancelled bill takes no further charges.
-        if ("CLOSED".equalsIgnoreCase(bill.getPaymentStatus()) || "CANCELLED".equalsIgnoreCase(bill.getPaymentStatus())) {
-            return;
-        }
+        if (!takesCharges(bill, admission)) return;
 
         // 2. Idempotency: a day already charged is never charged again.
         java.util.Set<String> charged = new java.util.HashSet<>();
         for (BillingItem item : billingItemRepository.findByBillingId(bill.getId())) {
             if (item.getDescription() != null) charged.add(item.getDescription());
         }
-
-        LocalDate first = admission.getAdmissionDatetime() != null
-                ? admission.getAdmissionDatetime().toLocalDate().plusDays(1)
-                : today;
-        if (first.isBefore(today.minusDays(MAX_CATCH_UP_DAYS))) first = today.minusDays(MAX_CATCH_UP_DAYS);
+        LocalDate first = firstChargeableDay(admission, today);
 
         List<IpdBedHistory> history = admission.getId() == null ? List.of()
                 : ipdBedHistoryRepository.findByIpdAdmissionIdOrderByAssignedAtAsc(admission.getId());
@@ -155,6 +142,25 @@ public class BillingSchedulerService {
         if (added) {
             billingService.recalculateTotal(bill.getId());
         }
+    }
+
+    /** A missing, written-off or cancelled bill takes no further charges. */
+    private static boolean takesCharges(Billing bill, IpdAdmission admission) {
+        if (bill == null) {
+            logger.warn("No primary bill found for IPD admission {}, skipping bed charge.", admission.getId());
+            return false;
+        }
+        String status = bill.getPaymentStatus();
+        return !"CLOSED".equalsIgnoreCase(status) && !"CANCELLED".equalsIgnoreCase(status);
+    }
+
+    /** The day after admission (that day is the "Bed Price" line), no further back than the catch-up limit. */
+    private static LocalDate firstChargeableDay(IpdAdmission admission, LocalDate today) {
+        LocalDate first = admission.getAdmissionDatetime() != null
+                ? admission.getAdmissionDatetime().toLocalDate().plusDays(1)
+                : today;
+        LocalDate limit = today.minusDays(MAX_CATCH_UP_DAYS);
+        return first.isBefore(limit) ? limit : first;
     }
 
     /** Price of the ward occupied at the start of {@code day}, from the bed history; zero if none. */
