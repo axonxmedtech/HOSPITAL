@@ -140,7 +140,7 @@ const HospitalInventoryTab = () => {
   };
 
   useEffect(() => {
-    loadData();
+    loadData().catch(console.error);
   }, [subTab]);
 
   // Handle Stock Intake / Purchase Save
@@ -172,7 +172,7 @@ const HospitalInventoryTab = () => {
       await hospitalService.addHospitalInventoryPurchase(payload);
       success('Purchase recorded and stock inventory updated.');
       setStockModal({ isOpen: false, isEdit: false, data: null });
-      loadData();
+      loadData().catch(console.error);
     } catch (err) {
       toastError(extractApiError(err, 'Failed to record purchase.'));
     } finally {
@@ -205,7 +205,7 @@ const HospitalInventoryTab = () => {
         success('Service registered successfully.');
       }
       setServiceModal({ isOpen: false, isEdit: false, data: null });
-      loadData();
+      loadData().catch(console.error);
     } catch (err) {
       toastError(extractApiError(err, 'Failed to save service.'));
     } finally {
@@ -221,7 +221,7 @@ const HospitalInventoryTab = () => {
       onConfirm: async () => {
         await hospitalService.deleteHospitalInventory(id);
         success('Item removed from inventory.');
-        loadData();
+        loadData().catch(console.error);
       },
     });
   };
@@ -235,7 +235,7 @@ const HospitalInventoryTab = () => {
       onConfirm: async () => {
         await hospitalService.deleteHospitalService(id);
         success('Service deleted.');
-        loadData();
+        loadData().catch(console.error);
       },
     });
   };

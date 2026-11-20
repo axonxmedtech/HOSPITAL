@@ -26,7 +26,7 @@ const PdfViewerModal = ({ endpointPath, title = 'Document', onClose }) => {
     let url = null;
     setLoading(true);
     setError(false);
-    apiClient
+    void apiClient
       .get(endpointPath, { responseType: 'blob' })
       .then((resp) => {
         if (cancelled) return;

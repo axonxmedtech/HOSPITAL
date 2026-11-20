@@ -1,63 +1,41 @@
 import React, { useEffect, useState } from 'react';
-import { useConfirm } from '../context/ConfirmContext';
 import { useToast } from '../context/ToastContext';
-import useLiveRefresh from '../hooks/useLiveRefresh';
-import authService from '../services/authService';
 import WardService from '../services/wardService';
-import { extractApiError } from '../utils/apiError';
 import Button from './Button';
 
 const BedListDrawer = ({ open, ward, onClose, onStatusChange }) => {
   const { error: toastError } = useToast();
-  const confirm = useConfirm();
   const [beds, setBeds] = useState([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (open && ward) fetchBeds();
+    if (open && ward) fetchBeds().catch(console.error);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, ward]);
 
-  const fetchBeds = async (silent = false) => {
-    if (!silent) setLoading(true);
+  const fetchBeds = async () => {
+    setLoading(true);
     try {
       const data = await WardService.getBeds(ward.wardId);
       setBeds(data);
     } catch (e) {
       console.error(e);
     } finally {
-      if (!silent) setLoading(false);
+      setLoading(false);
     }
   };
 
-  // A bed admitted to or freed by someone else changes here without reopening the list.
-  useLiveRefresh(() => fetchBeds(true), open && !!ward);
-
   const [updatingBedId, setUpdatingBedId] = useState(null);
-  const role = authService.getCurrentUser()?.role;
-  const canManageBeds = ['HOSPITAL_ADMIN', 'NURSE_INCHARGE'].includes(role);
-  // Reception may free a cleaned bed (no nurse in-charge needed), but not take one out of service.
-  const canMarkCleaned = canManageBeds || role === 'RECEPTIONIST';
 
-  const makeAvailable = async (bedId, cleaning = false, bedNumber = '') => {
+  const makeAvailable = async (bedId) => {
     if (updatingBedId) return;
-    if (
-      !(await confirm({
-        title: cleaning ? `Mark bed ${bedNumber} cleaned?` : `Put bed ${bedNumber} back in use?`,
-        message: 'The bed becomes available, and the next admission can be given this bed.',
-        confirmLabel: cleaning ? 'Mark cleaned' : 'Make available',
-      }))
-    )
-      return;
-
     setUpdatingBedId(bedId);
     try {
-      if (cleaning) await WardService.markBedCleaned(bedId);
-      else await WardService.updateBedStatus(bedId, 'Back to available');
+      await WardService.updateBedStatus(bedId, 'available');
       onStatusChange && onStatusChange();
-      fetchBeds();
+      fetchBeds().catch(console.error);
     } catch (e) {
-      toastError(extractApiError(e, 'Failed to update bed status'));
+      toastError(e.response?.data || e.message || 'Failed to update bed status');
     } finally {
       setUpdatingBedId(null);
     }
@@ -88,21 +66,11 @@ const BedListDrawer = ({ open, ward, onClose, onStatusChange }) => {
                   <div className="text-sm text-slate-500">{b.status}</div>
                 </div>
                 <div>
-                  {canMarkCleaned && b.status === 'cleaning' && (
+                  {b.status === 'maintenance' && (
                     <Button
                       size="sm"
                       variant="success"
-                      onClick={() => makeAvailable(b.bedId, true, b.bedNumber)}
-                      disabled={!!updatingBedId}
-                    >
-                      {updatingBedId === b.bedId ? 'Updating...' : 'Mark Cleaned'}
-                    </Button>
-                  )}
-                  {canManageBeds && b.status === 'maintenance' && (
-                    <Button
-                      size="sm"
-                      variant="success"
-                      onClick={() => makeAvailable(b.bedId, false, b.bedNumber)}
+                      onClick={() => makeAvailable(b.bedId)}
                       disabled={!!updatingBedId}
                     >
                       {updatingBedId === b.bedId ? 'Updating...' : 'Make Available'}

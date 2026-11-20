@@ -3,29 +3,38 @@ import { useToast } from '../context/ToastContext';
 import platformService from '../services/platformService';
 import { extractApiError } from '../utils/apiError';
 
-export const normalizePlanModules = (modules) => {
-  const normalized = new Set(modules);
-  if (normalized.has('APPOINTMENTS')) normalized.add('OPD');
-  return [...normalized];
-};
-/** Capacity a plan can cap (PlanLimit on the server). Blank = unlimited, 0 = not included. */
-export const PLAN_LIMITS = [
-  { key: 'BEDS', label: 'Beds', short: 'beds' },
-  { key: 'ICU_BEDS', label: 'ICU beds', short: 'ICU beds' },
-  { key: 'DOCTORS', label: 'Doctors', short: 'doctors' },
-  { key: 'STAFF_LOGINS', label: 'Staff logins (admin included)', short: 'logins' },
-  { key: 'OT_THEATRES', label: 'Operation theatres', short: 'theatres' },
+// NURSING is HOSPITAL-only: it lives in AVAILABLE_MODULES (used by MODULES_BY_TYPE.HOSPITAL)
+// and is deliberately absent from the CLINIC and PHARMACY module lists below.
+const AVAILABLE_MODULES = [
+  'OPD',
+  'IPD',
+  'PHARMACY',
+  'BILLING',
+  'APPOINTMENTS',
+  'MEDICAL_INVENTORY',
+  'HOSPITAL_INVENTORY',
+  'REPORTS',
+  'OT',
+  'PATHOLOGY',
+  'NURSING',
 ];
 
-const emptyLimits = () => Object.fromEntries(PLAN_LIMITS.map((l) => [l.key, '']));
+// Pharmacy plans are defined by a single mutually-exclusive tier rather than the
+// generic hospital module list. These are the only options offered for PHARMACY.
+const PHARMACY_TIERS = [
+  ['SINGLE_PHARMACIST_ADMIN', 'Single Pharmacist Admin'],
+  ['SINGLE_PHARMACY', 'Single Pharmacy'],
+  ['MULTI_PHARMACY', 'Multi Pharmacy'],
+];
+const PHARMACY_TIER_KEYS = PHARMACY_TIERS.map((t) => t[0]);
 
-/** "10 beds · 3 doctors", or "Unlimited" when the plan caps nothing. */
-export const limitsSummary = (limits) => {
-  const parts = PLAN_LIMITS.filter(
-    (l) => limits?.[l.key] !== null && limits?.[l.key] !== undefined
-  ).map((l) => `${limits[l.key]} ${l.short}`);
-  return parts.length ? parts.join(' · ') : 'Unlimited';
+// Modules selectable per entity type. Pharmacy uses the tier keys above.
+const MODULES_BY_TYPE = {
+  HOSPITAL: AVAILABLE_MODULES,
+  CLINIC: ['OPD', 'PHARMACY', 'BILLING', 'APPOINTMENTS', 'MEDICAL_INVENTORY', 'REPORTS'],
+  PHARMACY: PHARMACY_TIER_KEYS,
 };
+const modulesForType = (type) => MODULES_BY_TYPE[type] || AVAILABLE_MODULES;
 
 const emptyForm = {
   name: '',
@@ -37,7 +46,6 @@ const emptyForm = {
   inClinic: false,
   multiOutlet: false,
   maxOutlets: '',
-  limits: emptyLimits(),
 };
 
 export default function PlansTab({ hospitalType = null }) {
@@ -49,16 +57,13 @@ export default function PlansTab({ hospitalType = null }) {
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [capabilities, setCapabilities] = useState([]);
-  const [catalogError, setCatalogError] = useState('');
 
   // The tab is always opened from a tenant-type group (Hospital / Clinic /
   // Pharmacy), so the plan type comes from the tab — never from the user.
   const planType = hospitalType || 'HOSPITAL';
 
   useEffect(() => {
-    loadPlans();
-    loadCapabilities();
+    loadPlans().catch(console.error);
   }, [hospitalType]);
 
   const loadPlans = async () => {
@@ -72,21 +77,6 @@ export default function PlansTab({ hospitalType = null }) {
       setLoading(false);
     }
   };
-
-  const loadCapabilities = async () => {
-    setCatalogError('');
-    try {
-      setCapabilities(await platformService.getPlanCapabilities(planType));
-    } catch {
-      setCapabilities([]);
-      setCatalogError('Plan capabilities are unavailable. Refresh and try again.');
-    }
-  };
-
-  const selectableKeys = new Set(capabilities.map((capability) => capability.key));
-  const pharmacyTiers = capabilities.filter((capability) => capability.pharmacyTier);
-  const pharmacyTierKeys = pharmacyTiers.map((capability) => capability.key);
-  const standardModules = capabilities.filter((capability) => !capability.pharmacyTier);
 
   const openCreate = () => {
     setEditingPlan(null);
@@ -102,27 +92,23 @@ export default function PlansTab({ hospitalType = null }) {
       type: plan.type,
       monthlyPrice: plan.monthlyPrice,
       yearlyPrice: plan.yearlyPrice,
-      modules: normalizePlanModules(
-        (plan.modules || []).filter((module) => selectableKeys.has(module))
-      ),
+      modules: plan.modules || [],
       features: (plan.features || []).join('\n'),
       inClinic: plan.inClinic || false,
       multiOutlet: plan.multiOutlet || false,
       maxOutlets: plan.maxOutlets ?? '',
-      limits: Object.fromEntries(PLAN_LIMITS.map((l) => [l.key, plan.limits?.[l.key] ?? ''])),
     });
     setError('');
     setShowModal(true);
   };
 
   const handleModuleToggle = (mod) => {
-    setForm((prev) => {
-      if (mod === 'OPD' && prev.modules.includes('APPOINTMENTS')) return prev;
-      const modules = prev.modules.includes(mod)
+    setForm((prev) => ({
+      ...prev,
+      modules: prev.modules.includes(mod)
         ? prev.modules.filter((m) => m !== mod)
-        : [...prev.modules, mod];
-      return { ...prev, modules: normalizePlanModules(modules) };
-    });
+        : [...prev.modules, mod],
+    }));
   };
 
   const handleSubmit = async (e) => {
@@ -143,7 +129,7 @@ export default function PlansTab({ hospitalType = null }) {
       type: form.type,
       monthlyPrice: parseFloat(form.monthlyPrice),
       yearlyPrice: parseFloat(form.yearlyPrice),
-      modules: normalizePlanModules(form.modules.filter((module) => selectableKeys.has(module))),
+      modules: form.modules,
       features: form.features
         .split('\n')
         .map((f) => f.trim())
@@ -156,14 +142,6 @@ export default function PlansTab({ hospitalType = null }) {
         form.maxOutlets !== ''
           ? parseInt(form.maxOutlets, 10)
           : null,
-      limits: Object.fromEntries(
-        PLAN_LIMITS.map((l) => [
-          l.key,
-          form.limits[l.key] === '' || form.limits[l.key] === null
-            ? null
-            : Number.parseInt(form.limits[l.key], 10),
-        ])
-      ),
     };
 
     try {
@@ -175,7 +153,7 @@ export default function PlansTab({ hospitalType = null }) {
         success('Plan created successfully');
       }
       setShowModal(false);
-      loadPlans();
+      loadPlans().catch(console.error);
     } catch (err) {
       setError(extractApiError(err, 'Failed to save plan'));
     } finally {
@@ -188,7 +166,7 @@ export default function PlansTab({ hospitalType = null }) {
     try {
       await platformService.deletePlan(plan.publicId);
       success('Plan deleted');
-      loadPlans();
+      loadPlans().catch(console.error);
     } catch (err) {
       setError(extractApiError(err, 'Failed to delete plan'));
     }
@@ -216,16 +194,10 @@ export default function PlansTab({ hospitalType = null }) {
           {error}
         </div>
       )}
-      {catalogError && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded">
-          {catalogError}
-        </div>
-      )}
 
       <div className="flex items-center justify-end mb-4">
         <button
           onClick={openCreate}
-          disabled={Boolean(catalogError)}
           className="px-4 py-2 bg-gray-900 text-white text-sm font-medium hover:bg-gray-700 transition-colors"
         >
           + Create Plan
@@ -258,9 +230,6 @@ export default function PlansTab({ hospitalType = null }) {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">
                   Modules
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">
-                  Limits
-                </th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 uppercase">
                   Actions
                 </th>
@@ -276,7 +245,6 @@ export default function PlansTab({ hospitalType = null }) {
                   <td className="px-4 py-3 text-sm text-gray-600">
                     {(plan.modules || []).join(', ') || '—'}
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{limitsSummary(plan.limits)}</td>
                   <td className="px-4 py-3 text-right">
                     <button
                       onClick={() => openEdit(plan)}
@@ -366,7 +334,7 @@ export default function PlansTab({ hospitalType = null }) {
                     Pharmacy Plan Type
                   </span>
                   <div className="flex flex-col gap-2">
-                    {pharmacyTiers.map(({ key, label }) => (
+                    {PHARMACY_TIERS.map(([key, label]) => (
                       <label key={key} className="flex items-center gap-2 cursor-pointer">
                         <input
                           type="radio"
@@ -377,7 +345,7 @@ export default function PlansTab({ hospitalType = null }) {
                               // tiers are mutually exclusive; drop any other tier, keep non-tier modules
                               ...p,
                               modules: [
-                                ...p.modules.filter((m) => !pharmacyTierKeys.includes(m)),
+                                ...p.modules.filter((m) => !PHARMACY_TIER_KEYS.includes(m)),
                                 key,
                               ],
                               maxOutlets: key === 'MULTI_PHARMACY' ? p.maxOutlets : '',
@@ -396,19 +364,18 @@ export default function PlansTab({ hospitalType = null }) {
                     Enabled Modules
                   </span>
                   <div className="flex flex-wrap gap-2">
-                    {standardModules.map(({ key: mod, label }) => (
+                    {modulesForType(form.type).map((mod) => (
                       <button
                         type="button"
                         key={mod}
                         onClick={() => handleModuleToggle(mod)}
-                        disabled={mod === 'OPD' && form.modules.includes('APPOINTMENTS')}
                         className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
                           form.modules.includes(mod)
                             ? 'bg-gray-900 text-white border-gray-900'
                             : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
                         }`}
                       >
-                        {label}
+                        {mod}
                       </button>
                     ))}
                   </div>
@@ -458,37 +425,6 @@ export default function PlansTab({ hospitalType = null }) {
                     unlimited.
                   </p>
                 </div>
-              )}
-
-              {form.type !== 'PHARMACY' && (
-                <fieldset>
-                  <legend className="block text-sm font-medium text-gray-700 mb-1">Limits</legend>
-                  <p className="text-xs text-gray-500 mb-2">
-                    Blank = unlimited. 0 = not included. A hospital that reaches a limit is told to
-                    call support to upgrade.
-                  </p>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {PLAN_LIMITS.map((l) => (
-                      <label key={l.key} className="text-xs text-gray-600">
-                        {l.label}
-                        <input
-                          type="number"
-                          min="0"
-                          step="1"
-                          value={form.limits[l.key]}
-                          onChange={(e) =>
-                            setForm((p) => ({
-                              ...p,
-                              limits: { ...p.limits, [l.key]: e.target.value },
-                            }))
-                          }
-                          placeholder="Unlimited"
-                          className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                        />
-                      </label>
-                    ))}
-                  </div>
-                </fieldset>
               )}
 
               <div>

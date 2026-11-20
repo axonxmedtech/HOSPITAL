@@ -24,7 +24,7 @@ const NotificationBell = ({ refreshKey }) => {
   }, []);
 
   useEffect(() => {
-    loadData();
+    loadData().catch(console.error);
   }, [loadData, refreshKey]);
 
   // Close dropdown on click outside
@@ -45,7 +45,7 @@ const NotificationBell = ({ refreshKey }) => {
   const handleMarkRead = async (publicId) => {
     try {
       await notificationService.markAsRead(publicId);
-      loadData();
+      loadData().catch(console.error);
     } catch (err) {
       console.error('Failed to mark notification read', err);
     }
@@ -54,7 +54,7 @@ const NotificationBell = ({ refreshKey }) => {
   const handleMarkAllRead = async () => {
     try {
       await notificationService.markAllAsRead();
-      loadData();
+      loadData().catch(console.error);
     } catch (err) {
       console.error('Failed to mark all read', err);
     }

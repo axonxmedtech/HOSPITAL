@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import useLiveRefresh from '../hooks/useLiveRefresh';
 import hospitalService from '../services/hospitalService';
 import { SkeletonFeed } from './Skeleton';
 
@@ -9,15 +8,15 @@ const ActivityFeed = () => {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetchLogs();
+    fetchLogs().catch(console.error);
     // Auto-refresh every 30 seconds
-    const interval = setInterval(fetchLogs, 30000);
+    const interval = setInterval(() => {
+      fetchLogs().catch(console.error);
+    }, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  // New activity appears as it happens, not only on the 30-second poll.
-  useLiveRefresh(() => fetchLogs());
-
+  // Also expose a way to refresh externally if needed (e.g. via context or prop)
   const fetchLogs = async () => {
     try {
       const data = await hospitalService.getAuditLogs(null, null, 20);

@@ -163,7 +163,7 @@ export const IDRenderer = (params) => {
 
   const handleCopy = (e) => {
     e.stopPropagation();
-    navigator.clipboard.writeText(value);
+    navigator.clipboard.writeText(value).catch(console.error);
     // Could add toast notification here
   };
 
