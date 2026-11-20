@@ -5,10 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 let currentUser = null;
 vi.mock('../services/authService', () => ({ default: { getCurrentUser: () => currentUser } }));
+vi.mock('../services/apiService', () => ({
+  default: { get: vi.fn(), put: vi.fn(), post: vi.fn(() => Promise.resolve({ data: {} })) },
+}));
 vi.mock('../services/hospitalService', () => ({
   default: { getSetupStatus: vi.fn(() => Promise.resolve(null)) },
 }));
 
+import apiClient from '../services/apiService';
 import CommandPalette from './CommandPalette';
 import { ALL_ENTRIES, entriesFor } from './content';
 import { ROLE_NAMES } from './content/roles';
@@ -194,6 +198,29 @@ describe('help panel', () => {
       screen.getAllByRole('button', { name: 'Raise a support ticket' }).length
     ).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Guides' })).toBeInTheDocument();
+  });
+
+  it('an answer can be rated, and a question help cannot answer is reported', async () => {
+    currentUser = user('RECEPTIONIST');
+    apiClient.post.mockClear();
+    renderPanel();
+    act(() => helpStore.openPanel());
+    await userEvent.type(screen.getByLabelText('Ask a question'), 'how do i admit a patient');
+    await userEvent.click(screen.getByRole('button', { name: 'Ask' }));
+    await userEvent.click(screen.getByRole('button', { name: 'No' }));
+    expect(screen.getByText(/we will improve this answer/)).toBeInTheDocument();
+    expect(apiClient.post).toHaveBeenCalledWith(
+      '/help/feedback',
+      expect.objectContaining({ kind: 'NOT_HELPFUL', entryId: 'desk-admit-direct' })
+    );
+
+    await userEvent.type(screen.getByLabelText('Ask a question'), 'zzqx blorf');
+    await userEvent.click(screen.getByRole('button', { name: 'Ask' }));
+    expect(apiClient.post).toHaveBeenCalledWith(
+      '/help/feedback',
+      expect.objectContaining({ kind: 'UNANSWERED', question: 'zzqx blorf' })
+    );
+    expect(screen.getByText(/don’t type patient names or numbers/)).toBeInTheDocument();
   });
 
   it('topics open the chosen answer, and the shortcuts are listed', async () => {

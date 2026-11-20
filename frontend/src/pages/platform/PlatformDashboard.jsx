@@ -8,6 +8,7 @@ import DateSelect from '../../components/DateSelect';
 import Navbar from '../../components/Navbar';
 import PageHeader from '../../components/PageHeader';
 import PlansTab from '../../components/PlansTab';
+import HelpInsightsTab from '../../components/platform/HelpInsightsTab';
 import HospitalPlanControls from '../../components/platform/HospitalPlanControls';
 import SubscriptionBadge from '../../components/platform/SubscriptionBadge';
 import SubscriptionOverview from '../../components/platform/SubscriptionOverview';
@@ -762,6 +763,8 @@ const PlatformDashboard = () => {
     // pharmacy searches alike, so it lives outside the tenant-type groups.
     { id: 'medicines', label: 'Medicines', isTopLevel: true },
     { id: 'audit_logs', label: 'Audit Logs', isTopLevel: true },
+    // What users could not find in in-app help, and how answers were rated.
+    { id: 'help_insights', label: 'Help Insights', isTopLevel: true },
   ];
 
   // Helper: Get display label for active tab
@@ -837,6 +840,9 @@ const PlatformDashboard = () => {
                   subtitle = 'View and resolve support tickets submitted by hospital admins.';
                 else if (isFaqTab)
                   subtitle = 'Manage global frequently asked questions for hospital admins.';
+                else if (activeTab === 'help_insights')
+                  subtitle =
+                    'What users could not find in in-app help, and how each answer was rated.';
                 else
                   subtitle =
                     'Track system activities and administrative actions across the platform.';
@@ -1051,6 +1057,9 @@ const PlatformDashboard = () => {
 
           {/* Medicines Tab — global catalog, shared by all tenant types */}
           {activeTab === 'medicines' && <PlatformMedicinesTab hospitalType={null} />}
+
+          {/* Help Insights — unanswered help questions and answer ratings */}
+          {activeTab === 'help_insights' && <HelpInsightsTab />}
 
           {/* Inventory Items Tab */}
           {(() => {

@@ -548,6 +548,12 @@ const firstDay = [
         text: 'Tickets lists support tickets raised by hospital admins.',
         goTo: 'hospital:tickets',
       },
+      {
+        id: 'help',
+        title: 'Improve the help',
+        text: 'Help Insights lists what users asked that help could not answer, and answers rated not helpful. Write those answers into the help content, then Mark answered.',
+        goTo: 'help_insights',
+      },
     ],
   },
 ];

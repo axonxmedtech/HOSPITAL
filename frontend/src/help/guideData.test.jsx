@@ -28,7 +28,7 @@ const SCREENS = new Set(
     // nurse, nurse in-charge, OT
     'my-patients my-tasks my-shifts my-attendance forms icu-beds my-nurses my-ward-patients unassigned-patients schedule attendance beds coverage calendar board requests day',
     // super admin
-    'dashboard medicines audit_logs hospital:hospitals hospital:plans hospital:tickets hospital:faqs clinic:clinics pharmacy:pharmacies',
+    'dashboard medicines audit_logs help_insights hospital:hospitals hospital:plans hospital:tickets hospital:faqs clinic:clinics pharmacy:pharmacies',
   ]
     .join(' ')
     .split(' ')

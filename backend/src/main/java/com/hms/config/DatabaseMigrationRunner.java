@@ -185,6 +185,7 @@ public class DatabaseMigrationRunner {
         ensureAppointmentSlotsTable(); // NEW — Nursing Mgmt Phase B1
         ensureNurseShiftSchedulesTable(); // NEW — Nursing Mgmt Phase B2
         ensureHelpProgressTable();
+        ensureHelpFeedbackTable();
         ensureNurseAttendanceTable(); // NEW — Nursing Mgmt Phase D
         ensureNurseWardAssignmentsTable(); // NEW — Nursing Mgmt Phase F
         ensureNurseSubstitutionsTable(); // NEW — Nursing Mgmt Phase F
@@ -582,6 +583,20 @@ public class DatabaseMigrationRunner {
                 "data TEXT NOT NULL, updated_at DATETIME(6) NULL, PRIMARY KEY (id)," +
                 "UNIQUE KEY UK_help_progress_scope (scope_key), KEY idx_help_progress_hospital (hospital_id))");
         } catch (Exception e) { log.warn("DB migration skipped (help_progress): {}", e.getMessage()); }
+    }
+
+    /** In-app help feedback (V34). Idempotent; mirrors setup/schema-full.sql. */
+    private void ensureHelpFeedbackTable() {
+        try {
+            jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS help_feedback (" +
+                "id BIGINT NOT NULL AUTO_INCREMENT, hospital_id BIGINT NULL, scope_key VARCHAR(160) NOT NULL," +
+                "role VARCHAR(40) NOT NULL, kind VARCHAR(20) NOT NULL, entry_id VARCHAR(60) NULL," +
+                "question VARCHAR(200) NULL, normalized VARCHAR(200) NULL, screen VARCHAR(60) NULL," +
+                "resolved BIT(1) NOT NULL DEFAULT 0, created_at DATETIME(6) NULL, PRIMARY KEY (id)," +
+                "KEY idx_help_feedback_scope (scope_key, created_at)," +
+                "KEY idx_help_feedback_kind (kind, resolved, created_at)," +
+                "KEY idx_help_feedback_hospital (hospital_id))");
+        } catch (Exception e) { log.warn("DB migration skipped (help_feedback): {}", e.getMessage()); }
     }
 
     private void ensureNurseWardAssignmentsTable() {

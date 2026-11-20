@@ -269,6 +269,11 @@ export const TOURS = [
         'Create and manage hospitals here; clinics and pharmacies have their own lists.'
       ),
       screen('hospital:plans', 'Plans', 'Modules, prices and limits for each plan.'),
+      screen(
+        'help_insights',
+        'Help Insights',
+        'Questions users could not find in help, and how each answer was rated — write the missing answers.'
+      ),
     ],
   },
 ];

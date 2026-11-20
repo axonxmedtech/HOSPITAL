@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import authService from '../services/authService';
 import { entriesFor, suggestionsFor } from './content';
 import { ADMIN, ROLE_NAMES } from './content/roles';
+import { sendFeedback } from './feedback';
 import Guides from './Guides';
 import { flattenTabs, helpStore, useHelpState } from './helpStore';
 import { CONFIDENT_SCORE, rank } from './search';
@@ -22,7 +23,44 @@ import Shot from './Shot';
 
 const SUPPORT_PHONE = '9022915865';
 
-function Answer({ entry, onGo }) {
+/** "Was this helpful?" under an answer. One vote per answer shown. */
+function Rate({ entry, screen, isAdmin }) {
+  const [vote, setVote] = useState(null);
+  const cast = (helpful) => {
+    setVote(helpful ? 'yes' : 'no');
+    sendFeedback({ kind: helpful ? 'HELPFUL' : 'NOT_HELPFUL', entryId: entry.id, screen });
+  };
+  if (vote === 'yes') return <p className="text-xs text-emerald-700">Thanks — glad it helped.</p>;
+  if (vote === 'no') {
+    return (
+      <p className="text-xs text-gray-600">
+        Thanks for telling us — we will improve this answer. Try the related answers below
+        {isAdmin ? ', or raise a support ticket.' : ', or ask your hospital admin.'}
+      </p>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2 text-xs text-gray-500">
+      <span>Was this helpful?</span>
+      <button
+        type="button"
+        onClick={() => cast(true)}
+        className="px-2 py-0.5 rounded border border-gray-200 hover:border-emerald-300 hover:text-emerald-700"
+      >
+        Yes
+      </button>
+      <button
+        type="button"
+        onClick={() => cast(false)}
+        className="px-2 py-0.5 rounded border border-gray-200 hover:border-rose-300 hover:text-rose-700"
+      >
+        No
+      </button>
+    </div>
+  );
+}
+
+function Answer({ entry, onGo, screen, isAdmin }) {
   const dest =
     entry.goTo && flattenTabs(helpStore.get().nav?.tabs).find((t) => t.id === entry.goTo);
   return (
@@ -46,6 +84,7 @@ function Answer({ entry, onGo }) {
           Go to {dest.label} →
         </button>
       )}
+      <Rate entry={entry} screen={screen} isAdmin={isAdmin} />
     </div>
   );
 }
@@ -82,13 +121,18 @@ function Assistant({ entries, screen, user, initialQuestion, initialAnswerId, on
     if (best && best.score >= CONFIDENT_SCORE) {
       return { from: 'bot', entry: best.entry, related };
     }
+    // Help had no good answer: tell AxonX (scrubbed, without a name) so one gets written.
+    sendFeedback({ kind: 'UNANSWERED', question, screen });
     return { from: 'bot', miss: true, related: ranked.slice(0, 4).map((r) => r.entry) };
   };
 
   const ask = (question) => {
     const q = question.trim();
     if (!q) return;
-    setMessages((m) => [...m, { from: 'user', text: q }, reply(q)]);
+    // Worked out once, outside the state update: React may run updates twice, and reply() can
+    // report an unanswered question.
+    const answer = reply(q);
+    setMessages((m) => [...m, { from: 'user', text: q }, answer]);
     setText('');
   };
 
@@ -105,7 +149,12 @@ function Assistant({ entries, screen, user, initialQuestion, initialAnswerId, on
       },
     ]);
 
+  // Answer what the panel was opened with, once (development mode runs effects twice).
+  const startedWith = useRef(null);
   useEffect(() => {
+    const key = `${initialQuestion || ''}|${initialAnswerId || ''}`;
+    if (startedWith.current === key) return;
+    startedWith.current = key;
     if (initialQuestion) ask(initialQuestion);
     else if (initialAnswerId) {
       const e = entries.find((x) => x.id === initialAnswerId);
@@ -138,7 +187,7 @@ function Assistant({ entries, screen, user, initialQuestion, initialAnswerId, on
           ) : (
             <div key={i} className="bg-white border border-gray-200 rounded-xl p-3 space-y-3">
               {m.entry ? (
-                <Answer entry={m.entry} onGo={onGo} />
+                <Answer entry={m.entry} onGo={onGo} screen={screen} isAdmin={isAdmin} />
               ) : (
                 <p className="text-gray-700">
                   I couldn’t find an exact answer. Try different words, or pick one of these:
@@ -167,6 +216,12 @@ function Assistant({ entries, screen, user, initialQuestion, initialAnswerId, on
                   ) : (
                     'Still stuck? Your hospital admin can help.'
                   )}
+                </p>
+              )}
+              {m.miss && (
+                <p className="text-[11px] text-gray-400">
+                  We noted this question (without your name) so the help can be improved. Please
+                  don’t type patient names or numbers into help.
                 </p>
               )}
             </div>

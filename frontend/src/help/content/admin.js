@@ -217,6 +217,16 @@ export const admin = [
 
 export const superAdmin = [
   {
+    id: 'sa-help-insights',
+    category: 'Support',
+    roles: [SUPER_ADMIN],
+    screens: ['help_insights'],
+    goTo: 'help_insights',
+    q: 'How do I see what users could not find in help?',
+    a: 'Open Help Insights. "Questions help could not answer" lists what users asked that had no good answer, most asked first, with which roles asked. Add an answer to the help content, then click Mark answered. "How answers were rated" shows each answer’s Yes / No votes, least helpful first. Questions arrive without names, and numbers and email addresses are removed.',
+    tags: ['help insights', 'unanswered', 'feedback', 'ratings', 'improve help', 'not helpful'],
+  },
+  {
     id: 'sa-create-hospital',
     category: 'Tenants',
     roles: [SUPER_ADMIN],
