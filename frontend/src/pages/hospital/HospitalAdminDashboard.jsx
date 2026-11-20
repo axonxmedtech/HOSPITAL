@@ -22,6 +22,7 @@ import AppointmentModal from '../../components/AppointmentModal';
 import DailyCollectionReport from '../../components/billing/DailyCollectionReport';
 import OpdBillCell from '../../components/billing/OpdBillCell';
 import ConfirmationModal from '../../components/ConfirmationModal';
+import DataMenu from '../../components/DataMenu';
 import DataTable from '../../components/DataTable';
 import DateSelect from '../../components/DateSelect';
 import DuplicatePhoneConflictModal from '../../components/DuplicatePhoneConflictModal';
@@ -1990,6 +1991,8 @@ const HospitalAdminDashboard = () => {
   const handleEdit = (item, type = null) => {
     setEditData(item);
     const modalTypeStr = type && typeof type === 'string' ? type : activeTab;
+    // A doctor added while the Deleted list is showing appears under Active Doctors.
+    if (modalTypeStr === 'doctors') setDoctorSubView('Active');
     setModalType(modalTypeStr);
     setShowModal(true);
   };
@@ -3141,28 +3144,26 @@ const HospitalAdminDashboard = () => {
                     ? () => setIsAdminOpdModalOpen(true)
                     : activeTab === 'nurse-tasks'
                       ? () => setCreateTaskModal(true)
-                      : activeTab === 'doctors' && doctorSubView === 'Deleted'
-                        ? null
-                        : activeTab === 'ipd'
-                          ? () => {
-                              setAdminIpdOpdForAdmit(null);
-                              setIsAdminIpdAdmitOpen(true);
-                            }
-                          : activeTab === 'icu'
-                            ? null
-                            : activeTab !== 'billing' &&
-                                activeTab !== 'audit-logs' &&
-                                activeTab !== 'fees' &&
-                                activeTab !== 'settings' &&
-                                activeTab !== 'ot' &&
-                                activeTab !== 'time-slots' &&
-                                activeTab !== 'calendar' &&
-                                activeTab !== 'icu-wards' &&
-                                activeTab !== 'icu-dashboard' &&
-                                activeTab !== 'icu-beds' &&
-                                user?.role === 'HOSPITAL_ADMIN'
-                              ? handleAdd
-                              : null
+                      : activeTab === 'ipd'
+                        ? () => {
+                            setAdminIpdOpdForAdmit(null);
+                            setIsAdminIpdAdmitOpen(true);
+                          }
+                        : activeTab === 'icu'
+                          ? null
+                          : activeTab !== 'billing' &&
+                              activeTab !== 'audit-logs' &&
+                              activeTab !== 'fees' &&
+                              activeTab !== 'settings' &&
+                              activeTab !== 'ot' &&
+                              activeTab !== 'time-slots' &&
+                              activeTab !== 'calendar' &&
+                              activeTab !== 'icu-wards' &&
+                              activeTab !== 'icu-dashboard' &&
+                              activeTab !== 'icu-beds' &&
+                              user?.role === 'HOSPITAL_ADMIN'
+                            ? handleAdd
+                            : null
                 }
                 addLabel={
                   activeTab === 'opd'
@@ -3171,9 +3172,7 @@ const HospitalAdminDashboard = () => {
                       ? 'Admit Patient'
                       : activeTab === 'nurse-tasks'
                         ? 'New Task'
-                        : activeTab === 'fees' ||
-                            activeTab === 'settings' ||
-                            (activeTab === 'doctors' && doctorSubView === 'Deleted')
+                        : activeTab === 'fees' || activeTab === 'settings'
                           ? ''
                           : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'nurses' ? 'Nurse' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'ot-incharges' ? 'OT Incharge' : activeTab === 'appointments' && hasAppointments ? 'Appointment' : activeTab === 'wards' ? 'Ward' : ''}`
                 }
@@ -3200,16 +3199,7 @@ const HospitalAdminDashboard = () => {
                       ))}
                     </div>
                   ) : activeTab === 'patients' ? (
-                    <div className="flex items-center gap-2">
-                      {!isPharmacyTenant && user?.role === 'HOSPITAL_ADMIN' && (
-                        <button
-                          type="button"
-                          className="px-4 py-2 rounded-lg border border-gray-300 bg-white text-sm font-medium hover:bg-gray-50"
-                          onClick={() => navigate('/hospital/patients/import')}
-                        >
-                          Import Patients
-                        </button>
-                      )}
+                    <div className="flex flex-wrap items-center gap-2">
                       <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 h-[38px] items-center">
                         {['All', 'Date'].map((view) => (
                           <button
@@ -3237,28 +3227,20 @@ const HospitalAdminDashboard = () => {
                           onChange={(v) => setPatientDateFilter(v)}
                         />
                       )}
-                      <button
-                        type="button"
-                        onClick={handleDownloadPatientsReport}
-                        disabled={loading}
-                        className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px] whitespace-nowrap shrink-0"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-4 w-4"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                          />
-                        </svg>
-                        <span>Download PDF</span>
-                      </button>
+                      <DataMenu
+                        items={[
+                          !isPharmacyTenant &&
+                            user?.role === 'HOSPITAL_ADMIN' && {
+                              label: 'Import Patients',
+                              onClick: () => navigate('/hospital/patients/import'),
+                            },
+                          {
+                            label: 'Download PDF',
+                            onClick: handleDownloadPatientsReport,
+                            disabled: loading,
+                          },
+                        ]}
+                      />
                     </div>
                   ) : activeTab === 'opd' ? (
                     <div className="flex items-center gap-2">
@@ -3289,28 +3271,20 @@ const HospitalAdminDashboard = () => {
                           onChange={(v) => setOpdDateFilter(v)}
                         />
                       )}
-                      <button
-                        type="button"
-                        onClick={handleDownloadOpdReport}
-                        disabled={loading}
-                        className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px] whitespace-nowrap shrink-0"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-4 w-4"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                          />
-                        </svg>
-                        <span>Download PDF</span>
-                      </button>
+                      <DataMenu
+                        items={[
+                          !isPharmacyTenant &&
+                            user?.role === 'HOSPITAL_ADMIN' && {
+                              label: 'Import Patients',
+                              onClick: () => navigate('/hospital/patients/import'),
+                            },
+                          {
+                            label: 'Download PDF',
+                            onClick: handleDownloadOpdReport,
+                            disabled: loading,
+                          },
+                        ]}
+                      />
                     </div>
                   ) : activeTab === 'appointments' && hasAppointments ? (
                     <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 h-[38px] items-center">

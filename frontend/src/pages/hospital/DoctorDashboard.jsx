@@ -7,6 +7,7 @@ import DailyCollectionReport from '../../components/billing/DailyCollectionRepor
 import OpdBillCell from '../../components/billing/OpdBillCell';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import ConsultationModal from '../../components/ConsultationModal';
+import DataMenu from '../../components/DataMenu';
 import DataTable from '../../components/DataTable';
 import DateSelect from '../../components/DateSelect';
 import EmptyState from '../../components/EmptyState';
@@ -1682,28 +1683,19 @@ const DoctorDashboard = () => {
                           }}
                         />
                       )}
-                      <button
-                        type="button"
-                        onClick={handleDownloadPatientsReport}
-                        disabled={loading}
-                        className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px] whitespace-nowrap shrink-0"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-4 w-4"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                          />
-                        </svg>
-                        <span>Download PDF</span>
-                      </button>
+                      <DataMenu
+                        items={[
+                          user?.role === 'HOSPITAL_ADMIN' && {
+                            label: 'Import Patients',
+                            onClick: () => navigate('/hospital/patients/import'),
+                          },
+                          {
+                            label: 'Download PDF',
+                            onClick: handleDownloadPatientsReport,
+                            disabled: loading,
+                          },
+                        ]}
+                      />
                     </div>
                   ) : activeTab === 'opd' ? (
                     <div className="flex items-center gap-2">
@@ -1737,28 +1729,19 @@ const DoctorDashboard = () => {
                           }}
                         />
                       )}
-                      <button
-                        type="button"
-                        onClick={handleDownloadOpdReport}
-                        disabled={loading}
-                        className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px] whitespace-nowrap shrink-0"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-4 w-4"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                          />
-                        </svg>
-                        <span>Download PDF</span>
-                      </button>
+                      <DataMenu
+                        items={[
+                          user?.role === 'HOSPITAL_ADMIN' && {
+                            label: 'Import Patients',
+                            onClick: () => navigate('/hospital/patients/import'),
+                          },
+                          {
+                            label: 'Download PDF',
+                            onClick: handleDownloadOpdReport,
+                            disabled: loading,
+                          },
+                        ]}
+                      />
                     </div>
                   ) : activeTab === 'ipd' && canDoctorManageReception ? (
                     <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
