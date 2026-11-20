@@ -274,7 +274,7 @@ class ConsultationRealPayloadTest {
         Long opdId = startOpdVisit();
 
         ResponseEntity<String> res = consult(uiPayload(opdId,
-                "\"prescription\":[{\"medicineName\":\"Paracetamol\",\"dosage\":\"500mg\""
+                "\"prescription\":[{\"strength\":\"500 mg\",\"medicineName\":\"Paracetamol\",\"dosage\":\"500mg\""
                         + ",\"frequency\":\"1-0-1\",\"duration\":\"\",\"instructions\":\"\"}]"));
 
         assertThat(res.getStatusCode().value()).isEqualTo(400);
@@ -304,13 +304,13 @@ class ConsultationRealPayloadTest {
     }
 
     private static String prescriptionRow(String name, String dosage) {
-        return "{\"medicineName\":\"" + name + "\",\"dosage\":\"" + dosage + "\""
+        return "{\"strength\":\"500 mg\",\"medicineName\":\"" + name + "\",\"dosage\":\"" + dosage + "\""
                 + ",\"frequency\":\"Morning, Night\",\"duration\":\"5 Days\""
                 + ",\"instructions\":\"After food\"}";
     }
 
     private static String administeredRow(Long medicineId, String name, int quantity) {
-        return "{\"medicineId\":" + medicineId + ",\"medicineName\":\"" + name + "\""
+        return "{\"medicineId\":" + medicineId + ",\"strength\":\"500 mg\",\"medicineName\":\"" + name + "\""
                 + ",\"quantity\":" + quantity + ",\"dosage\":\"\",\"frequency\":\"As Per Required\""
                 + ",\"duration\":\"\",\"instructions\":\"\"}";
     }

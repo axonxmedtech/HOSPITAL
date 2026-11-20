@@ -120,7 +120,7 @@ class ConsultationCompletionTest {
                 + ",\"treatmentNotes\":\"Rest and fluids\""
                 + ",\"followUpDate\":\"" + LocalDate.now().plusDays(7) + "\""
                 + ",\"followUpInstructions\":\"Return if the fever persists\""
-                + ",\"prescription\":[{\"medicineName\":\"Paracetamol\",\"dosage\":\"500mg\""
+                + ",\"prescription\":[{\"strength\":\"500 mg\",\"medicineName\":\"Paracetamol\",\"dosage\":\"500mg\""
                 + ",\"frequency\":\"1-0-1\",\"duration\":\"5 Days\",\"instructions\":\"After food\"}]}"));
 
         // Read cold: the response is not evidence that anything was written.
@@ -142,7 +142,7 @@ class ConsultationCompletionTest {
                 + ",\"diagnosis\":\"Viral fever\""
                 + ",\"treatmentNotes\":\"Rest and fluids\""
                 + ",\"followUpDate\":\"" + followUp + "\""
-                + ",\"prescription\":[{\"medicineName\":\"Paracetamol\",\"dosage\":\"500mg\""
+                + ",\"prescription\":[{\"strength\":\"500 mg\",\"medicineName\":\"Paracetamol\",\"dosage\":\"500mg\""
                 + ",\"frequency\":\"1-0-1\",\"duration\":\"5 Days\"}]}"));
 
         MedicalRecord record = medicalRecords.findByPatientIdOrderByCreatedAtDesc(patient.getId())
@@ -187,7 +187,7 @@ class ConsultationCompletionTest {
         ok(consult("{\"appointmentId\":" + appointmentId
                 + ",\"patientId\":" + patient.getId()
                 + ",\"diagnosis\":\"Viral fever\""
-                + ",\"prescription\":[{\"medicineName\":\"Paracetamol\",\"dosage\":\"500mg\""
+                + ",\"prescription\":[{\"strength\":\"500 mg\",\"medicineName\":\"Paracetamol\",\"dosage\":\"500mg\""
                 + ",\"frequency\":\"1-0-1\",\"duration\":\"3 Days\"}]}"));
 
         assertThat(appointments.findById(appointmentId).orElseThrow().getStatus())

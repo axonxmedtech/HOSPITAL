@@ -146,6 +146,16 @@ class OpdIdempotencyTest {
                 new HttpEntity<>(body(key, p, d), headers(t)), String.class);
     }
 
+    /** The patient's visits so far are completed, as after a consultation. */
+    private void finishVisits(Patient p) {
+        opds.findAll().stream()
+                .filter(o -> o.getPatient() != null && p.getId().equals(o.getPatient().getId()))
+                .forEach(o -> {
+                    o.setStatus(com.hms.entity.Opd.Status.COMPLETED);
+                    opds.save(o);
+                });
+    }
+
     private long opdCountFor(Patient p) {
         return opds.findAll().stream()
                 .filter(o -> o.getPatient() != null && p.getId().equals(o.getPatient().getId()))
@@ -228,10 +238,14 @@ class OpdIdempotencyTest {
         assertThat(opdCountFor(patient)).as("exactly one registration exists").isEqualTo(1);
     }
 
-    /** Without a key nothing changes: two genuine visits are still two registrations. */
+    /**
+     * Without a key nothing changes: two genuine visits are still two registrations. (The first is
+     * finished before the second: an open visit with the same doctor is refused as a duplicate.)
+     */
     @Test
     void withoutAKeyBehaviourIsUnchanged() {
         assertThat(register(token, null, patient, doctor).getStatusCode().value()).isEqualTo(200);
+        finishVisits(patient);
         assertThat(register(token, null, patient, doctor).getStatusCode().value()).isEqualTo(200);
 
         assertThat(opdCountFor(patient))
@@ -242,6 +256,7 @@ class OpdIdempotencyTest {
     @Test
     void aDifferentKeyRegistersAgain() {
         register(token, "opd-" + uniq(), patient, doctor);
+        finishVisits(patient);
         register(token, "opd-" + uniq(), patient, doctor);
         assertThat(opdCountFor(patient)).isEqualTo(2);
     }
