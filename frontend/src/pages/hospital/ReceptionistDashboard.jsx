@@ -52,6 +52,7 @@ import { extractPhoneConflicts } from '../../utils/duplicatePhone';
 import { createOptionalModuleFetcher } from '../../utils/optionalModule';
 import { printPdf } from '../../utils/printPdf';
 import { validateForm } from '../../utils/validation';
+import BedCleaningView from './BedCleaningView';
 import BillingTable from './BillingTable';
 import IcuBedBoard from './icu/IcuBedBoard';
 import IcuDashboard from './icu/IcuDashboard';
@@ -982,6 +983,7 @@ const ReceptionistDashboard = () => {
     ...(hasOPD ? [{ id: 'follow-ups', label: 'Follow-ups', icon: null }] : []),
     ...(hasIPD ? [{ id: 'ipd', label: 'IPD', icon: null }] : []),
     ...(hasIPD && hasICU ? [{ id: 'icu', label: 'ICU', icon: null }] : []),
+    ...(hasIPD ? [{ id: 'beds', label: 'Beds', icon: null }] : []),
     ...(hasBilling ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
     ...(hasBilling ? [{ id: 'daily-collection', label: 'Daily Collection', icon: null }] : []),
     ...(hasMedicalInventory && user?.inClinic !== false
@@ -1608,7 +1610,9 @@ const ReceptionistDashboard = () => {
           {activeTab === 'daily-collection' && <DailyCollectionReport />}
 
           {/* Standardized Header */}
-          {activeTab !== 'overview' && activeTab !== 'daily-collection' && (
+          {activeTab === 'beds' && <BedCleaningView />}
+
+          {activeTab !== 'overview' && activeTab !== 'daily-collection' && activeTab !== 'beds' && (
             <PageHeader
               title={
                 tabs.find((t) => t.id === activeTab)?.label ||

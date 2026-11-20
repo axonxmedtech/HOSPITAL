@@ -162,6 +162,7 @@ function getReceptionistTabs(user, tenantWord) {
   if (modules.includes('IPD')) {
     tabs.push({ id: 'ipd', label: 'IPD', icon: null });
     tabs.push({ id: 'icu', label: 'ICU', icon: null });
+    tabs.push({ id: 'beds', label: 'Beds', icon: null });
   }
   if (canManageBilling(user)) {
     tabs.push({ id: 'billing', label: 'Billing', icon: null });
