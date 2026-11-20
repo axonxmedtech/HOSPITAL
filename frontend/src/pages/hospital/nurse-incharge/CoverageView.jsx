@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import DateSelect from '../../../components/DateSelect';
 import EmptyState from '../../../components/EmptyState';
 import LoadingSpinner from '../../../components/LoadingSpinner';
+import { useConfirm } from '../../../context/ConfirmContext';
 import { useToast } from '../../../context/ToastContext';
 import nurseService from '../../../services/nurseService';
 import { extractApiError } from '../../../utils/apiError';
@@ -37,6 +38,7 @@ const rangeState = (from, to) => {
  */
 const CoverageView = () => {
   const { success, error: toastError } = useToast();
+  const confirm = useConfirm();
 
   const [loading, setLoading] = useState(true);
   const [wards, setWards] = useState([]); // [{ wardId, wardName }]
@@ -105,6 +107,14 @@ const CoverageView = () => {
     wards.find((w) => w.wardId === wardId)?.wardName || `Ward #${wardId}`;
 
   const removeTemp = async (publicId) => {
+    if (
+      !(await confirm({
+        title: 'Remove this temporary assignment?',
+        message: 'The nurse no longer covers this ward on those dates.',
+        confirmLabel: 'Remove',
+      }))
+    )
+      return;
     try {
       await nurseService.removeTempAssignment(publicId);
       success('Temporary assignment removed');
@@ -114,6 +124,14 @@ const CoverageView = () => {
     }
   };
   const removeSub = async (publicId) => {
+    if (
+      !(await confirm({
+        title: 'Remove this substitution?',
+        message: 'The original nurse is responsible again for those dates.',
+        confirmLabel: 'Remove',
+      }))
+    )
+      return;
     try {
       await nurseService.removeSubstitution(publicId);
       success('Substitution removed');

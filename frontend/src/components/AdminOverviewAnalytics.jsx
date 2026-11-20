@@ -10,6 +10,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import useLiveRefresh from '../hooks/useLiveRefresh';
 import hospitalService from '../services/hospitalService';
 import { extractApiError } from '../utils/apiError';
 import { SkeletonRect, SkeletonStatsGrid } from './Skeleton';
@@ -211,30 +212,35 @@ const AdminOverviewAnalytics = () => {
   // development, and the same ticket resolves them: the first pass simply loses.
   const requestId = useRef(0);
 
-  const load = useCallback(async (selectedRange) => {
+  const load = useCallback(async (selectedRange, silent = false) => {
     const ticket = (requestId.current += 1);
     const isCurrent = () => requestId.current === ticket;
 
-    setLoading(true);
-    setError(null);
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const overview = await hospitalService.getDashboardOverview(selectedRange);
       if (!isCurrent()) return;
       setData(overview);
     } catch (err) {
-      if (!isCurrent()) return;
+      if (!isCurrent() || silent) return; // a failed background refresh keeps the current figures
       // Deliberately no partial data: a failed load must not leave the previous range's numbers
       // on screen under a new label, and must never be mistaken for a quiet day.
       setData(null);
       setError(extractApiError(err, 'Could not load the overview.'));
     } finally {
-      if (isCurrent()) setLoading(false);
+      if (isCurrent() && !silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     load(range);
   }, [load, range]);
+
+  // Today's numbers move as the hospital works, without a refresh.
+  useLiveRefresh(() => load(range, true));
 
   const rangeSelector = (
     <div

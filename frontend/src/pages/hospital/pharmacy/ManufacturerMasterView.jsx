@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import DataTable from '../../../components/DataTable';
+import { useConfirm } from '../../../context/ConfirmContext';
 import { useToast } from '../../../context/ToastContext';
 import manufacturersApi from '../../../services/pharmacy/manufacturersApi';
 import { extractApiError } from '../../../utils/apiError';
@@ -30,6 +31,7 @@ const ManufacturerMasterView = () => {
   });
 
   const toast = useToast();
+  const confirm = useConfirm();
 
   const fetchManufacturers = useCallback(async () => {
     try {
@@ -100,6 +102,16 @@ const ManufacturerMasterView = () => {
   };
 
   const handleToggleStatus = async (manufacturer) => {
+    if (
+      manufacturer.isActive &&
+      !(await confirm({
+        title: `Deactivate ${manufacturer.name}?`,
+        message:
+          'It is no longer offered when adding medicines or purchases. Existing records are kept.',
+        confirmLabel: 'Deactivate',
+      }))
+    )
+      return;
     try {
       await manufacturersApi.toggleStatus(manufacturer.id);
       toast.success(

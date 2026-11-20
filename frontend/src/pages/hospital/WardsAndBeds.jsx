@@ -4,6 +4,7 @@ import ConfirmationModal from '../../components/ConfirmationModal';
 import WardCard from '../../components/WardCard';
 import WardModal from '../../components/WardModal';
 import { useToast } from '../../context/ToastContext';
+import useLiveRefresh from '../../hooks/useLiveRefresh';
 import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
 import WardService from '../../services/wardService';
@@ -35,17 +36,20 @@ const WardsAndBeds = () => {
     if (nursingEnabled) fetchNurseIncharges();
   }, [nursingEnabled]);
 
-  const fetchWards = async () => {
-    setLoading(true);
+  const fetchWards = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const data = await WardService.getWards();
       setWards(data);
     } catch (e) {
       console.error(e);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
+
+  // Beds taken, freed or cleaned elsewhere update here without a refresh.
+  useLiveRefresh(() => fetchWards(true));
 
   const fetchNurseIncharges = async () => {
     try {

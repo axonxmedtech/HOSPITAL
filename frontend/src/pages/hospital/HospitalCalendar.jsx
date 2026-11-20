@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import DateSelect from '../../components/DateSelect';
+import { useConfirm } from '../../context/ConfirmContext';
 import { useToast } from '../../context/ToastContext';
 import calendarService from '../../services/calendarService';
 import { extractApiError } from '../../utils/apiError';
@@ -231,7 +232,16 @@ const HospitalCalendar = () => {
 
 const DayPanel = ({ date, detail, loading, onClose, onChanged }) => {
   const { success, error: toastError } = useToast();
+  const confirm = useConfirm();
   const del = async (publicId) => {
+    if (
+      !(await confirm({
+        title: 'Delete this event?',
+        message: 'It is removed from the hospital calendar for everyone.',
+        confirmLabel: 'Delete event',
+      }))
+    )
+      return;
     try {
       await calendarService.deleteEvent(publicId);
       success('Event deleted');

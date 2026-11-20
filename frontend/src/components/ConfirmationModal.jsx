@@ -12,6 +12,9 @@ import { extractApiError } from '../utils/apiError';
  * @param {string} message - Warning message to display
  * @param {function} onConfirm - Callback when user clicks "Yes, Proceed"
  * @param {function} onCancel - Callback when user clicks "Cancel"
+ * @param {string} [confirmLabel] - What the confirm button says, e.g. "Send to front desk".
+ *   Naming the action beats a generic "Yes, Proceed": the user reads what will happen.
+ * @param {string} [cancelLabel] - What the cancel button says (default "Cancel").
  */
 const ConfirmationModal = ({
   isOpen,
@@ -21,6 +24,8 @@ const ConfirmationModal = ({
   onCancel,
   showReasonInput = false,
   inputPlaceholder = 'Please provide a reason...',
+  confirmLabel,
+  cancelLabel = 'Cancel',
 }) => {
   const [isLoading, setIsLoading] = React.useState(false);
   const [reason, setReason] = React.useState('');
@@ -63,7 +68,9 @@ const ConfirmationModal = ({
       onCancel(); // Close on success
     } catch (error) {
       console.error('Confirmation action failed', error);
-      setSubmitError(extractApiError(error, 'The action could not be completed. Please try again.'));
+      setSubmitError(
+        extractApiError(error, 'The action could not be completed. Please try again.')
+      );
     } finally {
       isProcessingRef.current = false;
       setIsLoading(false);
@@ -149,15 +156,15 @@ const ConfirmationModal = ({
               ref={cancelBtnRef}
               onClick={onCancel}
               disabled={isLoading}
-              aria-label="Cancel and close dialog"
+              aria-label={cancelLabel === 'Cancel' ? 'Cancel and close dialog' : cancelLabel}
               className={`bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg font-medium transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 ${isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
             >
-              Cancel
+              {cancelLabel}
             </button>
             <button
               onClick={handleConfirm}
               disabled={isLoading || (showReasonInput && !reason.trim())}
-              aria-label={isLoading ? 'Processing, please wait' : 'Confirm action'}
+              aria-label={isLoading ? 'Processing, please wait' : confirmLabel || 'Confirm action'}
               aria-busy={isLoading}
               className={`bg-gray-900 text-white px-4 py-2 rounded-lg font-medium transition shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 flex items-center gap-2 ${isLoading || (showReasonInput && !reason.trim()) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-800'}`}
             >
@@ -184,7 +191,7 @@ const ConfirmationModal = ({
                   ></path>
                 </svg>
               )}
-              {isLoading ? 'Processing...' : 'Yes, Proceed'}
+              {isLoading ? 'Processing...' : confirmLabel || 'Yes, Proceed'}
             </button>
           </div>
         </div>

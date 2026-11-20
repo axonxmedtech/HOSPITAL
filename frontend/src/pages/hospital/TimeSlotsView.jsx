@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useConfirm } from '../../context/ConfirmContext';
 import { useToast } from '../../context/ToastContext';
 import timeSlotService from '../../services/timeSlotService';
 import { extractApiError } from '../../utils/apiError';
@@ -154,6 +155,7 @@ const TimeSlotModal = ({ open, mode, kind, initial, onClose, onSave, isSubmittin
 
 const TimeSlotsView = () => {
   const { success, error: toastError } = useToast();
+  const confirm = useConfirm();
   const [subTab, setSubTab] = useState('shifts');
   const [shiftTemplates, setShiftTemplates] = useState([]);
   const [appointmentSlots, setAppointmentSlots] = useState([]);
@@ -248,6 +250,17 @@ const TimeSlotsView = () => {
   };
 
   const handleDeactivate = async (row) => {
+    if (
+      !(await confirm({
+        title: subTab === 'shifts' ? 'Deactivate this shift?' : 'Deactivate this appointment slot?',
+        message:
+          subTab === 'shifts'
+            ? 'It can no longer be used in new rosters. Existing rosters are kept.'
+            : 'It can no longer be booked. Existing appointments are kept.',
+        confirmLabel: 'Deactivate',
+      }))
+    )
+      return;
     try {
       if (subTab === 'shifts') {
         await timeSlotService.deactivateShiftTemplate(row.publicId);

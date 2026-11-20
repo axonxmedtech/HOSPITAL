@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useConfirm } from '../../../context/ConfirmContext';
 import { useToast } from '../../../context/ToastContext';
 import useOtPermissions from '../../../hooks/useOtPermissions';
 import otService from '../../../services/otService';
@@ -14,6 +15,7 @@ import { backdropProps } from '../../../utils/modalA11y';
  */
 const SurgeryTeamModal = ({ surgery, onClose }) => {
   const { success, error: toastError } = useToast();
+  const confirm = useConfirm();
   const [roles, setRoles] = useState([]);
   const [surgeons, setSurgeons] = useState([]);
   const [team, setTeam] = useState([]);
@@ -93,6 +95,14 @@ const SurgeryTeamModal = ({ surgery, onClose }) => {
   };
 
   const remove = async (m) => {
+    if (
+      !(await confirm({
+        title: 'Remove from the team?',
+        message: `${nameFor(m) || 'This person'} is taken off this surgery's team.`,
+        confirmLabel: 'Remove',
+      }))
+    )
+      return;
     setBusy(true);
     try {
       await otService.removeTeamMember(surgery.surgeryId, m.id);
@@ -162,7 +172,9 @@ const SurgeryTeamModal = ({ surgery, onClose }) => {
                       </div>
                       <button
                         disabled={busy || !canAssign}
-                        title={canAssign ? undefined : 'Assigned by the surgeon or theatre incharge'}
+                        title={
+                          canAssign ? undefined : 'Assigned by the surgeon or theatre incharge'
+                        }
                         onClick={() => remove(m)}
                         className="text-xs text-red-500 hover:text-red-700"
                       >

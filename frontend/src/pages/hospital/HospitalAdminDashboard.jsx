@@ -65,6 +65,7 @@ import StaffDetailsModal from '../../components/StaffDetailsModal';
 import StatusBadge from '../../components/StatusBadge';
 import MedicationAccessCard from '../../components/stock/MedicationAccessCard';
 import WardModal from '../../components/WardModal';
+import { useConfirm } from '../../context/ConfirmContext';
 import { useToast } from '../../context/ToastContext';
 import useDebounce from '../../hooks/useDebounce'; // BUG-017: standardised debounce hook
 import useEnabledVitals from '../../hooks/useEnabledVitals';
@@ -10211,6 +10212,7 @@ const AuditLogsTable = ({ auditLogs, startIndex = 0 }) => {
 const PharmaciesTab = () => {
   const navigate = useNavigate();
   const { success, error: toastError } = useToast();
+  const confirm = useConfirm();
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [branchesError, setBranchesError] = useState(null);
@@ -10304,7 +10306,14 @@ const PharmaciesTab = () => {
   };
 
   const handleDelete = async (branch) => {
-    if (!window.confirm(`Delete branch "${branch.name}"? Its login will be disabled.`)) return;
+    if (
+      !(await confirm({
+        title: `Delete ${branch.name}?`,
+        message: 'The branch login is disabled. Its sales and stock records are kept.',
+        confirmLabel: 'Delete branch',
+      }))
+    )
+      return;
     try {
       await branchesApi.delete(branch.id);
       success('Branch deleted');

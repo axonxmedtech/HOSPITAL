@@ -3,6 +3,7 @@ import LoadingSpinner from '../../../components/LoadingSpinner';
 import GiveExtraItem from '../../../components/stock/GiveExtraItem';
 import { StockBadge } from '../../../components/stock/StockPicker';
 import { useToast } from '../../../context/ToastContext';
+import useLiveRefresh from '../../../hooks/useLiveRefresh';
 import authService from '../../../services/authService';
 import nurseService from '../../../services/nurseService';
 import { extractApiError } from '../../../utils/apiError';
@@ -54,28 +55,41 @@ const MedicationPanel = ({ admissionId, readOnly = false }) => {
   // Orders made before stock sources existed carry only a medicine id: that is medicine stock.
   const stocked = !!(selectedOrder && (selectedOrder.stockSource || selectedOrder.medicineId));
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [chartData, histData] = await Promise.all([
-        nurseService.getMedicationChart(admissionId),
-        nurseService.getMedicationHistory(admissionId),
-      ]);
-      const c = Array.isArray(chartData) ? chartData : [];
-      setChart(c);
-      setHistory(Array.isArray(histData) ? histData : []);
-      const firstActive = c.find((x) => (x.status || '').toUpperCase() === 'ACTIVE');
-      setSelectedPrescriptionId(firstActive ? String(firstActive.prescriptionId) : '');
-    } catch (err) {
-      toastError('Failed to load medication details');
-    } finally {
-      setLoading(false);
-    }
-  }, [admissionId, toastError]);
+  /** silent: a live refresh — no spinner, keep the order the nurse has selected, no error toast. */
+  const loadData = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true);
+      try {
+        const [chartData, histData] = await Promise.all([
+          nurseService.getMedicationChart(admissionId),
+          nurseService.getMedicationHistory(admissionId),
+        ]);
+        const c = Array.isArray(chartData) ? chartData : [];
+        setChart(c);
+        setHistory(Array.isArray(histData) ? histData : []);
+        const isActive = (x) => (x.status || '').toUpperCase() === 'ACTIVE';
+        const firstActive = c.find(isActive);
+        setSelectedPrescriptionId((current) => {
+          const stillThere =
+            silent && c.some((x) => isActive(x) && String(x.prescriptionId) === current);
+          if (stillThere) return current;
+          return firstActive ? String(firstActive.prescriptionId) : '';
+        });
+      } catch (err) {
+        if (!silent) toastError('Failed to load medication details');
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [admissionId, toastError]
+  );
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Doses given or medicines ordered on another screen show here without a page refresh.
+  useLiveRefresh(() => loadData(true));
 
   useEffect(() => {
     if (readOnly) return undefined;

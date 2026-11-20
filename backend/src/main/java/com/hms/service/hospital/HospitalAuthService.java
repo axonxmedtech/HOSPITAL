@@ -317,7 +317,7 @@ public class HospitalAuthService {
         HospitalType tenantType = hospital.getType() != null ? hospital.getType() : HospitalType.HOSPITAL;
         // OT is hospital-only: a clinic or pharmacy token never carries a permission.
         java.util.Collection<String> permissions = tenantType == HospitalType.HOSPITAL
-                ? otPermissionService.effectiveFor(user.getHospitalId(), user.getRole())
+                ? otPermissionsFor(user, hospital)
                 : java.util.List.of();
 
         String token = jwtUtil.generateToken(
@@ -911,5 +911,20 @@ public class HospitalAuthService {
         responseDto.setSeparateNurseLogin(settings.getSeparateNurseLogin() == null ? Boolean.FALSE : settings.getSeparateNurseLogin());
         responseDto.setOtInchargeEnabled(settings.getOtInchargeEnabled() == null ? Boolean.FALSE : settings.getOtInchargeEnabled());
         return responseDto;
+    }
+
+    /**
+     * The OT permissions minted into a hospital login. In a single-doctor hospital the admin is
+     * also the doctor and works the doctor's screens, so they get the doctor's OT permissions as
+     * well (as the hospital has configured them) -- otherwise their Operation Theatre screen was
+     * refused (403 on /surgeries/my-board) and they could not request a surgery.
+     */
+    private java.util.Collection<String> otPermissionsFor(User user, Hospital hospital) {
+        java.util.Set<String> out = new java.util.LinkedHashSet<>(
+                otPermissionService.effectiveFor(user.getHospitalId(), user.getRole()));
+        if ("HOSPITAL_ADMIN".equals(user.getRole()) && Boolean.TRUE.equals(hospital.getIsSingleDoctor())) {
+            out.addAll(otPermissionService.effectiveFor(user.getHospitalId(), "DOCTOR"));
+        }
+        return out;
     }
 }

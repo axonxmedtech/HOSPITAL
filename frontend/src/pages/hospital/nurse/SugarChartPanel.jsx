@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import LoadingSpinner from '../../../components/LoadingSpinner';
+import { useConfirm } from '../../../context/ConfirmContext';
 import { useToast } from '../../../context/ToastContext';
+import useLiveRefresh from '../../../hooks/useLiveRefresh';
 import authService from '../../../services/authService';
 import nurseService from '../../../services/nurseService';
 import { extractApiError } from '../../../utils/apiError';
@@ -109,6 +111,7 @@ export const buildSugarChartHtml = (entries, f, hospital) => {
 
 const SugarChartPanel = ({ admissionId, readOnly = false }) => {
   const { success, error: toastError } = useToast();
+  const confirm = useConfirm();
   const user = authService.getCurrentUser();
   const currentUserId = user?.userId;
   // The "Performed By Nurse" flow only applies to nurses; a non-nurse (e.g. a
@@ -130,18 +133,24 @@ const SugarChartPanel = ({ admissionId, readOnly = false }) => {
   const [nurses, setNurses] = useState([]);
   const [performedByNurseId, setPerformedByNurseId] = useState('');
 
-  const load = useCallback(() => {
-    setLoading(true);
-    nurseService
-      .getSugarEntries(admissionId)
-      .then((d) => setEntries(Array.isArray(d) ? d : []))
-      .catch(() => toastError('Failed to load sugar chart'))
-      .finally(() => setLoading(false));
-  }, [admissionId, toastError]);
+  const load = useCallback(
+    (silent = false) => {
+      if (!silent) setLoading(true);
+      nurseService
+        .getSugarEntries(admissionId)
+        .then((d) => setEntries(Array.isArray(d) ? d : []))
+        .catch(() => !silent && toastError('Failed to load sugar chart'))
+        .finally(() => !silent && setLoading(false));
+    },
+    [admissionId, toastError]
+  );
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // Readings entered on another screen appear without a refresh.
+  useLiveRefresh(() => load(true));
   useEffect(() => {
     let active = true;
     nurseService
@@ -225,6 +234,14 @@ const SugarChartPanel = ({ admissionId, readOnly = false }) => {
   };
 
   const remove = async (publicId) => {
+    if (
+      !(await confirm({
+        title: 'Delete this reading?',
+        message: 'The sugar reading is removed from the chart.',
+        confirmLabel: 'Delete reading',
+      }))
+    )
+      return;
     try {
       await nurseService.deleteSugarEntry(publicId);
       success('Entry deleted');

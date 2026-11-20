@@ -1,6 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { API_BASE_URL } from '../services/apiService'; // BUG-028: central base URL
 import authService from '../services/authService';
+import { announceDataChanged } from './useLiveRefresh';
+
+/** A tab away for longer than this reloads once when it is looked at again. */
+const AWAY_MS = 20000;
 
 /**
  * useWebSocket - Custom hook for managing multi-tenant real-time WebSocket sync.
@@ -15,6 +19,7 @@ export default function useWebSocket(user, setUser, loadData) {
   const wsRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
   const delayRef = useRef(1000); // Start with 1 second delay for reconnection
+  const connectedOnceRef = useRef(false);
 
   // Store latest references to avoid stale closures
   const userRef = useRef(user);
@@ -58,6 +63,10 @@ export default function useWebSocket(user, setUser, loadData) {
 
     ws.onopen = () => {
       delayRef.current = 1000;
+      // A reconnect (network blip, server restart, proxy idle timeout): changes made while the
+      // connection was down were never pushed, so catch up once.
+      if (connectedOnceRef.current) catchUp();
+      connectedOnceRef.current = true;
     };
 
     ws.onmessage = async (event) => {
@@ -77,6 +86,8 @@ export default function useWebSocket(user, setUser, loadData) {
           if (loadDataRef.current) {
             loadDataRef.current(false);
           }
+          // Panels and views that load their own data reload too (useLiveRefresh).
+          announceDataChanged();
         } else if (data.type === 'PRESETS_UPDATED') {
           // Preset lists are owned by self-contained components (managers,
           // consultation dropdowns). Fan out via a window event so they can
@@ -98,6 +109,12 @@ export default function useWebSocket(user, setUser, loadData) {
     };
   };
 
+  /** Reload the dashboard and every live panel once, silently. */
+  const catchUp = () => {
+    if (loadDataRef.current) loadDataRef.current(false);
+    announceDataChanged();
+  };
+
   const scheduleReconnect = () => {
     if (reconnectTimeoutRef.current) return;
 
@@ -110,6 +127,21 @@ export default function useWebSocket(user, setUser, loadData) {
       connect();
     }, delay);
   };
+
+  // Coming back to a tab after a while: the browser may have paused the socket, so reload once.
+  useEffect(() => {
+    let hiddenAt = null;
+    const onVisibility = () => {
+      if (document.hidden) {
+        hiddenAt = Date.now();
+      } else if (hiddenAt && Date.now() - hiddenAt > AWAY_MS) {
+        hiddenAt = null;
+        catchUp();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
 
   useEffect(() => {
     connect();

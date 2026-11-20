@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
+import { useConfirm } from '../context/ConfirmContext';
 import { useToast } from '../context/ToastContext';
+import useLiveRefresh from '../hooks/useLiveRefresh';
 import authService from '../services/authService';
 import WardService from '../services/wardService';
 import { extractApiError } from '../utils/apiError';
@@ -7,6 +9,7 @@ import Button from './Button';
 
 const BedListDrawer = ({ open, ward, onClose, onStatusChange }) => {
   const { error: toastError } = useToast();
+  const confirm = useConfirm();
   const [beds, setBeds] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -15,17 +18,20 @@ const BedListDrawer = ({ open, ward, onClose, onStatusChange }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, ward]);
 
-  const fetchBeds = async () => {
-    setLoading(true);
+  const fetchBeds = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const data = await WardService.getBeds(ward.wardId);
       setBeds(data);
     } catch (e) {
       console.error(e);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
+
+  // A bed admitted to or freed by someone else changes here without reopening the list.
+  useLiveRefresh(() => fetchBeds(true), open && !!ward);
 
   const [updatingBedId, setUpdatingBedId] = useState(null);
   const role = authService.getCurrentUser()?.role;
@@ -33,8 +39,17 @@ const BedListDrawer = ({ open, ward, onClose, onStatusChange }) => {
   // Reception may free a cleaned bed (no nurse in-charge needed), but not take one out of service.
   const canMarkCleaned = canManageBeds || role === 'RECEPTIONIST';
 
-  const makeAvailable = async (bedId, cleaning = false) => {
+  const makeAvailable = async (bedId, cleaning = false, bedNumber = '') => {
     if (updatingBedId) return;
+    if (
+      !(await confirm({
+        title: cleaning ? `Mark bed ${bedNumber} cleaned?` : `Put bed ${bedNumber} back in use?`,
+        message: 'The bed becomes available, and the next admission can be given this bed.',
+        confirmLabel: cleaning ? 'Mark cleaned' : 'Make available',
+      }))
+    )
+      return;
+
     setUpdatingBedId(bedId);
     try {
       if (cleaning) await WardService.markBedCleaned(bedId);
@@ -77,7 +92,7 @@ const BedListDrawer = ({ open, ward, onClose, onStatusChange }) => {
                     <Button
                       size="sm"
                       variant="success"
-                      onClick={() => makeAvailable(b.bedId, true)}
+                      onClick={() => makeAvailable(b.bedId, true, b.bedNumber)}
                       disabled={!!updatingBedId}
                     >
                       {updatingBedId === b.bedId ? 'Updating...' : 'Mark Cleaned'}
@@ -87,7 +102,7 @@ const BedListDrawer = ({ open, ward, onClose, onStatusChange }) => {
                     <Button
                       size="sm"
                       variant="success"
-                      onClick={() => makeAvailable(b.bedId)}
+                      onClick={() => makeAvailable(b.bedId, false, b.bedNumber)}
                       disabled={!!updatingBedId}
                     >
                       {updatingBedId === b.bedId ? 'Updating...' : 'Make Available'}

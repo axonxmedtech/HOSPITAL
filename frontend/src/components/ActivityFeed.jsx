@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import useLiveRefresh from '../hooks/useLiveRefresh';
 import hospitalService from '../services/hospitalService';
 import { SkeletonFeed } from './Skeleton';
 
@@ -14,7 +15,9 @@ const ActivityFeed = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Also expose a way to refresh externally if needed (e.g. via context or prop)
+  // New activity appears as it happens, not only on the 30-second poll.
+  useLiveRefresh(() => fetchLogs());
+
   const fetchLogs = async () => {
     try {
       const data = await hospitalService.getAuditLogs(null, null, 20);
