@@ -57,8 +57,8 @@ export default function PlansTab({ hospitalType = null }) {
   const planType = hospitalType || 'HOSPITAL';
 
   useEffect(() => {
-    loadPlans();
-    loadCapabilities();
+    void loadPlans();
+    void loadCapabilities();
   }, [hospitalType]);
 
   const loadPlans = async () => {
@@ -175,7 +175,7 @@ export default function PlansTab({ hospitalType = null }) {
         success('Plan created successfully');
       }
       setShowModal(false);
-      loadPlans();
+      void loadPlans();
     } catch (err) {
       setError(extractApiError(err, 'Failed to save plan'));
     } finally {
@@ -188,7 +188,7 @@ export default function PlansTab({ hospitalType = null }) {
     try {
       await platformService.deletePlan(plan.publicId);
       success('Plan deleted');
-      loadPlans();
+      void loadPlans();
     } catch (err) {
       setError(extractApiError(err, 'Failed to delete plan'));
     }

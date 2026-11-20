@@ -140,7 +140,7 @@ const HospitalInventoryTab = () => {
   };
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [subTab]);
 
   // Handle Stock Intake / Purchase Save
@@ -172,7 +172,7 @@ const HospitalInventoryTab = () => {
       await hospitalService.addHospitalInventoryPurchase(payload);
       success('Purchase recorded and stock inventory updated.');
       setStockModal({ isOpen: false, isEdit: false, data: null });
-      loadData();
+      void loadData();
     } catch (err) {
       toastError(extractApiError(err, 'Failed to record purchase.'));
     } finally {
@@ -205,7 +205,7 @@ const HospitalInventoryTab = () => {
         success('Service registered successfully.');
       }
       setServiceModal({ isOpen: false, isEdit: false, data: null });
-      loadData();
+      void loadData();
     } catch (err) {
       toastError(extractApiError(err, 'Failed to save service.'));
     } finally {
@@ -221,7 +221,7 @@ const HospitalInventoryTab = () => {
       onConfirm: async () => {
         await hospitalService.deleteHospitalInventory(id);
         success('Item removed from inventory.');
-        loadData();
+        void loadData();
       },
     });
   };
@@ -235,7 +235,7 @@ const HospitalInventoryTab = () => {
       onConfirm: async () => {
         await hospitalService.deleteHospitalService(id);
         success('Service deleted.');
-        loadData();
+        void loadData();
       },
     });
   };
@@ -325,9 +325,9 @@ const HospitalInventoryTab = () => {
           </button>
         </div>
       ) : loading &&
-      inventoryList.length === 0 &&
-      purchaseList.length === 0 &&
-      servicesList.length === 0 ? (
+        inventoryList.length === 0 &&
+        purchaseList.length === 0 &&
+        servicesList.length === 0 ? (
         <div className="space-y-3">
           <div className="h-10 bg-slate-100 rounded-lg animate-pulse" />
           <div className="h-10 bg-slate-100 rounded-lg animate-pulse" />

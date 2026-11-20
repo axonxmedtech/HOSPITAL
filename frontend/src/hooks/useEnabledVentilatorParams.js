@@ -19,7 +19,7 @@ export default function useEnabledVentilatorParams(refreshKey = 0) {
 
   useEffect(() => {
     let active = true;
-    Promise.all([
+    void Promise.all([
       icuService.getEnabledVentilatorParams().catch(() => []),
       icuService.getVentilatorModes().catch(() => []),
     ]).then(([p, m]) => {

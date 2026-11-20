@@ -70,10 +70,11 @@ public class AppointmentController {
     @PostMapping
     @RequireModule("APPOINTMENTS")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
-    public ResponseEntity<?> createAppointment(@Valid @RequestBody Appointment appointment,
+    public ResponseEntity<?> createAppointment(@Valid @RequestBody com.hms.dto.AppointmentRequest request,
             @RequestParam(name = "acknowledgeDuplicatePhone", defaultValue = "false")
             boolean acknowledgeDuplicatePhone) {
         frontDeskAccessGuard.require();
+        Appointment appointment = request.toEntity();
         Appointment createdAppointment;
         try {
             createdAppointment = appointmentService.createAppointment(appointment,

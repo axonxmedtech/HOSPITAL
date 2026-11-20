@@ -92,9 +92,9 @@ const PatientDetailsModal = ({ patient, onClose, initialTab = 'info' }) => {
 
     if (patient) {
       if (activeTab === 'medicalhistory') {
-        fetchHistory();
+        void fetchHistory();
       } else if (activeTab === 'bills') {
-        fetchBills();
+        void fetchBills();
       }
     }
   }, [activeTab, patient?.id, patient?.publicId]);

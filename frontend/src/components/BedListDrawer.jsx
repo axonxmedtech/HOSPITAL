@@ -14,7 +14,7 @@ const BedListDrawer = ({ open, ward, onClose, onStatusChange }) => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (open && ward) fetchBeds();
+    if (open && ward) void fetchBeds();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, ward]);
 
@@ -55,7 +55,7 @@ const BedListDrawer = ({ open, ward, onClose, onStatusChange }) => {
       if (cleaning) await WardService.markBedCleaned(bedId);
       else await WardService.updateBedStatus(bedId, 'Back to available');
       onStatusChange && onStatusChange();
-      fetchBeds();
+      void fetchBeds();
     } catch (e) {
       toastError(extractApiError(e, 'Failed to update bed status'));
     } finally {

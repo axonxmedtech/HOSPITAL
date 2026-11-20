@@ -31,8 +31,8 @@ public class HospitalInventoryController {
 
     @PostMapping("/purchases")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<?> addHospitalInventoryPurchase(@RequestBody com.hms.entity.HospitalInventoryPurchase purchase) {
-        return ResponseEntity.ok(hospitalInventoryService.addHospitalInventoryPurchase(purchase));
+    public ResponseEntity<?> addHospitalInventoryPurchase(@RequestBody com.hms.dto.HospitalInventoryPurchaseRequest purchase) {
+        return ResponseEntity.ok(hospitalInventoryService.addHospitalInventoryPurchase(purchase.toEntity()));
     }
 
     // --- Active Stock Inventory CRUD ---
@@ -45,14 +45,14 @@ public class HospitalInventoryController {
 
     @PostMapping("/inventory")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<?> addInventoryItem(@Valid @RequestBody HospitalInventory stock) {
-        return ResponseEntity.ok(hospitalInventoryService.addInventoryItem(stock));
+    public ResponseEntity<?> addInventoryItem(@Valid @RequestBody com.hms.dto.HospitalInventoryRequest stock) {
+        return ResponseEntity.ok(hospitalInventoryService.addInventoryItem(stock.toEntity()));
     }
 
     @PutMapping("/inventory/{id}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<?> updateInventoryItem(@PathVariable Long id, @Valid @RequestBody HospitalInventory stock) {
-        return ResponseEntity.ok(hospitalInventoryService.updateInventoryItem(id, stock));
+    public ResponseEntity<?> updateInventoryItem(@PathVariable Long id, @Valid @RequestBody com.hms.dto.HospitalInventoryRequest stock) {
+        return ResponseEntity.ok(hospitalInventoryService.updateInventoryItem(id, stock.toEntity()));
     }
 
     @DeleteMapping("/inventory/{id}")

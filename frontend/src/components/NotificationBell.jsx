@@ -122,7 +122,7 @@ const NotificationBell = ({ refreshKey }) => {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
-                      if (!n.isRead) handleMarkRead(n.publicId);
+                      if (!n.isRead) void handleMarkRead(n.publicId);
                     }
                   }}
                   className={`px-4 py-3 text-left transition-colors cursor-pointer ${

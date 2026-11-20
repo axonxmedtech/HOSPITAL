@@ -15,3 +15,17 @@ runs:
         java-version: ${{ inputs.java-version }}
         distribution: temurin
         cache: maven
+
+    # The restored ~/.m2 cache can carry two kinds of stale metadata that fail a build with
+    # "Non-resolvable parent POM ... (present, but unavailable)": *.lastUpdated markers of a past
+    # failed download (Maven will not retry until they expire), and _remote.repositories records
+    # naming a repository this job does not declare (Maven then distrusts a jar it already has).
+    # Removing both only makes Maven use what is cached and retry what is genuinely missing.
+    - name: Clear stale Maven cache metadata
+      shell: bash
+      run: |
+        repo="$HOME/.m2/repository"
+        if [ -d "$repo" ]; then
+          find "$repo" -name '*.lastUpdated' -type f -delete
+          find "$repo" -name '_remote.repositories' -type f -delete
+        fi
