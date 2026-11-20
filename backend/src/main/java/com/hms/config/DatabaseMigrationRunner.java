@@ -248,6 +248,8 @@ public class DatabaseMigrationRunner {
         addColumnIfMissing("prescription_preset_items", "medicine_id", BIGINT_NULL);
         addColumnIfMissing("prescription_preset_items", "quantity", INT_NULL);
         backfillPrescriptionPresetType();
+        addColumnIfMissing("prescriptions", "strength", "VARCHAR(50) NULL"); // V35
+        backfillPrescriptionDurationText(); // V35: days missing from medicine lists
 
         // Print Settings (pages in the consultation-complete print) + bill payment timing.
         addColumnIfMissing(HOSPITAL_SETTINGS_TABLE, "print_case_paper", TINYINT_TRUE);
@@ -425,6 +427,25 @@ public class DatabaseMigrationRunner {
      * every existing prescription preset would silently vanish from the doctor's list. Repair
      * any such row. Idempotent.
      */
+    /**
+     * Medicines ordered on the IPD Medication tab stored only the number of days, leaving the
+     * duration text empty, so every list that prints the duration showed nothing. Fill the text
+     * from the number of days. Idempotent: only empty durations with a known day count change.
+     */
+    private void backfillPrescriptionDurationText() {
+        try {
+            int fixed = jdbcTemplate.update(
+                    "UPDATE prescriptions SET duration = CONCAT(duration_days, CASE WHEN duration_days = 1 "
+                    + "THEN ' Day' ELSE ' Days' END) "
+                    + "WHERE (duration IS NULL OR duration = '') AND duration_days IS NOT NULL AND duration_days > 0");
+            if (fixed > 0) {
+                log.info("DB migration applied: filled duration text on {} prescription(s)", fixed);
+            }
+        } catch (Exception e) {
+            log.warn("Could not backfill prescriptions.duration: {}", e.getMessage());
+        }
+    }
+
     private void backfillPrescriptionPresetType() {
         try {
             int fixed = jdbcTemplate.update(

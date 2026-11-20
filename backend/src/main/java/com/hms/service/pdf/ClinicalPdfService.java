@@ -188,7 +188,7 @@ public class ClinicalPdfService {
 
             if (prescriptions != null && !prescriptions.isEmpty()) {
                 for (Prescription p : prescriptions) {
-                    helper.addTableCell(rxTable, p.getMedicineName(), false);
+                    helper.addTableCell(rxTable, withStrength(p), false);
                     helper.addTableCell(rxTable, p.getDosage(), false);
                     helper.addTableCell(rxTable, p.getFrequency(), false);
                     helper.addTableCell(rxTable, p.getDuration(), false);
@@ -308,7 +308,7 @@ public class ClinicalPdfService {
 
             if (prescriptions != null && !prescriptions.isEmpty()) {
                 for (Prescription p : prescriptions) {
-                    helper.addTableCell(rxTable, p.getMedicineName(), false);
+                    helper.addTableCell(rxTable, withStrength(p), false);
                     helper.addTableCell(rxTable, p.getDosage(), false);
                     helper.addTableCell(rxTable, p.getFrequency(), false);
                     helper.addTableCell(rxTable, p.getDuration(), false);
@@ -636,5 +636,15 @@ public class ClinicalPdfService {
         } catch (Exception ignored) {
         }
         return text;
+    }
+
+    /** "Paracetamol 500 mg": the strength is printed with the name when it was recorded. */
+    private static String withStrength(Prescription p) {
+        String name = p.getMedicineName() == null ? "" : p.getMedicineName();
+        String strength = p.getStrength();
+        if (strength == null || strength.isBlank() || name.toLowerCase().contains(strength.trim().toLowerCase())) {
+            return name;
+        }
+        return name + " " + strength.trim();
     }
 }

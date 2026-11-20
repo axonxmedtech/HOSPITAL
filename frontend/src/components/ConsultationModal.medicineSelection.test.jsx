@@ -39,13 +39,11 @@ vi.mock('../services/hospitalService', () => ({
     getInClinicPresets: vi.fn().mockResolvedValue([]),
     getPrescriptionPresets: vi.fn().mockResolvedValue([]),
     getConsultationNotePresets: vi.fn().mockResolvedValue([]),
-    getPatientConsultationDetails: vi
-      .fn()
-      .mockResolvedValue({
-        patient: { name: 'Ravi Kumar', age: 46 },
-        opdHistory: [],
-        ipdHistory: [],
-      }),
+    getPatientConsultationDetails: vi.fn().mockResolvedValue({
+      patient: { name: 'Ravi Kumar', age: 46 },
+      opdHistory: [],
+      ipdHistory: [],
+    }),
   },
 }));
 
@@ -121,7 +119,7 @@ describe('ConsultationModal — catalogue selection is required', () => {
     await openPrescriptionTab(user);
     const field = screen.getByPlaceholderText('Search medicine from catalog...');
     await user.type(field, 'Ascoril');
-    await user.click(screen.getByPlaceholderText('Dosage (e.g., 500mg)'));
+    await user.click(screen.getByLabelText('Strength'));
 
     expect(field).toHaveValue('');
     await submit(user);

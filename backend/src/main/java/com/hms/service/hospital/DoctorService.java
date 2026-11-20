@@ -564,6 +564,16 @@ public class DoctorService {
      */
     @Transactional
     public com.hms.entity.Opd submitConsultation(com.hms.dto.ConsultationRequest request) {
+        // Every prescribed medicine states its strength (500 mg, 250 mg/5 ml …). Checked before
+        // anything is written, so a refused consultation leaves no half-saved record behind.
+        if (request.getPrescription() != null) {
+            for (com.hms.dto.ConsultationRequest.PrescriptionItem item : request.getPrescription()) {
+                if (item.getStrength() == null || item.getStrength().isBlank()) {
+                    throw new IllegalArgumentException("Enter the strength of " + item.getMedicineName()
+                            + " (for example 500 mg).");
+                }
+            }
+        }
         // Validate administered items quantity
         if (request.getAdministeredItems() != null) {
             for (com.hms.dto.ConsultationRequest.AdministeredItem item : request.getAdministeredItems()) {
@@ -789,6 +799,7 @@ public class DoctorService {
                 p.setHospitalId(hospitalId);
                 p.setMedicalRecordId(savedRecord.getId());
                 p.setMedicineName(item.getMedicineName());
+                p.setStrength(item.getStrength().trim());
                 p.setDosage(item.getDosage());
                 p.setFrequency(item.getFrequency());
                 p.setDuration(item.getDuration());

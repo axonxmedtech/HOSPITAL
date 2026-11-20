@@ -697,6 +697,7 @@ CREATE TABLE `prescriptions` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `created_at` datetime(6) NOT NULL,
   `dosage` varchar(50) DEFAULT NULL,
+  `strength` varchar(50) DEFAULT NULL,
   `duration` varchar(50) DEFAULT NULL,
   `duration_days` int DEFAULT NULL,
   `frequency` varchar(50) DEFAULT NULL,
