@@ -3,6 +3,7 @@ package com.hms.repository;
 import com.hms.entity.Appointment;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
@@ -188,6 +189,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
             AND (LOWER(p.name) LIKE LOWER(CONCAT('%', :search, '%'))
                  OR LOWER(d.name) LIKE LOWER(CONCAT('%', :search, '%'))
                  OR LOWER(a.customId) LIKE LOWER(CONCAT('%', :search, '%')))
+          AND a.status NOT IN ('COMPLETED', 'CANCELLED')
           ORDER BY a.appointmentTime ASC
       """)
   org.springframework.data.domain.Page<Appointment> searchAppointmentsByDate(Long hospitalId, String search,
@@ -203,6 +205,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
             AND (LOWER(p.name) LIKE LOWER(CONCAT('%', :search, '%'))
                  OR LOWER(d.name) LIKE LOWER(CONCAT('%', :search, '%'))
                  OR LOWER(a.customId) LIKE LOWER(CONCAT('%', :search, '%')))
+          AND a.status NOT IN ('COMPLETED', 'CANCELLED')
           ORDER BY a.appointmentDate ASC, a.appointmentTime ASC
       """)
   org.springframework.data.domain.Page<Appointment> searchAppointmentsByDateAfter(Long hospitalId, String search,
@@ -259,6 +262,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
             AND (LOWER(p.name) LIKE LOWER(CONCAT('%', :search, '%'))
                  OR LOWER(d.name) LIKE LOWER(CONCAT('%', :search, '%'))
                  OR LOWER(a.customId) LIKE LOWER(CONCAT('%', :search, '%')))
+          AND a.status NOT IN ('COMPLETED', 'CANCELLED')
           ORDER BY a.appointmentTime ASC
       """)
   org.springframework.data.domain.Page<Appointment> searchAppointmentsByDoctorAndDate(Long doctorId,
@@ -278,6 +282,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
             AND (LOWER(p.name) LIKE LOWER(CONCAT('%', :search, '%'))
                  OR LOWER(d.name) LIKE LOWER(CONCAT('%', :search, '%'))
                  OR LOWER(a.customId) LIKE LOWER(CONCAT('%', :search, '%')))
+          AND a.status NOT IN ('COMPLETED', 'CANCELLED')
           ORDER BY a.appointmentDate ASC, a.appointmentTime ASC
       """)
   org.springframework.data.domain.Page<Appointment> searchAppointmentsByDoctorAndDateAfter(Long doctorId,
@@ -342,4 +347,43 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
       Long hospitalId, java.time.LocalDate date, String status);
 
   // ...existing code...
+
+  // ---------------------------------------------------------------
+  // Open appointments only (Today / Upcoming). A COMPLETED or CANCELLED appointment is
+  // finished business: it belongs in History, never in a list of who is still to be seen.
+  // ---------------------------------------------------------------
+
+  String OPEN = " AND a.status NOT IN ('COMPLETED', 'CANCELLED') ";
+
+  @Query("SELECT a FROM Appointment a WHERE a.hospitalId = :hospitalId AND a.isActive = true"
+      + " AND a.appointmentDate = :date" + OPEN + "ORDER BY a.appointmentTime ASC")
+  List<Appointment> findOpenOnDate(@Param("hospitalId") Long hospitalId, @Param("date") LocalDate date);
+
+  @Query("SELECT a FROM Appointment a WHERE a.hospitalId = :hospitalId AND a.isActive = true"
+      + " AND a.appointmentDate = :date" + OPEN + "ORDER BY a.appointmentTime ASC")
+  org.springframework.data.domain.Page<Appointment> findOpenOnDate(@Param("hospitalId") Long hospitalId,
+      @Param("date") LocalDate date, org.springframework.data.domain.Pageable pageable);
+
+  @Query("SELECT a FROM Appointment a WHERE a.hospitalId = :hospitalId AND a.isActive = true"
+      + " AND a.appointmentDate >= :date" + OPEN + "ORDER BY a.appointmentDate ASC, a.appointmentTime ASC")
+  org.springframework.data.domain.Page<Appointment> findOpenFromDate(@Param("hospitalId") Long hospitalId,
+      @Param("date") LocalDate date, org.springframework.data.domain.Pageable pageable);
+
+  @Query("SELECT a FROM Appointment a WHERE a.doctorId = :doctorId AND a.isActive = true"
+      + " AND a.appointmentDate = :date" + OPEN + "ORDER BY a.appointmentTime ASC")
+  List<Appointment> findOpenOnDateForDoctor(@Param("doctorId") Long doctorId, @Param("date") LocalDate date);
+
+  @Query("SELECT a FROM Appointment a WHERE a.doctorId = :doctorId AND a.isActive = true"
+      + " AND a.appointmentDate = :date" + OPEN + "ORDER BY a.appointmentTime ASC")
+  org.springframework.data.domain.Page<Appointment> findOpenOnDateForDoctor(@Param("doctorId") Long doctorId,
+      @Param("date") LocalDate date, org.springframework.data.domain.Pageable pageable);
+
+  @Query("SELECT a FROM Appointment a WHERE a.doctorId = :doctorId AND a.isActive = true"
+      + " AND a.appointmentDate >= :date" + OPEN + "ORDER BY a.appointmentDate ASC, a.appointmentTime ASC")
+  List<Appointment> findOpenFromDateForDoctor(@Param("doctorId") Long doctorId, @Param("date") LocalDate date);
+
+  @Query("SELECT a FROM Appointment a WHERE a.doctorId = :doctorId AND a.isActive = true"
+      + " AND a.appointmentDate >= :date" + OPEN + "ORDER BY a.appointmentDate ASC, a.appointmentTime ASC")
+  org.springframework.data.domain.Page<Appointment> findOpenFromDateForDoctor(@Param("doctorId") Long doctorId,
+      @Param("date") LocalDate date, org.springframework.data.domain.Pageable pageable);
 }
