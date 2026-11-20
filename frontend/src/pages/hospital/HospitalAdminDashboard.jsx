@@ -195,6 +195,7 @@ const HospitalAdminDashboard = () => {
   const [icuPatients, setIcuPatients] = useState([]);
   const [opds, setOpds] = useState([]);
   const [billingStatus, setBillingStatus] = useState('PENDING');
+  const [billingCategory, setBillingCategory] = useState(''); // '' = all, 'OPD', 'IPD'
   const [auditLogs, setAuditLogs] = useState([]);
   const [stats, setStats] = useState({ today: 0, pending: 0, total: 0 });
   const [loading, setLoading] = useState(false);
@@ -662,6 +663,7 @@ const HospitalAdminDashboard = () => {
     searchTerm,
     page,
     billingStatus,
+    billingCategory,
     auditLogRoleFilter,
     patientTabView,
     patientDateFilter,
@@ -1481,7 +1483,13 @@ const HospitalAdminDashboard = () => {
             setPatients(patData);
           }
         } else if (activeTab === 'billing') {
-          const data = await hospitalService.getBills(searchTerm, page, pageSize, billingStatus);
+          const data = await hospitalService.getBills(
+            searchTerm,
+            page,
+            pageSize,
+            billingStatus,
+            billingCategory
+          );
           if (data && data.content) {
             setBilling(Array.isArray(data.content) ? data.content : []);
             setTotalPages(data.totalPages || 1);
@@ -3325,20 +3333,35 @@ const HospitalAdminDashboard = () => {
                       ))}
                     </div>
                   ) : activeTab === 'billing' ? (
-                    <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
-                      {['PENDING', 'PARTIAL', 'PAID', 'CANCELLED'].map((status) => (
-                        <button
-                          key={status}
-                          onClick={() => setBillingStatus(status)}
-                          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
-                            billingStatus === status
-                              ? 'bg-white text-primary-600 shadow-sm border border-gray-100'
-                              : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
-                          }`}
-                        >
-                          {status.charAt(0) + status.slice(1).toLowerCase()}
-                        </button>
-                      ))}
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
+                        {['PENDING', 'PARTIAL', 'PAID', 'CANCELLED'].map((status) => (
+                          <button
+                            key={status}
+                            onClick={() => setBillingStatus(status)}
+                            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
+                              billingStatus === status
+                                ? 'bg-white text-primary-600 shadow-sm border border-gray-100'
+                                : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
+                            }`}
+                          >
+                            {status.charAt(0) + status.slice(1).toLowerCase()}
+                          </button>
+                        ))}
+                      </div>
+                      <select
+                        aria-label="Bill category"
+                        value={billingCategory}
+                        onChange={(e) => {
+                          setBillingCategory(e.target.value);
+                          setPage(0);
+                        }}
+                        className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white text-gray-700"
+                      >
+                        <option value="">All categories</option>
+                        <option value="OPD">OPD</option>
+                        <option value="IPD">IPD</option>
+                      </select>
                     </div>
                   ) : activeTab === 'audit-logs' ? (
                     <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 gap-1">

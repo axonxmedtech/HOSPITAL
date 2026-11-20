@@ -103,12 +103,14 @@ public class BillingController {
     public ResponseEntity<?> getAllBills(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) String category,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         validateBillingAccess();
         Pageable pageable = PageRequest.of(page, size, org.springframework.data.domain.Sort.by("createdAt").descending());
         // Fetch page of Billing
-        org.springframework.data.domain.Page<com.hms.entity.Billing> billsPage = billingService.getAllBills(search, status, pageable);
+        org.springframework.data.domain.Page<com.hms.entity.Billing> billsPage =
+                billingService.getAllBills(search, status, category, pageable);
 
         java.util.List<com.hms.entity.Billing> content = billsPage.getContent();
         java.util.List<Long> billIds = content.stream()
@@ -325,6 +327,62 @@ public class BillingController {
                 .headers(headers)
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(new InputStreamResource(pdf));
+    }
+
+    /**
+     * Everything the patient owes for this hospital stay in one place: the IPD bill and the bill of
+     * the OPD visit that led to the admission (e.g. OPD ₹500 + IPD ₹550 = ₹1,050). Read-only — each
+     * bill keeps its own items and payments; nothing is merged or rewritten. Cancelled bills are
+     * listed for reference but left out of the totals.
+     */
+    @GetMapping("/ipd/{ipdId}/related-bills")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
+    public ResponseEntity<?> getIpdRelatedBills(@PathVariable Long ipdId) {
+        validateBillingAccess();
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        com.hms.entity.IpdAdmission admission = ipdAdmissionRepository.findByIdAndHospitalId(ipdId, hospitalId)
+                .orElseThrow(() -> new com.hms.exception.ResourceNotFoundException("Admission not found"));
+
+        java.util.LinkedHashMap<Long, Billing> bills = new java.util.LinkedHashMap<>();
+        if (admission.getSourceOpdId() != null) {
+            billingRepository.findByOpdIdAndHospitalId(admission.getSourceOpdId(), hospitalId)
+                    .stream().filter(b -> b.getIpdAdmissionId() == null)
+                    .forEach(b -> bills.put(b.getId(), b));
+        }
+        billingRepository.findByIpdAdmissionId(ipdId).stream()
+                .filter(b -> hospitalId.equals(b.getHospitalId()))
+                .forEach(b -> bills.put(b.getId(), b));
+
+        java.math.BigDecimal total = java.math.BigDecimal.ZERO;
+        java.math.BigDecimal paid = java.math.BigDecimal.ZERO;
+        java.util.List<Map<String, Object>> rows = new java.util.ArrayList<>();
+        for (Billing bill : bills.values()) {
+            com.hms.service.hospital.BillMoney money = com.hms.service.hospital.BillMoney.of(bill,
+                    billingItemRepository.findByBillingId(bill.getId()),
+                    billingMedicineRepository.findByBillingId(bill.getId()),
+                    billingPaymentRepository.findByBillingId(bill.getId()),
+                    () -> billingService.legacyIpdBedPrice(bill));
+            boolean cancelled = "CANCELLED".equalsIgnoreCase(bill.getPaymentStatus());
+            Map<String, Object> row = new HashMap<>();
+            row.put("billingId", bill.getId());
+            row.put("customId", bill.getCustomId());
+            row.put("category", bill.getIpdAdmissionId() != null ? "IPD" : "OPD");
+            row.put("status", bill.getPaymentStatus());
+            row.put("createdAt", bill.getCreatedAt());
+            row.put("totalAmount", money.net());
+            putMoney(row, money);
+            rows.add(row);
+            if (!cancelled) {
+                total = total.add(money.net());
+                paid = paid.add(money.paid());
+            }
+        }
+        Map<String, Object> resp = new HashMap<>();
+        resp.put("bills", rows);
+        resp.put("totalAmount", total);
+        resp.put("paidAmount", paid);
+        resp.put("balance", total.subtract(paid));
+        return ResponseEntity.ok(resp);
     }
 
     @GetMapping("/ipd/{ipdId}/bill")

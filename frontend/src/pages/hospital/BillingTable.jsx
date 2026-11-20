@@ -69,6 +69,24 @@ const BillingTable = ({
       header: 'Patient Name',
       cell: (info) => info.getValue() || info.row.original.patientId || '-',
     }),
+    columnHelper.accessor((row) => (row.billingType || 'OPD').toUpperCase(), {
+      id: 'category',
+      header: 'Category',
+      cell: (info) => {
+        const c = info.getValue();
+        return (
+          <span
+            className={`px-2 py-0.5 text-xs font-semibold rounded-full border ${
+              c === 'IPD'
+                ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                : 'bg-sky-50 text-sky-700 border-sky-200'
+            }`}
+          >
+            {c}
+          </span>
+        );
+      },
+    }),
     columnHelper.accessor('amount', {
       header: 'Amount',
       cell: (info) => {

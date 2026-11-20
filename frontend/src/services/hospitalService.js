@@ -638,10 +638,11 @@ const hospitalService = {
   },
 
   // --- Billing ---
-  getBills: async (search = '', page = 0, size = 10, status) => {
+  getBills: async (search = '', page = 0, size = 10, status, category) => {
     let url = `/hospital/billing?page=${page}&size=${size}`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
     if (status) url += `&status=${encodeURIComponent(status)}`;
+    if (category) url += `&category=${encodeURIComponent(category)}`;
     const response = await apiClient.get(url);
     return response.data; // Returns Page object with { content: [...], totalElements: ..., totalPages: ... }
   },
@@ -812,6 +813,11 @@ const hospitalService = {
   },
   cancelDischargePlan: async (id, reason) => {
     const response = await apiClient.post(`/hospital/ipd/${id}/cancel-discharge-plan`, { reason });
+    return response.data;
+  },
+  /** The IPD bill plus the bill of the OPD visit that led to the admission, with combined totals. */
+  getIpdRelatedBills: async (ipdId) => {
+    const response = await apiClient.get(`/hospital/billing/ipd/${ipdId}/related-bills`);
     return response.data;
   },
   getIpdBill: async (ipdId) => {

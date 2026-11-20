@@ -171,8 +171,24 @@ public class BillingService {
      * Get all bills for current hospital with optional search
      */
     public Page<Billing> getAllBills(String search, String status, Pageable pageable) {
+        return getAllBills(search, status, null, pageable);
+    }
+
+    /** Bill categories offered by the list filter: what a bill is for. */
+    public static final java.util.List<String> CATEGORIES = java.util.List.of("OPD", "IPD");
+
+    /** The bills list, optionally narrowed to one category (OPD / IPD). */
+    public Page<Billing> getAllBills(String search, String status, String category, Pageable pageable) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         java.util.List<String> statuses = statusesForFilter(status);
+        if (category != null && !category.isBlank()) {
+            String c = category.trim().toUpperCase(java.util.Locale.ROOT);
+            if (!CATEGORIES.contains(c)) {
+                throw new IllegalArgumentException("Unknown bill category: " + category);
+            }
+            return billingRepository.findByCategory(hospitalId, c, search == null ? "" : search.trim(),
+                    statuses == null, statuses == null ? java.util.List.of("") : statuses, pageable);
+        }
         if (search != null && !search.isEmpty()) {
             // The status filter belongs in the query. Filtering one fetched page in memory
             // dropped matching bills from later pages and reported a total of whatever survived

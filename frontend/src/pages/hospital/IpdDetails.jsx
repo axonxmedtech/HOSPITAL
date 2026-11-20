@@ -48,6 +48,7 @@ import VentilatorPanel from './nurse/VentilatorPanel';
 import VitalsPanel from './nurse/VitalsPanel';
 import VulnerabilityAssessmentPanel from './nurse/VulnerabilityAssessmentPanel';
 import SurgeryRequestModal from './ot/SurgeryRequestModal';
+import StayBillsSummary from './StayBillsSummary';
 
 const IpdDetails = () => {
   const { id } = useParams();
@@ -1645,6 +1646,7 @@ const IpdDetails = () => {
                           <div>
                             <strong>Balance:</strong> ₹{data.billing.balance}
                           </div>
+                          <StayBillsSummary ipdId={id} />
                         </div>
                       ) : (
                         <div className="text-sm text-gray-500">No billing records found.</div>

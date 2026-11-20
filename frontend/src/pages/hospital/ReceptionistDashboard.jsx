@@ -102,6 +102,7 @@ const ReceptionistDashboard = () => {
   const [selectedDoctorForQueue, setSelectedDoctorForQueue] = useState('');
   const [billing, setBilling] = useState([]);
   const [billingStatus, setBillingStatus] = useState('PENDING');
+  const [billingCategory, setBillingCategory] = useState(''); // '' = all, 'OPD', 'IPD'
   const [recPrintingId, setRecPrintingId] = useState(null);
   const [loading, setLoading] = useState(false);
   // A failed load is its own state. Without it the screen falls back to whatever it already
@@ -310,6 +311,7 @@ const ReceptionistDashboard = () => {
     pageSize,
     selectedDoctorForQueue,
     billingStatus,
+    billingCategory,
     opdDateFilter,
     opdTabView,
     patientTabView,
@@ -554,7 +556,13 @@ const ReceptionistDashboard = () => {
           setTotalElements(data.length);
         }
       } else if (activeTab === 'billing') {
-        const data = await hospitalService.getBills(searchTerm, page, pageSize, billingStatus);
+        const data = await hospitalService.getBills(
+          searchTerm,
+          page,
+          pageSize,
+          billingStatus,
+          billingCategory
+        );
         if (requestId !== activeRequestRef.current) return;
         if (data.content) {
           setBilling(data.content);
@@ -1673,23 +1681,38 @@ const ReceptionistDashboard = () => {
                     ))}
                   </div>
                 ) : activeTab === 'billing' ? (
-                  <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
-                    {['PENDING', 'PARTIAL', 'PAID', 'CANCELLED'].map((status) => (
-                      <button
-                        key={status}
-                        onClick={() => {
-                          setBillingStatus(status);
-                          setPage(0);
-                        }}
-                        className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
-                          billingStatus === status
-                            ? 'bg-white text-primary-600 shadow-sm border border-gray-100'
-                            : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
-                        }`}
-                      >
-                        {status.charAt(0) + status.slice(1).toLowerCase()}
-                      </button>
-                    ))}
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
+                      {['PENDING', 'PARTIAL', 'PAID', 'CANCELLED'].map((status) => (
+                        <button
+                          key={status}
+                          onClick={() => {
+                            setBillingStatus(status);
+                            setPage(0);
+                          }}
+                          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
+                            billingStatus === status
+                              ? 'bg-white text-primary-600 shadow-sm border border-gray-100'
+                              : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
+                          }`}
+                        >
+                          {status.charAt(0) + status.slice(1).toLowerCase()}
+                        </button>
+                      ))}
+                    </div>
+                    <select
+                      aria-label="Bill category"
+                      value={billingCategory}
+                      onChange={(e) => {
+                        setBillingCategory(e.target.value);
+                        setPage(0);
+                      }}
+                      className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white text-gray-700"
+                    >
+                      <option value="">All categories</option>
+                      <option value="OPD">OPD</option>
+                      <option value="IPD">IPD</option>
+                    </select>
                   </div>
                 ) : activeTab === 'queue' ? (
                   doctors && doctors.length > 1 ? (

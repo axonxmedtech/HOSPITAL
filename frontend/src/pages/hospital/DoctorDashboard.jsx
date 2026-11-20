@@ -183,6 +183,7 @@ const DoctorDashboard = () => {
   // Billing specific states
   const [billing, setBilling] = useState([]);
   const [billingStatus, setBillingStatus] = useState('PENDING');
+  const [billingCategory, setBillingCategory] = useState(''); // '' = all, 'OPD', 'IPD'
 
   const [customFees, setCustomFees] = useState([]);
   const [standardFees, setStandardFees] = useState({ consultationFee: '0', casePaperFee: '0' });
@@ -418,6 +419,7 @@ const DoctorDashboard = () => {
     searchTerm,
     viewFilter,
     billingStatus,
+    billingCategory,
     opdDateFilter,
     opdTabView,
     patientTabView,
@@ -534,7 +536,8 @@ const DoctorDashboard = () => {
           searchTerm,
           page - 1,
           ITEMS_PER_PAGE,
-          billingStatus
+          billingStatus,
+          billingCategory
         );
         const billingArray = Array.isArray(data) ? data : data.content || [];
         setBilling(billingArray);
@@ -1614,23 +1617,38 @@ const DoctorDashboard = () => {
                       </div>
                     </div>
                   ) : activeTab === 'billing' ? (
-                    <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
-                      {['PENDING', 'PARTIAL', 'PAID', 'CANCELLED'].map((status) => (
-                        <button
-                          key={status}
-                          onClick={() => {
-                            setBillingStatus(status);
-                            setPage(1);
-                          }}
-                          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
-                            billingStatus === status
-                              ? 'bg-white text-primary-600 shadow-sm border border-gray-100'
-                              : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
-                          }`}
-                        >
-                          {status.charAt(0) + status.slice(1).toLowerCase()}
-                        </button>
-                      ))}
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
+                        {['PENDING', 'PARTIAL', 'PAID', 'CANCELLED'].map((status) => (
+                          <button
+                            key={status}
+                            onClick={() => {
+                              setBillingStatus(status);
+                              setPage(1);
+                            }}
+                            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
+                              billingStatus === status
+                                ? 'bg-white text-primary-600 shadow-sm border border-gray-100'
+                                : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
+                            }`}
+                          >
+                            {status.charAt(0) + status.slice(1).toLowerCase()}
+                          </button>
+                        ))}
+                      </div>
+                      <select
+                        aria-label="Bill category"
+                        value={billingCategory}
+                        onChange={(e) => {
+                          setBillingCategory(e.target.value);
+                          setPage(1);
+                        }}
+                        className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white text-gray-700"
+                      >
+                        <option value="">All categories</option>
+                        <option value="OPD">OPD</option>
+                        <option value="IPD">IPD</option>
+                      </select>
                     </div>
                   ) : activeTab === 'patients' ? (
                     <div className="flex items-center gap-2">
