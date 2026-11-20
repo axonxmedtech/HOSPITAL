@@ -49,6 +49,23 @@ class TenantScopingArchTest {
             "BedController#requireBedForWardAccess",
             "BedService#updateStatus",
             "BedStatusService#change",
+            // Reads the caller's OWN facility (id from the security context) to learn its modules.
+            "HospitalStaffing#load",
+            // Name of the current doctor of an admission already loaded by requireOwnedAdmissionForUpdate.
+            "IpdAdmissionService#changeDoctor",
+            // hospitalRepository.findById(the caller's own hospital id from the security context).
+            "SetupStatusController#status",
+            // Bill lines and bills recorded on an administration that was itself loaded for the
+            // caller's hospital, each checked against that hospital; ipdBill reads the caller's own hospital.
+            "MedicationStockService#assertChargeRemovable",
+            "MedicationStockService#ipdBill",
+            "MedicationStockService#removeCharge",
+            // Plan limits and access state: the hospital id is the caller's own (security context)
+            // or, for the Super Admin, the hospital resolved from its public id.
+            "PlanLimitService#limitFor",
+            "PlanLimitService#setOverrides",
+            "PlanLimitService#usage",
+            "TenantAccessService#accessFor",
             "BedStatusService#history",
             "BillingController#downloadReceipt",
             "BillingController#getIpdBill",
@@ -56,7 +73,7 @@ class TenantScopingArchTest {
             "BillingController#updateBillItems",
             "BillingController#validateBillingAccess",
             "BillingPdfService#generateBillingReceiptPdf",
-            "BillingSchedulerService#processAdmissionCharge",
+            "BillingSchedulerService#bedPriceOn",
             "BillingService#autoGenerateOpdBill",
             "BillingService#createOpdBill",
             // Reads the admission and ward of an already tenant-scoped bill, and checks both

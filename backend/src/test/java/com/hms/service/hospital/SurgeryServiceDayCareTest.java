@@ -86,6 +86,7 @@ class SurgeryServiceDayCareTest {
     @Test
     void inpatientSurgery_stillHangsOffTheAdmission() {
         IpdAdmission a = new IpdAdmission();
+        a.setStatus("ADMITTED");
         a.setId(900L);
         a.setHospitalId(HOSPITAL);
         a.setPatientId(500L);

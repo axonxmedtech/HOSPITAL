@@ -39,18 +39,41 @@ public class OtPermissionService {
     @Autowired private RolePermissionRepository repository;
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private AuditLogService auditLogService;
+    @Autowired(required = false) private com.hms.service.hospital.HospitalStaffing hospitalStaffing;
 
     /** Effective permissions for one role at one hospital. Safe to call outside a request. */
     public Set<String> effectiveFor(Long hospitalId, String role) {
         if (hospitalId == null || role == null) return Set.of();
         if (repository.countByHospitalId(hospitalId) == 0) {
-            return OtPermissions.defaultsFor(role);
+            return withStaffingCover(hospitalId, role, OtPermissions.defaultsFor(role));
         }
         Set<String> granted = new LinkedHashSet<>();
         for (RolePermission rp : repository.findByHospitalIdAndRole(hospitalId, role)) {
             granted.add(rp.getPermissionCode());
         }
         return granted;
+    }
+
+    /**
+     * The defaults assume a receptionist schedules and runs the theatre day and a nurse does the
+     * pre-op checklist, WHO time-out and recovery. A facility without them could not operate at
+     * all: in Solo mode nobody could schedule or start a surgery. Here the doctor covers whatever
+     * the facility has nobody else for. Applied to the defaults only; a hospital that customised
+     * its matrix has said exactly who does what.
+     */
+    private Set<String> withStaffingCover(Long hospitalId, String role, Set<String> base) {
+        if (!"DOCTOR".equals(role) || hospitalStaffing == null) return base;
+        com.hms.service.hospital.HospitalStaffing.Snapshot st = hospitalStaffing.of(hospitalId);
+        if (st == null) return base;
+        Set<String> out = new LinkedHashSet<>(base);
+        if (!st.hasOtIncharge() && st.doctorActsAsReception()) {
+            out.addAll(OtPermissions.defaultsFor("RECEPTIONIST"));
+        }
+        if (!st.hasOtIncharge() && !st.hasNurses()) {
+            out.addAll(Set.of(OtPermissions.OT_PRE_OP, OtPermissions.OT_TIME_OUT, OtPermissions.OT_FORM_EDIT,
+                    OtPermissions.OT_RECOVERY, OtPermissions.OT_TRANSFER));
+        }
+        return out;
     }
 
     /** The caller's own effective permissions, for the frontend to render by capability. */

@@ -46,6 +46,8 @@ public interface BillingRepository extends JpaRepository<Billing, Long> {
 
     Page<Billing> findByHospitalIdAndPaymentStatus(Long hospitalId, String paymentStatus, Pageable pageable);
 
+    Page<Billing> findByHospitalIdAndPaymentStatusIn(Long hospitalId, java.util.Collection<String> paymentStatuses, Pageable pageable);
+
     @Query("""
                 SELECT b FROM Billing b
                 JOIN Patient p ON b.patientId = p.id
@@ -61,12 +63,12 @@ public interface BillingRepository extends JpaRepository<Billing, Long> {
                 SELECT b FROM Billing b
                 JOIN Patient p ON b.patientId = p.id
                 WHERE b.hospitalId = :hospitalId
-                  AND UPPER(b.paymentStatus) = UPPER(:status)
+                  AND UPPER(b.paymentStatus) IN :statuses
                   AND (LOWER(p.name) LIKE LOWER(CONCAT('%', :search, '%'))
                        OR LOWER(b.customId) LIKE LOWER(CONCAT('%', :search, '%')))
                 ORDER BY b.createdAt DESC
             """)
-    Page<Billing> searchBillingsByStatus(Long hospitalId, String search, String status, Pageable pageable);
+    Page<Billing> searchBillingsByStatus(Long hospitalId, String search, java.util.Collection<String> statuses, Pageable pageable);
 
     java.util.Optional<Billing> findTopByPatientIdOrderByCreatedAtDesc(Long patientId);
 
@@ -92,6 +94,9 @@ public interface BillingRepository extends JpaRepository<Billing, Long> {
     java.util.Optional<Billing> findByAppointmentId(Long appointmentId);
 
     java.util.Optional<Billing> findByOpdId(Long opdId);
+
+    /** The bills for one page of OPD visits (tenant-scoped), to show payment status on the OPD list. */
+    java.util.List<Billing> findByHospitalIdAndOpdIdIn(Long hospitalId, java.util.Collection<Long> opdIds);
 
     java.util.Optional<Billing> findFirstByAppointmentIdOrderByIdDesc(Long appointmentId);
 

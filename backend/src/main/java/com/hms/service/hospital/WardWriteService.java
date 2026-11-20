@@ -25,6 +25,27 @@ import java.util.stream.Collectors;
  */
 @Service
 public class WardWriteService {
+
+    // Setter-injected so existing constructions keep working; absent in plain unit tests.
+    private com.hms.service.subscription.PlanLimitService planLimits;
+    private com.hms.repository.IcuWardRepository icuWardRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setPlanLimits(com.hms.service.subscription.PlanLimitService planLimits,
+                              com.hms.repository.IcuWardRepository icuWardRepository) {
+        this.planLimits = planLimits;
+        this.icuWardRepository = icuWardRepository;
+    }
+
+    /** Growing a ward adds beds: within the bed limit, and the ICU bed limit for an ICU ward. */
+    private void requireRoomForBeds(Ward ward, int adding, Long hospitalId) {
+        if (planLimits == null || adding <= 0) return;
+        planLimits.requireRoom(hospitalId, com.hms.entitlement.PlanLimit.BEDS, adding);
+        if (icuWardRepository != null
+                && icuWardRepository.findByWardIdAndHospitalId(ward.getWardId(), hospitalId).isPresent()) {
+            planLimits.requireRoom(hospitalId, com.hms.entitlement.PlanLimit.ICU_BEDS, adding);
+        }
+    }
     private static final Logger logger = LoggerFactory.getLogger(WardWriteService.class);
 
     private final WardRepository wardRepository;
@@ -164,6 +185,7 @@ public class WardWriteService {
         int current = beds.size();
 
         if (target > current) {
+            requireRoomForBeds(ward, target - current, hospitalId);
             int next = beds.stream().mapToInt(this::bedIndex).max().orElse(0) + 1;
             for (int i = 0; i < target - current; i++) {
                 Bed b = new Bed();

@@ -21,7 +21,7 @@ const isTimeout = (err) => err?.code === 'ECONNABORTED' || err?.code === 'ETIMED
 // An error produced by the HTTP layer rather than thrown by our own code. Its `message` is
 // axios's transport text ("Request failed with status code 500", "Network Error", "canceled"),
 // never something to show a user.
-const isTransportError = (err) =>
+export const isTransportError = (err) =>
   Boolean(err?.isAxiosError || err?.response || err?.config || err?.code?.startsWith?.('ERR_')) ||
   isTimeout(err) ||
   isRequestCancelled(err);
@@ -35,7 +35,7 @@ const textBody = (data) => {
 };
 
 // The message the API deliberately put in the response body, or null.
-const bodyMessage = (data) => {
+export const bodyMessage = (data) => {
   const text = textBody(data);
   if (text) return text;
   if (typeof data?.error === 'string' && data.error.trim()) return data.error;

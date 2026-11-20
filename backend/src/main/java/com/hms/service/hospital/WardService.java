@@ -21,6 +21,19 @@ import java.util.stream.Collectors;
 @Service
 public class WardService {
 
+    // Setter-injected so every existing construction of this service keeps working; absent in
+    // plain unit tests, where no plan limit applies.
+    private com.hms.service.subscription.PlanLimitService planLimits;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setPlanLimits(com.hms.service.subscription.PlanLimitService planLimits) {
+        this.planLimits = planLimits;
+    }
+
+    private void requireRoom(Long hospitalId, com.hms.entitlement.PlanLimit key, long adding) {
+        if (planLimits != null) planLimits.requireRoom(hospitalId, key, adding);
+    }
+
     private static final Logger logger = LoggerFactory.getLogger(WardService.class);
 
     /** Upper bound on beds auto-created for one ward — a domain sanity cap and an overflow guard. */
@@ -88,6 +101,7 @@ public class WardService {
             startIndex = max + 1;
         }
 
+        requireRoom(hospitalId, com.hms.entitlement.PlanLimit.BEDS, total);
         for (int i = 0; i < total; i++) {
             long bedNumber = (long) startIndex + i;   // long so a high startIndex can never overflow
             Bed b = new Bed();

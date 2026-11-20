@@ -3,6 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import ActionMenu from '../../components/ActionMenu';
 import AppointmentModal from '../../components/AppointmentModal';
+import DailyCollectionReport from '../../components/billing/DailyCollectionReport';
+import OpdBillCell from '../../components/billing/OpdBillCell';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import ConsultationModal from '../../components/ConsultationModal';
 import DataTable from '../../components/DataTable';
@@ -14,6 +16,7 @@ import IpdAdmitModal from '../../components/IpdAdmitModal';
 import LowStockBanner from '../../components/LowStockBanner';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
 import Navbar from '../../components/Navbar';
+import { CancelVisitModal, ChangeDoctorModal } from '../../components/opd/OpdVisitActions';
 import OpdPaymentFields, {
   isPayFirst,
   validateOpdPayment,
@@ -30,6 +33,7 @@ import StatusBadge from '../../components/StatusBadge';
 import { useToast } from '../../context/ToastContext';
 import useDebounce from '../../hooks/useDebounce'; // BUG-017: standardised debounce hook
 import useEnabledVitals from '../../hooks/useEnabledVitals';
+import useOtPermissions from '../../hooks/useOtPermissions';
 import useWebSocket from '../../hooks/useWebSocket';
 import apiClient from '../../services/apiService';
 import authService from '../../services/authService';
@@ -42,6 +46,7 @@ import BillingTable from './BillingTable';
 import IcuBedBoard from './icu/IcuBedBoard';
 import IcuDashboard from './icu/IcuDashboard';
 import OtBoard from './ot/OtBoard';
+import OtWorkspace from './ot/OtWorkspace';
 
 /**
  * DoctorDashboard - Doctor dashboard
@@ -221,6 +226,9 @@ const DoctorDashboard = () => {
   const [doctorRecord, setDoctorRecord] = useState(null);
 
   // --- OT (Operation Theatre) board — visible to all doctors ---
+  // A doctor who also runs the theatre day (Solo mode, or no receptionist / OT in-charge) holds
+  // OT_SCHEDULE and gets the full workspace instead of the read-only "my surgeries" board.
+  const { can: canOt } = useOtPermissions();
   const [otRows, setOtRows] = useState([]);
   const [otLoading, setOtLoading] = useState(false);
 
@@ -923,6 +931,7 @@ const DoctorDashboard = () => {
     { id: 'follow-ups', label: 'Follow-ups', icon: null },
     ...(hasIPD ? [{ id: 'ipd', label: 'IPD', icon: null }] : []),
     ...(hasBilling ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
+    ...(hasBilling ? [{ id: 'daily-collection', label: 'Daily Collection', icon: null }] : []),
     ...(hasOT ? [{ id: 'ot', label: 'Operation Theatre', icon: null }] : []),
     ...(hasICU ? [{ id: 'icu-dashboard', label: 'ICU Dashboard', icon: null }] : []),
     ...(hasICU ? [{ id: 'icu-beds', label: 'ICU Bed Board', icon: null }] : []),
@@ -1146,7 +1155,6 @@ const DoctorDashboard = () => {
         footerData={user?.hospitalName}
         variant="plain"
         isCollapsed={sidebarCollapsed}
-        showOnMobile={true}
       />
 
       {/* Main Content Wrapper */}
@@ -1161,7 +1169,7 @@ const DoctorDashboard = () => {
         />
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-8">
+        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-4 md:p-8">
           {/* A failed load says so. It must never be shown as an empty clinic: "no patients
               waiting" and "we could not reach the server" call for opposite responses from a
               doctor, and only one of them is true. */}
@@ -1217,7 +1225,8 @@ const DoctorDashboard = () => {
                   </div>
                 )}
               </div>
-              {user?.hospitalType === 'CLINIC' && modules.includes('HOSPITAL_INVENTORY') && (
+              {/* Low stock warns the doctor early, so it is reordered before a dose is due. */}
+              {(modules.includes('IPD') || modules.includes('HOSPITAL_INVENTORY')) && (
                 <LowStockBanner />
               )}
               <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
@@ -1348,7 +1357,7 @@ const DoctorDashboard = () => {
                             className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
                               viewFilter === view
                                 ? 'bg-white text-gray-900 shadow-sm border border-gray-100'
-                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                                : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                             }`}
                           >
                             {view.charAt(0).toUpperCase() + view.slice(1)}
@@ -1360,7 +1369,7 @@ const DoctorDashboard = () => {
                     {/* Scrollable Container */}
                     <div className="flex-1 overflow-auto p-6 space-y-6">
                       <div>
-                        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
                           <span className="w-1.5 h-3 bg-gray-950 rounded-full"></span>
                           Today&apos;s Appointments
                         </h4>
@@ -1424,7 +1433,7 @@ const DoctorDashboard = () => {
                     {canDoctorManageReception && (
                       <button
                         onClick={() => setIsOpdModalOpen(true)}
-                        className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer animate-fade-in"
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-sky-700 hover:bg-sky-800 text-white text-xs font-semibold rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer animate-fade-in"
                       >
                         <svg
                           className="w-4 h-4"
@@ -1523,9 +1532,11 @@ const DoctorDashboard = () => {
           )}
 
           {/* Standardized Header - Hide on overview, inventory and hospital-inventory tabs */}
+          {activeTab === 'daily-collection' && <DailyCollectionReport />}
           {activeTab !== 'overview' &&
             activeTab !== 'inventory' &&
-            activeTab !== 'hospital-inventory' && (
+            activeTab !== 'hospital-inventory' &&
+            activeTab !== 'daily-collection' && (
               <PageHeader
                 title={
                   activeTab === 'appointments'
@@ -1589,7 +1600,7 @@ const DoctorDashboard = () => {
                             className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
                               viewFilter === view
                                 ? 'bg-white text-primary-600 shadow-sm border border-gray-100'
-                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                                : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                             }`}
                           >
                             {view.charAt(0).toUpperCase() + view.slice(1)}
@@ -1599,7 +1610,7 @@ const DoctorDashboard = () => {
                     </div>
                   ) : activeTab === 'billing' ? (
                     <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
-                      {['PENDING', 'PAID', 'PARTIAL'].map((status) => (
+                      {['PENDING', 'PARTIAL', 'PAID', 'CANCELLED'].map((status) => (
                         <button
                           key={status}
                           onClick={() => {
@@ -1609,7 +1620,7 @@ const DoctorDashboard = () => {
                           className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
                             billingStatus === status
                               ? 'bg-white text-primary-600 shadow-sm border border-gray-100'
-                              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                              : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                           }`}
                         >
                           {status.charAt(0) + status.slice(1).toLowerCase()}
@@ -1631,7 +1642,7 @@ const DoctorDashboard = () => {
                             className={`px-4 py-1 text-sm font-medium rounded-md transition-all ${
                               patientTabView === view
                                 ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'
-                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                                : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                             }`}
                           >
                             {view}
@@ -1640,6 +1651,7 @@ const DoctorDashboard = () => {
                       </div>
                       {patientTabView === 'Date' && (
                         <DateSelect
+                          filter
                           value={patientDateFilter}
                           onChange={(v) => {
                             setPatientDateFilter(v);
@@ -1651,7 +1663,7 @@ const DoctorDashboard = () => {
                         type="button"
                         onClick={handleDownloadPatientsReport}
                         disabled={loading}
-                        className="bg-sky-600 hover:bg-sky-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px]"
+                        className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px] whitespace-nowrap shrink-0"
                       >
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
@@ -1685,7 +1697,7 @@ const DoctorDashboard = () => {
                             className={`px-4 py-1 text-sm font-medium rounded-md transition-all ${
                               opdTabView === view
                                 ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'
-                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                                : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                             }`}
                           >
                             {view}
@@ -1694,6 +1706,7 @@ const DoctorDashboard = () => {
                       </div>
                       {opdTabView === 'Date' && (
                         <DateSelect
+                          filter
                           value={opdDateFilter}
                           onChange={(v) => {
                             setOpdDateFilter(v);
@@ -1705,7 +1718,7 @@ const DoctorDashboard = () => {
                         type="button"
                         onClick={handleDownloadOpdReport}
                         disabled={loading}
-                        className="bg-sky-600 hover:bg-sky-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px]"
+                        className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px] whitespace-nowrap shrink-0"
                       >
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
@@ -1741,7 +1754,7 @@ const DoctorDashboard = () => {
                           className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
                             ipdSubTab === sub.value
                               ? 'bg-white text-primary-600 shadow-sm border border-gray-100 font-semibold'
-                              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                              : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                           }`}
                         >
                           {sub.label}
@@ -1766,7 +1779,7 @@ const DoctorDashboard = () => {
             </div>
           )}
 
-          {!loading && activeTab !== 'overview' && (
+          {!loading && activeTab !== 'overview' && activeTab !== 'daily-collection' && (
             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
               {activeTab === 'appointments' &&
                 hasAppointments &&
@@ -1795,13 +1808,21 @@ const DoctorDashboard = () => {
                   />
                 ))}
 
-              {/* eslint-disable-next-line jsx-a11y/aria-role -- `role` is FollowUpPanel's own prop, not an ARIA role */}
               {activeTab === 'follow-ups' && <FollowUpPanel role="DOCTOR" mine />}
 
               {activeTab === 'opd' &&
                 (opds.length > 0 ? (
                   <DoctorOpdTable
                     opds={opds}
+                    onBillChanged={() => loadData(false)}
+                    onBillPaid={(bill, result) =>
+                      setPaymentSuccessModal({
+                        isOpen: true,
+                        billId: bill.id,
+                        patientName: bill.patientName || '',
+                        amount: Number(result?.collected ?? bill.balance),
+                      })
+                    }
                     queueEntries={queueEntries}
                     onPrintOpd={handlePrintOpd}
                     onStartConsultation={handleStartOpdConsultation}
@@ -1864,7 +1885,7 @@ const DoctorDashboard = () => {
                                     setIpdOpdForAdmit(o);
                                     setIsIpdAdmitOpen(true);
                                   }}
-                                  className="px-3 py-1 bg-green-600 text-white rounded text-xs font-semibold hover:bg-green-700 transition"
+                                  className="px-3 py-1 bg-green-700 text-white rounded text-xs font-semibold hover:bg-green-800 transition"
                                 >
                                   Admit to IPD
                                 </button>
@@ -2021,6 +2042,15 @@ const DoctorDashboard = () => {
                     onPrint={handlePrintReceipt}
                     printingBillId={docPrintingId}
                     onEditItems={handleOpenEditBillItems}
+                    onChanged={() => loadData(false)}
+                    onPaid={(bill, result) =>
+                      setPaymentSuccessModal({
+                        isOpen: true,
+                        billId: bill.id,
+                        patientName: bill.patientName || '',
+                        amount: Number(result?.collected ?? bill.balance ?? bill.amount),
+                      })
+                    }
                   />
                 ))}
 
@@ -2028,7 +2058,10 @@ const DoctorDashboard = () => {
 
               {activeTab === 'hospital-inventory' && <HospitalInventoryTab />}
 
+              {activeTab === 'ot' && canOt('OT_SCHEDULE') && <OtWorkspace />}
+
               {activeTab === 'ot' &&
+                !canOt('OT_SCHEDULE') &&
                 (otLoading ? (
                   <div className="text-center text-gray-400 py-16">Loading…</div>
                 ) : (
@@ -2662,7 +2695,7 @@ const DoctorDashboard = () => {
                     <button
                       onClick={() => handleProcessPayment('Online')}
                       disabled={!!docPaymentProcessing}
-                      className={`px-4 py-3 rounded-xl text-white font-bold text-sm transition-all flex flex-col items-center gap-1.5 ${docPaymentProcessing ? 'bg-gray-400 cursor-not-allowed' : 'bg-sky-600 hover:bg-sky-700'}`}
+                      className={`px-4 py-3 rounded-xl text-white font-bold text-sm transition-all flex flex-col items-center gap-1.5 ${docPaymentProcessing ? 'bg-gray-400 cursor-not-allowed' : 'bg-sky-700 hover:bg-sky-800'}`}
                     >
                       {docPaymentProcessing === 'Online'
                         ? '⏳ Processing...'
@@ -2783,12 +2816,12 @@ const DoctorDashboard = () => {
                   <div className="space-y-4">
                     <div className="flex justify-between items-center">
                       <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wide">
-                        Clinic Charges & Services
+                        Charges &amp; Services
                       </h4>
                       <button
                         type="button"
                         onClick={addBillItem}
-                        className="text-xs font-semibold text-sky-600 hover:text-sky-800"
+                        className="text-xs font-semibold text-sky-700 hover:text-sky-900"
                       >
                         + Add Charge Item
                       </button>
@@ -2961,7 +2994,7 @@ export default DoctorDashboard;
 
 const DoctorFollowUpsContent = ({ followUps, className = '' }) => (
   <div className={className}>
-    <h4 className="text-xs font-bold text-indigo-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+    <h4 className="text-xs font-bold text-indigo-600 uppercase tracking-wider mb-3 flex items-center gap-2">
       <span className="w-1.5 h-3 bg-indigo-600 rounded-full"></span>
       Today&apos;s Follow-Ups
     </h4>
@@ -3000,7 +3033,7 @@ const DoctorFollowUpsContent = ({ followUps, className = '' }) => (
       </div>
     ) : (
       <div className="text-center py-8 border border-dashed border-gray-200 rounded-xl">
-        <p className="text-sm text-gray-400 font-medium">No follow-ups scheduled for today.</p>
+        <p className="text-sm text-gray-500 font-medium">No follow-ups scheduled for today.</p>
       </div>
     )}
   </div>
@@ -3307,8 +3340,12 @@ const DoctorOpdTable = ({
   hasIPD,
   startIndex = 0,
   pagination,
+  onBillChanged,
+  onBillPaid,
 }) => {
   const columnHelper = createColumnHelper();
+  // A waiting visit can be cancelled or moved to another doctor (patient left, wrong doctor).
+  const [visitAction, setVisitAction] = useState(null);
 
   const getQueuePosition = (opdId) => {
     if (!queueEntries || queueEntries.length === 0) return null;
@@ -3353,6 +3390,13 @@ const DoctorOpdTable = ({
     columnHelper.accessor('createdAt', {
       header: 'CREATED',
       cell: (info) => new Date(info.getValue()).toLocaleString(),
+    }),
+    columnHelper.display({
+      id: 'bill',
+      header: 'BILL',
+      cell: (info) => (
+        <OpdBillCell opd={info.row.original} onChanged={onBillChanged} onPaid={onBillPaid} />
+      ),
     }),
     columnHelper.display({
       id: 'actions',
@@ -3471,6 +3515,26 @@ const DoctorOpdTable = ({
           }
         }
 
+        const deskDoctor = user?.receptionMode === 'SOLO' || user?.receptionMode === 'BOTH';
+        const ownVisit =
+          !!user?.email &&
+          !!opd.doctor?.email &&
+          opd.doctor.email.toLowerCase() === user.email.toLowerCase();
+        if (
+          opd.status === 'QUEUED' &&
+          (deskDoctor || ownVisit || user?.role === 'HOSPITAL_ADMIN')
+        ) {
+          actions.push({
+            label: 'Change doctor',
+            onClick: () => setVisitAction({ kind: 'doctor', opd }),
+          });
+          actions.push({
+            label: 'Cancel visit',
+            onClick: () => setVisitAction({ kind: 'cancel', opd }),
+            danger: true,
+          });
+        }
+
         return (
           <div className="text-right">
             <ActionMenu actions={actions} />
@@ -3480,7 +3544,29 @@ const DoctorOpdTable = ({
     }),
   ];
 
-  return <DataTable data={opds} columns={columns} pagination={pagination} />;
+  return (
+    <>
+      <DataTable data={opds} columns={columns} pagination={pagination} />
+      {visitAction?.kind === 'cancel' && (
+        <CancelVisitModal
+          opd={visitAction.opd}
+          isAdmin={user?.role === 'HOSPITAL_ADMIN'}
+          onClose={() => setVisitAction(null)}
+          onDone={onBillChanged}
+        />
+      )}
+      {visitAction?.kind === 'doctor' && (
+        <ChangeDoctorModal
+          title="Change doctor"
+          subtitle={`${visitAction.opd.caseId || 'OPD'} · ${visitAction.opd.patient?.name || ''}`}
+          currentDoctorId={visitAction.opd.doctor?.id}
+          onSave={(doctorId) => hospitalService.changeOpdDoctor(visitAction.opd.id, doctorId)}
+          onClose={() => setVisitAction(null)}
+          onDone={onBillChanged}
+        />
+      )}
+    </>
+  );
 };
 
 // Doctor Queue Table (Client-side Paginated)

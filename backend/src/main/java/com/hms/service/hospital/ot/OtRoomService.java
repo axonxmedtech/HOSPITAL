@@ -28,15 +28,47 @@ import java.util.List;
 @Service
 public class OtRoomService {
 
+    // Setter-injected so every existing construction of this service keeps working; absent in
+    // plain unit tests, where no plan limit applies.
+    private com.hms.service.subscription.PlanLimitService planLimits;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setPlanLimits(com.hms.service.subscription.PlanLimitService planLimits) {
+        this.planLimits = planLimits;
+    }
+
+    private void requireRoom(Long hospitalId, com.hms.entitlement.PlanLimit key, long adding) {
+        if (planLimits != null) planLimits.requireRoom(hospitalId, key, adding);
+    }
+
     private static final Logger logger = LoggerFactory.getLogger(OtRoomService.class);
 
     @Autowired private OtRoomRepository roomRepository;
     @Autowired private WardRepository wardRepository;
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private AuditLogService auditLogService;
+    @Autowired private com.hms.repository.OtRoomOccupancyRepository occupancyRepository;
 
     public List<OtRoom> list() {
-        return roomRepository.findByHospitalIdAndIsActiveTrueOrderByNameAsc(requireHospitalId());
+        List<OtRoom> rooms = roomRepository.findByHospitalIdAndIsActiveTrueOrderByNameAsc(requireHospitalId());
+        rooms.forEach(this::finishTurnover);
+        return rooms;
+    }
+
+    /**
+     * A theatre goes to CLEANING when a case completes and nothing ever moved it back, so it read
+     * "CLEANING" for good. Once the theatre's own turnover time has passed it is ready again.
+     */
+    private void finishTurnover(OtRoom room) {
+        if (!OtRoom.CLEANING.equals(room.getStatus())) return;
+        int turnover = room.getTurnoverMinutes() == null ? 15 : room.getTurnoverMinutes();
+        boolean done = occupancyRepository.findTopByOtRoomIdAndOccupiedToIsNotNullOrderByOccupiedToDesc(room.getId())
+                .map(o -> !o.getOccupiedTo().plusMinutes(turnover).isAfter(java.time.LocalDateTime.now(java.time.ZoneId.systemDefault())))
+                .orElse(true);
+        if (done) {
+            room.setStatus(OtRoom.AVAILABLE);
+            roomRepository.save(room);
+        }
     }
 
     @Transactional
@@ -47,6 +79,7 @@ public class OtRoomService {
         if (roomRepository.existsByHospitalIdAndName(hospitalId, clean)) {
             throw new IllegalArgumentException("A theatre with that name already exists");
         }
+        requireRoom(hospitalId, com.hms.entitlement.PlanLimit.OT_THEATRES, 1);
         OtRoom room = new OtRoom();
         room.setHospitalId(hospitalId);
         room.setName(clean);

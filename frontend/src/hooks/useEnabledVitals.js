@@ -6,11 +6,15 @@ import vitalsService from '../services/vitalsService';
  * Returns `isOn(key)` for the six built-ins and `customs` (hospital-defined
  * vitals, free text, no validation). While loading, every built-in is treated as
  * on so the OPD form never flickers fields away.
+ *
+ * `skip`: don't fetch (a standalone pharmacy has no vitals endpoint, and the shared admin
+ * dashboard otherwise logged a 404 on every login).
  */
-export default function useEnabledVitals() {
+export default function useEnabledVitals({ skip = false } = {}) {
   const [vitals, setVitals] = useState(null); // null = not loaded yet
 
   useEffect(() => {
+    if (skip) return undefined;
     let active = true;
     vitalsService
       .enabled()
@@ -23,7 +27,7 @@ export default function useEnabledVitals() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [skip]);
 
   const loaded = vitals !== null;
   const isOn = (key) => (!loaded ? true : vitals.some((v) => v.key === key && !v.isCustom));

@@ -52,6 +52,7 @@ public class NursingNoteService {
             throw new IllegalArgumentException("ipdAdmissionId is required");
         }
         IpdAdmission admission = requireAdmission(req.getIpdAdmissionId(), hospitalId);
+        com.hms.service.hospital.IpdClinicalState.requireActive(admission);
 
         String category = normalizedCategory(req.getCategory());
         assertCategoryWrite(category, admission.getId(), "create");

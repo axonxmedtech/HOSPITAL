@@ -86,7 +86,7 @@ const AlertThresholdsCard = ({ refreshKey = 0 }) => {
                   <span className="text-sm font-medium text-gray-900">{m.label}</span>
                   {m.unit && <span className="text-xs text-gray-500 ml-1">{m.unit}</span>}
                   {!m.enabled && (
-                    <span className="ml-2 text-[11px] font-semibold text-gray-500 bg-gray-100 border border-gray-200 rounded px-2 py-0.5">
+                    <span className="ml-2 text-[11px] font-semibold text-gray-600 bg-gray-100 border border-gray-200 rounded px-2 py-0.5">
                       Off
                     </span>
                   )}

@@ -4,6 +4,7 @@ import ConfirmationModal from '../../components/ConfirmationModal';
 import WardCard from '../../components/WardCard';
 import WardModal from '../../components/WardModal';
 import { useToast } from '../../context/ToastContext';
+import useLiveRefresh from '../../hooks/useLiveRefresh';
 import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
 import WardService from '../../services/wardService';
@@ -35,17 +36,20 @@ const WardsAndBeds = () => {
     if (nursingEnabled) fetchNurseIncharges();
   }, [nursingEnabled]);
 
-  const fetchWards = async () => {
-    setLoading(true);
+  const fetchWards = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const data = await WardService.getWards();
       setWards(data);
     } catch (e) {
       console.error(e);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
+
+  // Beds taken, freed or cleaned elsewhere update here without a refresh.
+  useLiveRefresh(() => fetchWards(true));
 
   const fetchNurseIncharges = async () => {
     try {
@@ -114,7 +118,7 @@ const WardsAndBeds = () => {
               setEditWard(null);
               setEditOpen(true);
             }}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm font-semibold shadow-sm transition-all"
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-sky-700 hover:bg-sky-800 text-white rounded-xl text-sm font-semibold shadow-sm transition-all"
           >
             <span>+</span>
             <span>Create Ward</span>

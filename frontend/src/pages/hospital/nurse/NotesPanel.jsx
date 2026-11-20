@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import LoadingSpinner from '../../../components/LoadingSpinner';
+import { useConfirm } from '../../../context/ConfirmContext';
 import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
 import nurseService from '../../../services/nurseService';
@@ -110,6 +111,7 @@ export const buildReassessmentHtml = (notes, f, hospital, title = 'RE-ASSESSMENT
 /** readOnly: hide the Add Note form; the timeline stays visible and printable. */
 const NotesPanel = ({ admissionId, category = 'NURSE', readOnly = false, refreshKey = 0 }) => {
   const { success, error: toastError } = useToast();
+  const confirm = useConfirm();
   const user = authService.getCurrentUser();
   const currentUserId = user?.userId;
   const isDoctorNote = category === 'DOCTOR';
@@ -249,6 +251,14 @@ const NotesPanel = ({ admissionId, category = 'NURSE', readOnly = false, refresh
   };
 
   const remove = async (publicId) => {
+    if (
+      !(await confirm({
+        title: 'Delete this note?',
+        message: "The note is removed from the patient's record.",
+        confirmLabel: 'Delete note',
+      }))
+    )
+      return;
     try {
       await nurseService.deleteNote(publicId);
       success('Note deleted');

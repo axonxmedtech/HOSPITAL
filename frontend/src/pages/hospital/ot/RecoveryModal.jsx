@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useConfirm } from '../../../context/ConfirmContext';
 import { useToast } from '../../../context/ToastContext';
 import useOtPermissions from '../../../hooks/useOtPermissions';
 import otService from '../../../services/otService';
@@ -24,6 +25,7 @@ const fmt = (dt) =>
 
 const RecoveryModal = ({ surgery, onClose }) => {
   const { success, error: toastError } = useToast();
+  const confirm = useConfirm();
   const { can, loaded: permsLoaded } = useOtPermissions();
   const sid = surgery.surgeryId;
   const [episode, setEpisode] = useState(null);
@@ -84,6 +86,14 @@ const RecoveryModal = ({ surgery, onClose }) => {
   };
 
   const discharge = async () => {
+    if (
+      !(await confirm({
+        title: 'Discharge from recovery?',
+        message: `The patient leaves recovery for ${destination}. This closes the recovery episode.`,
+        confirmLabel: `Discharge to ${destination}`,
+      }))
+    )
+      return;
     setBusy(true);
     try {
       setEpisode(await otService.dischargeRecovery(sid, destination));
@@ -164,8 +174,8 @@ const RecoveryModal = ({ surgery, onClose }) => {
                     )}
                     {bays.length > 0 && availableBays.length === 0 && (
                       <p className="text-xs text-amber-600 mt-1">
-                        Every recovery bay is currently occupied. This patient stays on the
-                        post-op queue until one frees up.
+                        Every recovery bay is currently occupied. This patient stays on the post-op
+                        queue until one frees up.
                       </p>
                     )}
                   </div>

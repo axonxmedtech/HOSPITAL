@@ -18,4 +18,11 @@ public interface HospitalInventoryRepository extends JpaRepository<HospitalInven
     boolean existsByNameAndHospitalId(String name, Long hospitalId);
 
     List<HospitalInventory> findByNameAndHospitalIdAndIsActiveTrue(String name, Long hospitalId);
+
+    /** An item's active stock rows, locked: taking a dose must not race another dose for the last unit. */
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("SELECT i FROM HospitalInventory i WHERE i.hospitalId = :hospitalId "
+            + "AND i.name = :name AND (i.isActive IS NULL OR i.isActive = true)")
+    List<HospitalInventory> lockActiveByName(@org.springframework.data.repository.query.Param("name") String name,
+                                             @org.springframework.data.repository.query.Param("hospitalId") Long hospitalId);
 }

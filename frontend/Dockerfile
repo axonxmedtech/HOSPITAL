@@ -10,6 +10,7 @@ RUN npm run build
 FROM nginxinc/nginx-unprivileged:alpine
 USER root
 COPY --from=build /app/dist /usr/share/nginx/html
+COPY nginx/security-headers.conf nginx/spa.conf nginx/csp.conf /etc/nginx/hms/
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 USER 101
 EXPOSE 8080

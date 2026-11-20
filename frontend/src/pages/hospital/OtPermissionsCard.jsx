@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useConfirm } from '../../context/ConfirmContext';
 import { useToast } from '../../context/ToastContext';
 import otService from '../../services/otService';
 import { extractApiError } from '../../utils/apiError';
@@ -25,6 +26,7 @@ const ROLE_LABELS = {
  */
 const OtPermissionsCard = () => {
   const { success, error: toastError } = useToast();
+  const confirm = useConfirm();
   const [catalogue, setCatalogue] = useState({ permissions: [], roles: [] });
   const [matrix, setMatrix] = useState({});
   const [loading, setLoading] = useState(true);
@@ -79,6 +81,15 @@ const OtPermissionsCard = () => {
   };
 
   const handleReset = async () => {
+    if (
+      !(await confirm({
+        title: 'Reset OT permissions?',
+        message:
+          'Every role goes back to the default OT permissions. Changes you made here are lost.',
+        confirmLabel: 'Reset to defaults',
+      }))
+    )
+      return;
     setSaving(true);
     try {
       setMatrix(await otService.resetOtPermissions());

@@ -3,6 +3,7 @@ import DateSelect from '../../components/DateSelect';
 import { useToast } from '../../context/ToastContext';
 import otService from '../../services/otService';
 import { extractApiError } from '../../utils/apiError';
+import { localIsoDate } from '../../utils/date';
 
 /**
  * OtAnalyticsCard - the NABH surgical-care indicators over a date range.
@@ -13,7 +14,7 @@ import { extractApiError } from '../../utils/apiError';
  */
 const Metric = ({ label, value, suffix = '', hint }) => (
   <div className="bg-white border border-gray-200 rounded-xl px-4 py-3">
-    <div className="text-[11px] uppercase tracking-wide text-gray-400">{label}</div>
+    <div className="text-[11px] uppercase tracking-wide text-gray-500">{label}</div>
     <div className="text-2xl font-bold text-gray-900">
       {value == null ? '—' : value}
       {value == null ? '' : suffix}
@@ -22,7 +23,7 @@ const Metric = ({ label, value, suffix = '', hint }) => (
   </div>
 );
 
-const iso = (d) => d.toISOString().slice(0, 10);
+const iso = (d) => localIsoDate(d);
 
 const OtAnalyticsCard = () => {
   const { error: toastError } = useToast();

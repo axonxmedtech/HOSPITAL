@@ -17,13 +17,17 @@ const Tile = ({ label, value, tone = 'gray' }) => {
   };
   return (
     <div className="flex-1 min-w-[120px] bg-white border border-gray-200 rounded-xl px-4 py-3">
-      <div className="text-[11px] uppercase tracking-wide text-gray-400">{label}</div>
+      <div className="text-[11px] uppercase tracking-wide text-gray-500">{label}</div>
       <div className={`text-2xl font-bold ${tones[tone]}`}>{value}</div>
     </div>
   );
 };
 
-const OtAnalyticsStrip = () => {
+/**
+ * refreshKey: anything that changes when the board reloads (its rows). Without it the tiles were
+ * fetched once and lagged a step behind every Start / Complete.
+ */
+const OtAnalyticsStrip = ({ refreshKey } = {}) => {
   const [s, setS] = useState(null);
 
   useEffect(() => {
@@ -37,7 +41,7 @@ const OtAnalyticsStrip = () => {
     return () => {
       active = false;
     };
-  }, []);
+  }, [refreshKey]);
 
   if (!s) return null;
 

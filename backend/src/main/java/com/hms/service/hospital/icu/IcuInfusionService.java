@@ -91,6 +91,7 @@ public class IcuInfusionService {
             throw new IllegalArgumentException("ipdAdmissionId is required");
         }
         IpdAdmission admission = requireAdmission(req.getIpdAdmissionId(), hospitalId);
+        com.hms.service.hospital.IpdClinicalState.requireActive(admission);
         nurseWriteAccess.assertCanWriteFor(admission.getId());
 
         if (req.getMedicineName() == null || req.getMedicineName().isBlank()) {

@@ -254,4 +254,50 @@ class HospitalAuthServiceTest {
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Access denied");
     }
+
+    private com.hms.dto.LoginRequest adminLogin(boolean singleDoctor) {
+        adminUser.setId(10L);
+        adminUser.setPassword("ENC");
+        adminUser.setIsActive(true);
+        when(userRepository.findByEmail("admin@test.com")).thenReturn(Optional.of(adminUser));
+        when(passwordEncoder.matches("pw", "ENC")).thenReturn(true);
+        Hospital h = new Hospital();
+        h.setId(1L);
+        h.setIsActive(true);
+        h.setIsSingleDoctor(singleDoctor);
+        when(hospitalRepository.findById(1L)).thenReturn(Optional.of(h));
+        org.mockito.Mockito.lenient().when(hospitalSettingRepository.findByHospital_Id(1L)).thenReturn(Optional.of(existingSetting));
+        org.mockito.Mockito.lenient().when(hospitalAdminRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(otPermissionService.effectiveFor(1L, "HOSPITAL_ADMIN"))
+                .thenReturn(java.util.Set.of("OT_VIEW", "OT_SETTINGS", "OT_FORM_VIEW"));
+        org.mockito.Mockito.lenient().when(otPermissionService.effectiveFor(1L, "DOCTOR"))
+                .thenReturn(java.util.Set.of("OT_VIEW", "OT_CREATE", "OT_FORM_VIEW"));
+        when(jwtUtil.generateToken(any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn("tok");
+        com.hms.dto.LoginRequest req = new com.hms.dto.LoginRequest();
+        req.setEmail("admin@test.com");
+        req.setPassword("pw");
+        return req;
+    }
+
+    @SuppressWarnings("unchecked")
+    private java.util.Collection<String> mintedPermissions() {
+        org.mockito.ArgumentCaptor<java.util.Collection<String>> perms =
+                org.mockito.ArgumentCaptor.forClass(java.util.Collection.class);
+        verify(jwtUtil).generateToken(any(), any(), any(), any(), any(), any(), any(), perms.capture(), any());
+        return perms.getValue();
+    }
+
+    @Test
+    void login_singleDoctorAdmin_alsoGetsTheDoctorsOtPermissions() {
+        service.login(adminLogin(true));
+        // The admin works the doctor's Operation Theatre screen, so may request surgeries.
+        assertThat(mintedPermissions()).contains("OT_CREATE", "OT_SETTINGS", "OT_VIEW");
+    }
+
+    @Test
+    void login_ordinaryAdmin_keepsOnlyTheAdminOtPermissions() {
+        service.login(adminLogin(false));
+        assertThat(mintedPermissions()).containsExactlyInAnyOrder("OT_VIEW", "OT_SETTINGS", "OT_FORM_VIEW");
+        verify(otPermissionService, never()).effectiveFor(1L, "DOCTOR");
+    }
 }

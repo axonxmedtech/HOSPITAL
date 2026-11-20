@@ -210,8 +210,8 @@ const ScheduleSurgeryModal = ({ surgery, onClose, onScheduled }) => {
               </p>
             ) : (
               <p className="text-xs text-amber-600 mt-1">
-                No theatres set up — add them under Settings › OT Theatres. Showing OT-named wards
-                meanwhile.
+                No theatres set up yet — the hospital admin adds them under Staff › OT Theatres.
+                Showing wards with &quot;OT&quot; in their name meanwhile.
               </p>
             )}
           </div>
@@ -226,7 +226,9 @@ const ScheduleSurgeryModal = ({ surgery, onClose, onScheduled }) => {
           <button
             onClick={submit}
             disabled={saving || !canSchedule}
-            title={canSchedule ? undefined : 'Scheduling is done by reception or the theatre incharge'}
+            title={
+              canSchedule ? undefined : 'Scheduling is done by reception or the theatre incharge'
+            }
             className={`px-4 py-2 rounded-lg font-semibold text-white ${saving ? 'bg-gray-400' : 'bg-gray-900 hover:bg-gray-800'}`}
           >
             {saving ? 'Scheduling…' : 'Schedule'}

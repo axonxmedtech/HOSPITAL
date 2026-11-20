@@ -94,6 +94,31 @@ public class Hospital {
     private String subscriptionStatus = "ACTIVE";
 
     /**
+     * A demo account: works fully until {@link #demoEndsAt}, then stays readable but takes no
+     * changes (see TenantAccessService). Set and extended only by the Super Admin.
+     */
+    @Column(name = "is_demo", nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private Boolean isDemo = false;
+
+    @Column(name = "demo_started_at")
+    private LocalDateTime demoStartedAt;
+
+    @Column(name = "demo_ends_at")
+    private LocalDateTime demoEndsAt;
+
+    /**
+     * Per-hospital capacity caps that win over the plan's (a deal such as "Basic + 5 beds").
+     * Lazy and not serialised with the hospital: read through the platform limits endpoint.
+     */
+    @ElementCollection(fetch = FetchType.LAZY)
+    @CollectionTable(name = "hospital_limit_overrides", joinColumns = @JoinColumn(name = "hospital_id"))
+    @MapKeyColumn(name = "limit_key", length = 40)
+    @Column(name = "max_value")
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private java.util.Map<String, Integer> limitOverrides = new java.util.HashMap<>();
+
+    /**
      * Current subscription plan name — not persisted; populated on read (e.g. in
      * the platform hospital list) from the hospital's current plan subscription
      * so the UI can show the actual plan instead of a hardcoded default.
@@ -199,6 +224,15 @@ public class Hospital {
 
     public HospitalType getType() { return type; }
     public void setType(HospitalType type) { this.type = type; }
+
+    public Boolean getIsDemo() { return isDemo; }
+    public void setIsDemo(Boolean isDemo) { this.isDemo = isDemo; }
+    public LocalDateTime getDemoStartedAt() { return demoStartedAt; }
+    public void setDemoStartedAt(LocalDateTime demoStartedAt) { this.demoStartedAt = demoStartedAt; }
+    public LocalDateTime getDemoEndsAt() { return demoEndsAt; }
+    public void setDemoEndsAt(LocalDateTime demoEndsAt) { this.demoEndsAt = demoEndsAt; }
+    public java.util.Map<String, Integer> getLimitOverrides() { return limitOverrides; }
+    public void setLimitOverrides(java.util.Map<String, Integer> limitOverrides) { this.limitOverrides = limitOverrides; }
 
     public String getSubscriptionStatus() { return subscriptionStatus; }
     public void setSubscriptionStatus(String subscriptionStatus) { this.subscriptionStatus = subscriptionStatus; }

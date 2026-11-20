@@ -7,6 +7,10 @@ import java.util.List;
 public class IpdAdmissionDetailsDTO {
     private String ipdNumber;
     private String status;
+    /** NORMAL / LAMA / REFERRED / EXPIRED / ABSCONDED — planned or final. */
+    private String dischargeType;
+    private String dischargeNote;
+    private LocalDateTime dischargeDateTime;
     private PatientDTO patient;
     private AdmissionDTO admission;
     private List<MedicalRecordDTO> medicalRecords;
@@ -27,6 +31,8 @@ public class IpdAdmissionDetailsDTO {
         public String ward;
         public String bed;
         public String doctor;
+        /** The attending doctor's id, so the page can offer "Change doctor" without them. */
+        public Long doctorId;
         public String primaryDiagnosis;
         /** True once the admission form is saved and the patient confirmed as admitted. */
         public boolean admissionConfirmed;
@@ -55,6 +61,10 @@ public class IpdAdmissionDetailsDTO {
         public BigDecimal totalAmount;
         public BigDecimal paidAmount;
         public BigDecimal balance;
+        /** Discount on this admission's bill(s). */
+        public java.math.BigDecimal discountAmount;
+        /** Every unpaid bill of the patient (OPD too) — all must be settled before discharge. */
+        public java.util.List<java.util.Map<String, Object>> outstandingBills;
     }
 
     public static class AdministeredItemDTO {
@@ -91,4 +101,11 @@ public class IpdAdmissionDetailsDTO {
 
     public List<AdministeredItemDTO> getAdministeredItems() { return administeredItems; }
     public void setAdministeredItems(List<AdministeredItemDTO> administeredItems) { this.administeredItems = administeredItems; }
+
+    public String getDischargeType() { return dischargeType; }
+    public void setDischargeType(String dischargeType) { this.dischargeType = dischargeType; }
+    public String getDischargeNote() { return dischargeNote; }
+    public void setDischargeNote(String dischargeNote) { this.dischargeNote = dischargeNote; }
+    public LocalDateTime getDischargeDateTime() { return dischargeDateTime; }
+    public void setDischargeDateTime(LocalDateTime dischargeDateTime) { this.dischargeDateTime = dischargeDateTime; }
 }

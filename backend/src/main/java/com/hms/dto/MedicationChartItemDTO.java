@@ -71,4 +71,12 @@ public class MedicationChartItemDTO {
      * plenty of facilities issue ward stock without a per-order dispense record.
      */
     private Integer quantityDispensed;
+
+    // ── where a dose comes from, for the Give button and the low-stock alert ──
+    private String stockSource;      // MEDICINE / HOSPITAL_ITEM / null (not stocked: patient brings it)
+    private String hospitalItemName;
+    private Integer quantityPerDose;
+    private Integer minLevel;
+    private boolean lowStock;
+    private java.math.BigDecimal unitPrice;
 }

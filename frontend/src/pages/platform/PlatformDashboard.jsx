@@ -8,6 +8,10 @@ import DateSelect from '../../components/DateSelect';
 import Navbar from '../../components/Navbar';
 import PageHeader from '../../components/PageHeader';
 import PlansTab from '../../components/PlansTab';
+import HelpInsightsTab from '../../components/platform/HelpInsightsTab';
+import HospitalPlanControls from '../../components/platform/HospitalPlanControls';
+import SubscriptionBadge from '../../components/platform/SubscriptionBadge';
+import SubscriptionOverview from '../../components/platform/SubscriptionOverview';
 import PlatformInventoryItemsTab from '../../components/PlatformInventoryItemsTab';
 import PlatformMedicinesTab from '../../components/PlatformMedicinesTab';
 import PlatformStatementsTab from '../../components/PlatformStatementsTab';
@@ -183,6 +187,8 @@ const PlatformDashboard = () => {
   });
 
   const [availablePlans, setAvailablePlans] = useState([]);
+  // Bumped when a hospital's demo / plan changes, so the subscriptions overview re-reads.
+  const [overviewVersion, setOverviewVersion] = useState(0);
 
   const [formData, setFormData] = useState({
     hospitalName: '',
@@ -193,6 +199,8 @@ const PlatformDashboard = () => {
     planPublicId: '',
     billingPeriod: 'MONTHLY',
     isSingleDoctor: false,
+    isDemo: false,
+    demoDays: 14,
   });
   const [errors, setErrors] = useState({}); // Field-level errors
 
@@ -545,7 +553,10 @@ const PlatformDashboard = () => {
       `Are you sure you want to create this new ${entityLabel.toLowerCase()}?`,
       async () => {
         try {
-          await platformService.createHospital(formData);
+          await platformService.createHospital({
+            ...formData,
+            demoDays: formData.isDemo ? Number(formData.demoDays) : null,
+          });
           statsCache.clear();
           setShowCreateModal(false);
           setFormData({
@@ -557,6 +568,8 @@ const PlatformDashboard = () => {
             planPublicId: '',
             billingPeriod: 'MONTHLY',
             isSingleDoctor: false,
+            isDemo: false,
+            demoDays: 14,
           });
           loadHospitals(0, 10, getEntityType(activeTab));
         } catch (err) {
@@ -750,6 +763,8 @@ const PlatformDashboard = () => {
     // pharmacy searches alike, so it lives outside the tenant-type groups.
     { id: 'medicines', label: 'Medicines', isTopLevel: true },
     { id: 'audit_logs', label: 'Audit Logs', isTopLevel: true },
+    // What users could not find in in-app help, and how answers were rated.
+    { id: 'help_insights', label: 'Help Insights', isTopLevel: true },
   ];
 
   // Helper: Get display label for active tab
@@ -794,7 +809,7 @@ const PlatformDashboard = () => {
         />
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 p-6">
+        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 p-4 md:p-6">
           {/* Standardized Header */}
           {activeTab !== 'dashboard' && (
             <div className="mb-6">
@@ -825,6 +840,9 @@ const PlatformDashboard = () => {
                   subtitle = 'View and resolve support tickets submitted by hospital admins.';
                 else if (isFaqTab)
                   subtitle = 'Manage global frequently asked questions for hospital admins.';
+                else if (activeTab === 'help_insights')
+                  subtitle =
+                    'What users could not find in in-app help, and how each answer was rated.';
                 else
                   subtitle =
                     'Track system activities and administrative actions across the platform.';
@@ -879,6 +897,11 @@ const PlatformDashboard = () => {
                 <TypeStatsCard label="Clinics" stats={hospitalStats.clinics} accent="purple" />
                 <TypeStatsCard label="Pharmacies" stats={hospitalStats.pharmacies} accent="amber" />
               </div>
+
+              <SubscriptionOverview
+                key={overviewVersion}
+                onOpenHospital={(row) => openEditHospitalModal(row)}
+              />
 
               {/* Recent Hospitals */}
               <div className="bg-white border border-gray-200">
@@ -1034,6 +1057,9 @@ const PlatformDashboard = () => {
 
           {/* Medicines Tab — global catalog, shared by all tenant types */}
           {activeTab === 'medicines' && <PlatformMedicinesTab hospitalType={null} />}
+
+          {/* Help Insights — unanswered help questions and answer ratings */}
+          {activeTab === 'help_insights' && <HelpInsightsTab />}
 
           {/* Inventory Items Tab */}
           {(() => {
@@ -1477,6 +1503,44 @@ const PlatformDashboard = () => {
                       </div>
                     )}
 
+                    {/* Demo account: works fully for the chosen days, then becomes read-only. */}
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
+                      <label
+                        htmlFor="create-demo"
+                        className="flex items-center space-x-2.5 cursor-pointer"
+                      >
+                        <input
+                          id="create-demo"
+                          type="checkbox"
+                          checked={formData.isDemo}
+                          onChange={(e) => setFormData({ ...formData, isDemo: e.target.checked })}
+                          className="w-4 h-4 rounded text-gray-900 border-gray-300 focus:ring-gray-900"
+                        />
+                        <span className="text-sm font-bold text-gray-900">Demo account</span>
+                      </label>
+                      <p className="text-xs text-gray-600">
+                        Shows a DEMO label. When the demo ends they can still sign in and look, but
+                        every change is refused until the plan is upgraded.
+                      </p>
+                      {formData.isDemo && (
+                        <label
+                          htmlFor="create-demo-days"
+                          className="block text-xs font-medium text-gray-700"
+                        >
+                          Demo length (days)
+                          <input
+                            id="create-demo-days"
+                            type="number"
+                            min="1"
+                            max="365"
+                            value={formData.demoDays}
+                            onChange={(e) => setFormData({ ...formData, demoDays: e.target.value })}
+                            className="mt-1 w-32 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                          />
+                        </label>
+                      )}
+                    </div>
+
                     <div className="flex gap-3 pt-4 border-t border-gray-200">
                       <button
                         type="button"
@@ -1730,9 +1794,28 @@ const PlatformDashboard = () => {
                   )}
                   {editHospitalModal.subscriptionStatus === 'EXPIRED' && (
                     <p className="mt-2 text-xs text-red-600 font-medium">
-                      ✕ Plan expired — entity is locked
+                      ✕ Plan expired — new registrations are paused
                     </p>
                   )}
+                </div>
+
+                {/* Demo, subscription extension and plan limits */}
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-700 mb-2">Plan controls</h4>
+                  <HospitalPlanControls
+                    hospitalPublicId={
+                      editHospitalModal.hospital?.publicId || editHospitalModal.hospital?.id
+                    }
+                    onChanged={() => {
+                      statsCache.clear();
+                      setOverviewVersion((v) => v + 1);
+                      loadHospitals(
+                        hospitalPage.number,
+                        hospitalPage.size,
+                        getEntityType(activeTab)
+                      );
+                    }}
+                  />
                 </div>
 
                 {/* Reassign Plan (optional) */}
@@ -2875,6 +2958,11 @@ const HospitalsTable = ({
         </span>
       ),
     }),
+    columnHelper.display({
+      id: 'subscription',
+      header: 'Subscription',
+      cell: (info) => <SubscriptionBadge hospital={info.row.original} />,
+    }),
     columnHelper.accessor('isSingleDoctor', {
       header: 'Single Doctor',
       cell: (info) => (
@@ -3014,7 +3102,12 @@ const HospitalsTable = ({
   return (
     <DataTable
       data={hospitals}
-      columns={columns}
+      columns={
+        // "Single Doctor" is a hospital/clinic setting; it means nothing for a pharmacy.
+        entityType === 'PHARMACY'
+          ? columns.filter((col) => col.accessorKey !== 'isSingleDoctor')
+          : columns
+      }
       pagination={pagination}
       emptyState={
         <div className="p-12 text-center">
@@ -3032,7 +3125,13 @@ const HospitalsTable = ({
               d="M3 10l9-6 9 6v7a2 2 0 01-2 2H5a2 2 0 01-2-2v-7z"
             />
           </svg>
-          <p className="text-gray-500">No hospitals registered yet</p>
+          <p className="text-gray-500">
+            {entityType === 'CLINIC'
+              ? 'No clinics registered yet'
+              : entityType === 'PHARMACY'
+                ? 'No pharmacies registered yet'
+                : 'No hospitals registered yet'}
+          </p>
         </div>
       }
     />
@@ -3286,6 +3385,11 @@ const _UsersTable = ({ users, userPage, onResetPassword, loadUsers }) => {
           {info.getValue() ? 'Active' : 'Inactive'}
         </span>
       ),
+    }),
+    columnHelper.display({
+      id: 'subscription',
+      header: 'Subscription',
+      cell: (info) => <SubscriptionBadge hospital={info.row.original} />,
     }),
     columnHelper.display({
       id: 'actions',

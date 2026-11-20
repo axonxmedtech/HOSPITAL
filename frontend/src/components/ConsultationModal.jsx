@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useConfirm } from '../context/ConfirmContext';
 import { useToast } from '../context/ToastContext';
 import authService from '../services/authService';
 import hospitalService from '../services/hospitalService';
@@ -53,7 +54,6 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
     }
   }, [opd?.customVitals]);
 
-  console.log('ConsultationModal render:', { isOpen, appointment, patient, opd });
   const [activeTab, setActiveTab] = useState('clinical'); // 'clinical' or 'prescription'
   const [patientDetails, setPatientDetails] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
@@ -507,6 +507,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
   }, [isOpen, patient?.id, patient?.publicId, appointment?.id, appointment?.patientId, opd]);
 
   const { success, error: toastError } = useToast();
+  const confirm = useConfirm();
 
   useEffect(() => {
     const fetchPatientDetails = async () => {
@@ -707,6 +708,10 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
     return null;
   };
 
+  /** The patient's name for the confirmation questions. */
+  const patientLabel = () =>
+    patientDetails?.patient?.name || patient?.name || opd?.patient?.name || 'This patient';
+
   const handleSubmit = async () => {
     if (submitting) return;
     // Typed but never picked: the catalogue field holds no medicine, so submitting here would
@@ -763,7 +768,14 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
           ? 'EN_HI'
           : 'EN';
 
-    console.log('Submitting Consultation Data:', JSON.stringify(payload, null, 2));
+    // Second step: completing cannot be undone, and the button sits next to the form fields.
+    const ok = await confirm({
+      title: 'Complete this consultation?',
+      message: `${patientLabel()} leaves your queue and the prescription is final. A completed consultation cannot be edited.`,
+      confirmLabel: 'Complete consultation',
+      cancelLabel: 'Keep editing',
+    });
+    if (!ok) return;
 
     setSubmitting(true);
     try {
@@ -825,6 +837,15 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
       serviceId: item.serviceId,
       quantity: item.qty,
     }));
+
+    // Second step: this completes the consultation AND asks the front desk to admit the patient.
+    const ok = await confirm({
+      title: 'Send for admission?',
+      message: `The consultation for ${patientLabel()} is completed and an admission request goes to the front desk, who choose the ward and bed.`,
+      confirmLabel: 'Send for admission',
+      cancelLabel: 'Keep editing',
+    });
+    if (!ok) return;
 
     setSubmitting(true);
     try {

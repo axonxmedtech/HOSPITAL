@@ -21,16 +21,17 @@ const PageHeader = ({
 }) => {
   return (
     <div
-      className={`flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 ${className}`}
+      className={`flex flex-col md:flex-row md:flex-wrap justify-between items-start md:items-center gap-4 mb-6 ${className}`}
     >
       {/* Title Section */}
-      <div>
+      <div className="shrink-0">
         <h1 className="text-2xl font-bold text-slate-800">{title}</h1>
         {subtitle && <p className="text-slate-500 text-sm mt-1">{subtitle}</p>}
       </div>
 
-      {/* Actions Section */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full md:w-auto">
+      {/* Actions Section — wraps onto a second row rather than squeezing buttons and date
+          filters until their labels clip ("Download PD", "New / OPD / Case" on three lines). */}
+      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-end gap-3 w-full md:w-auto">
         {/* Search Bar */}
         {onSearch && (
           <div className="relative group">
@@ -69,7 +70,7 @@ const PageHeader = ({
           <button
             onClick={onAdd}
             aria-label={addLabel || 'Add New'}
-            className="bg-sky-600 hover:bg-sky-700 text-white px-5 py-2.5 rounded-xl font-semibold shadow-soft hover:shadow-soft-lg transform hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 focus:ring-2 focus:ring-sky-500 focus:ring-offset-2"
+            className="bg-sky-700 hover:bg-sky-800 text-white px-5 py-2.5 rounded-xl font-semibold shadow-soft hover:shadow-soft-lg transform hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 whitespace-nowrap shrink-0 focus:ring-2 focus:ring-sky-500 focus:ring-offset-2"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"

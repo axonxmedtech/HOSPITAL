@@ -37,6 +37,19 @@ import java.util.Optional;
 @Service
 public class DoctorService {
 
+    // Setter-injected so every existing construction of this service keeps working; absent in
+    // plain unit tests, where no plan limit applies.
+    private com.hms.service.subscription.PlanLimitService planLimits;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setPlanLimits(com.hms.service.subscription.PlanLimitService planLimits) {
+        this.planLimits = planLimits;
+    }
+
+    private void requireRoom(Long hospitalId, com.hms.entitlement.PlanLimit key, long adding) {
+        if (planLimits != null) planLimits.requireRoom(hospitalId, key, adding);
+    }
+
     private static final Logger logger = LoggerFactory.getLogger(DoctorService.class);
 
     @Autowired
@@ -95,6 +108,9 @@ public class DoctorService {
 
         // Set hospital_id to ensure multi-tenant isolation
         doctor.setHospitalId(hospitalId);
+
+        requireRoom(hospitalId, com.hms.entitlement.PlanLimit.DOCTORS, 1);
+        requireRoom(hospitalId, com.hms.entitlement.PlanLimit.STAFF_LOGINS, 1);
 
         // Save doctor record
         doctor = doctorRepository.save(doctor);
@@ -293,9 +309,38 @@ public class DoctorService {
      * @param id Doctor ID
      */
     @Transactional
+    /**
+     * Refuses to remove a doctor who still has patients waiting or admitted: they would sit in a
+     * queue or on a ward list that no active doctor can open. The message says how to move them.
+     */
+    private void assertNoPatientsLeftBehind(Doctor doctor) {
+        java.util.List<String> left = new java.util.ArrayList<>();
+        long queued = opdRepository.countByDoctor_IdAndStatus(doctor.getId(), com.hms.entity.Opd.Status.QUEUED);
+        if (queued > 0) left.add(queued + " patient(s) waiting in OPD (use Change doctor or Cancel on the OPD list)");
+        long admitted = ipdAdmissionRepositoryForDelete.countByHospitalIdAndDoctorIdAndStatusIn(
+                doctor.getHospitalId(), doctor.getId(), java.util.List.of("ADMITTED", "DISCHARGE_PLANNED"));
+        if (admitted > 0) left.add(admitted + " admitted patient(s) (use Change Doctor on each IPD patient)");
+        long upcoming = appointmentRepository
+                .findByDoctorIdAndAppointmentDateGreaterThanEqualAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
+                        doctor.getId(), java.time.LocalDate.now(java.time.ZoneId.systemDefault()))
+                .stream().filter(a -> java.util.Objects.equals(a.getHospitalId(), doctor.getHospitalId()))
+                .filter(a -> a.getStatus() == null || "SCHEDULED".equalsIgnoreCase(a.getStatus())
+                        || "CONFIRMED".equalsIgnoreCase(a.getStatus()))
+                .count();
+        if (upcoming > 0) left.add(upcoming + " upcoming appointment(s) (edit them to another doctor or cancel them)");
+        if (!left.isEmpty()) {
+            throw new IllegalArgumentException(com.hms.util.DoctorNames.withTitle(doctor.getName()) + " still has " + String.join("; ", left)
+                    + ". Move or close these first, then remove the doctor.");
+        }
+    }
+
+    @Autowired
+    private com.hms.repository.IpdAdmissionRepository ipdAdmissionRepositoryForDelete;
+
     public void deleteDoctor(String publicId, String reason) {
         // Check if doctor exists and belongs to this hospital
         Doctor doctor = getDoctorByPublicId(publicId);
+        assertNoPatientsLeftBehind(doctor);
 
         // Soft delete doctor
         doctor.setIsActive(false);
@@ -379,6 +424,11 @@ public class DoctorService {
         }
 
         // Set Doctor.isActive = true
+        // Coming back counts against the plan like a new doctor would.
+        if (!Boolean.TRUE.equals(doctor.getIsActive())) {
+            requireRoom(hospitalId, com.hms.entitlement.PlanLimit.DOCTORS, 1);
+            requireRoom(hospitalId, com.hms.entitlement.PlanLimit.STAFF_LOGINS, 1);
+        }
         doctor.setIsActive(true);
         Doctor savedDoctor = doctorRepository.save(doctor);
 

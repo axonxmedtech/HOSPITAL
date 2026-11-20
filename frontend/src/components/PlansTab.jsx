@@ -8,6 +8,25 @@ export const normalizePlanModules = (modules) => {
   if (normalized.has('APPOINTMENTS')) normalized.add('OPD');
   return [...normalized];
 };
+/** Capacity a plan can cap (PlanLimit on the server). Blank = unlimited, 0 = not included. */
+export const PLAN_LIMITS = [
+  { key: 'BEDS', label: 'Beds', short: 'beds' },
+  { key: 'ICU_BEDS', label: 'ICU beds', short: 'ICU beds' },
+  { key: 'DOCTORS', label: 'Doctors', short: 'doctors' },
+  { key: 'STAFF_LOGINS', label: 'Staff logins (admin included)', short: 'logins' },
+  { key: 'OT_THEATRES', label: 'Operation theatres', short: 'theatres' },
+];
+
+const emptyLimits = () => Object.fromEntries(PLAN_LIMITS.map((l) => [l.key, '']));
+
+/** "10 beds · 3 doctors", or "Unlimited" when the plan caps nothing. */
+export const limitsSummary = (limits) => {
+  const parts = PLAN_LIMITS.filter(
+    (l) => limits?.[l.key] !== null && limits?.[l.key] !== undefined
+  ).map((l) => `${limits[l.key]} ${l.short}`);
+  return parts.length ? parts.join(' · ') : 'Unlimited';
+};
+
 const emptyForm = {
   name: '',
   type: 'HOSPITAL',
@@ -18,6 +37,7 @@ const emptyForm = {
   inClinic: false,
   multiOutlet: false,
   maxOutlets: '',
+  limits: emptyLimits(),
 };
 
 export default function PlansTab({ hospitalType = null }) {
@@ -89,6 +109,7 @@ export default function PlansTab({ hospitalType = null }) {
       inClinic: plan.inClinic || false,
       multiOutlet: plan.multiOutlet || false,
       maxOutlets: plan.maxOutlets ?? '',
+      limits: Object.fromEntries(PLAN_LIMITS.map((l) => [l.key, plan.limits?.[l.key] ?? ''])),
     });
     setError('');
     setShowModal(true);
@@ -135,6 +156,14 @@ export default function PlansTab({ hospitalType = null }) {
         form.maxOutlets !== ''
           ? parseInt(form.maxOutlets, 10)
           : null,
+      limits: Object.fromEntries(
+        PLAN_LIMITS.map((l) => [
+          l.key,
+          form.limits[l.key] === '' || form.limits[l.key] === null
+            ? null
+            : Number.parseInt(form.limits[l.key], 10),
+        ])
+      ),
     };
 
     try {
@@ -229,6 +258,9 @@ export default function PlansTab({ hospitalType = null }) {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">
                   Modules
                 </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">
+                  Limits
+                </th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 uppercase">
                   Actions
                 </th>
@@ -244,6 +276,7 @@ export default function PlansTab({ hospitalType = null }) {
                   <td className="px-4 py-3 text-sm text-gray-600">
                     {(plan.modules || []).join(', ') || '—'}
                   </td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{limitsSummary(plan.limits)}</td>
                   <td className="px-4 py-3 text-right">
                     <button
                       onClick={() => openEdit(plan)}
@@ -425,6 +458,37 @@ export default function PlansTab({ hospitalType = null }) {
                     unlimited.
                   </p>
                 </div>
+              )}
+
+              {form.type !== 'PHARMACY' && (
+                <fieldset>
+                  <legend className="block text-sm font-medium text-gray-700 mb-1">Limits</legend>
+                  <p className="text-xs text-gray-500 mb-2">
+                    Blank = unlimited. 0 = not included. A hospital that reaches a limit is told to
+                    call support to upgrade.
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {PLAN_LIMITS.map((l) => (
+                      <label key={l.key} className="text-xs text-gray-600">
+                        {l.label}
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={form.limits[l.key]}
+                          onChange={(e) =>
+                            setForm((p) => ({
+                              ...p,
+                              limits: { ...p.limits, [l.key]: e.target.value },
+                            }))
+                          }
+                          placeholder="Unlimited"
+                          className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
               )}
 
               <div>

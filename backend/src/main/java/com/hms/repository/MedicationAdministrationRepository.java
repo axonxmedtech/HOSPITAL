@@ -23,4 +23,11 @@ public interface MedicationAdministrationRepository extends JpaRepository<Medica
      */
     List<MedicationAdministration> findByPrescriptionIdAndStatusAndIsActiveTrueAndCreatedAtAfter(
             Long prescriptionId, String status, java.time.LocalDateTime after);
+
+    java.util.Optional<MedicationAdministration> findByPublicId(String publicId);
+
+    /** Units already given out of the pharmacy's dispensed supply for one order (undone entries excluded). */
+    @org.springframework.data.jpa.repository.Query("SELECT COALESCE(SUM(COALESCE(m.quantity, 1)), 0) FROM MedicationAdministration m "
+            + "WHERE m.prescriptionId = :prescriptionId AND m.stockSource = 'DISPENSED' AND m.isActive = true")
+    int givenFromDispensed(@org.springframework.data.repository.query.Param("prescriptionId") Long prescriptionId);
 }

@@ -12,6 +12,9 @@ const WardService = {
     apiClient.put(`/hospital/wards/${wardId}`, payload).then((r) => r.data),
   updateBedStatus: (bedId, remarks = 'Back to available') =>
     apiClient.post(`/hospital/beds/${bedId}/available`, { remarks }).then((r) => r.data),
+  /** A bed vacated by a discharge / transfer / surgery waits in "cleaning" until marked cleaned. */
+  markBedCleaned: (bedId, remarks = 'Marked cleaned') =>
+    apiClient.post(`/hospital/beds/${bedId}/cleaned`, { remarks }).then((r) => r.data),
   getAvailableBeds: (wardId) =>
     apiClient.get('/hospital/beds/available', { params: { ward_id: wardId } }).then((r) => r.data),
   deleteWard: (wardId) => apiClient.delete(`/hospital/wards/${wardId}`).then((r) => r.data),

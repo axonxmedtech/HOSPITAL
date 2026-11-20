@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import ConfirmationModal from './ConfirmationModal';
-import hospitalService from '../services/hospitalService';
 import { useToast } from '../context/ToastContext';
+import hospitalService from '../services/hospitalService';
 import { safeLoadMessage } from '../utils/apiError';
-import { formatDate } from '../utils/date';
+import { localIsoDate, formatDate } from '../utils/date';
+import ConfirmationModal from './ConfirmationModal';
 
 const BUCKETS = [
   { id: 'DUE_TODAY', label: 'Due Today' },
@@ -104,10 +104,12 @@ const FollowUpPanel = ({ role, mine = false, refreshKey }) => {
     if (loadError && rows.length === 0) {
       return (
         <tr>
-          <td colSpan={6} className="py-12 text-center" role="alert">
-            <p className="text-sm font-bold text-gray-900">Couldn't load follow-ups</p>
-            <p className="mt-1 text-sm text-gray-600">{loadError}</p>
-            <p className="mt-1 text-xs text-gray-500">This is not the same as having none.</p>
+          <td colSpan={6} className="py-12 text-center">
+            <div role="alert">
+              <p className="text-sm font-bold text-gray-900">Couldn&apos;t load follow-ups</p>
+              <p className="mt-1 text-sm text-gray-600">{loadError}</p>
+              <p className="mt-1 text-xs text-gray-500">This is not the same as having none.</p>
+            </div>
             <button
               type="button"
               onClick={load}
@@ -238,8 +240,11 @@ const FollowUpPanel = ({ role, mine = false, refreshKey }) => {
 
       {/* A failed refresh keeps the rows it already had, and says so. */}
       {loadError && rows.length > 0 ? (
-        <div className="px-4 py-2 bg-amber-50 border-b border-amber-100 text-xs text-amber-800" role="alert">
-          Couldn't refresh follow-ups: {loadError} The list below may be out of date.{' '}
+        <div
+          className="px-4 py-2 bg-amber-50 border-b border-amber-100 text-xs text-amber-800"
+          role="alert"
+        >
+          Couldn&apos;t refresh follow-ups: {loadError} The list below may be out of date.{' '}
           <button type="button" onClick={load} className="underline font-bold">
             Retry
           </button>
@@ -275,7 +280,7 @@ const FollowUpPanel = ({ role, mine = false, refreshKey }) => {
         onConfirm={() =>
           runAction(
             () => hospitalService.arriveFollowUp(pending.row.medicalRecordId),
-            'Follow-up visit created',
+            'Follow-up visit created'
           )
         }
         onCancel={closePending}
@@ -288,7 +293,7 @@ const FollowUpPanel = ({ role, mine = false, refreshKey }) => {
         onConfirm={(reason) =>
           runAction(
             () => hospitalService.completeFollowUp(pending.row.medicalRecordId, reason),
-            'Follow-up completed',
+            'Follow-up completed'
           )
         }
         onCancel={closePending}
@@ -303,7 +308,7 @@ const FollowUpPanel = ({ role, mine = false, refreshKey }) => {
         onConfirm={(reason) =>
           runAction(
             () => hospitalService.cancelFollowUp(pending.row.medicalRecordId, reason),
-            'Follow-up cancelled',
+            'Follow-up cancelled'
           )
         }
         onCancel={closePending}
@@ -316,7 +321,7 @@ const FollowUpPanel = ({ role, mine = false, refreshKey }) => {
           onSubmit={(payload) =>
             runAction(
               () => hospitalService.rescheduleFollowUp(pending.row.medicalRecordId, payload),
-              'Follow-up rescheduled',
+              'Follow-up rescheduled'
             )
           }
         />
@@ -327,7 +332,7 @@ const FollowUpPanel = ({ role, mine = false, refreshKey }) => {
 
 /** Its own dialog because it needs a date, which ConfirmationModal does not collect. */
 const RescheduleModal = ({ row, onCancel, onSubmit }) => {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localIsoDate();
   const [date, setDate] = useState(today);
   const [instructions, setInstructions] = useState(row.followUpInstructions || '');
   const [submitting, setSubmitting] = useState(false);

@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import DataTable from '../../../components/DataTable';
+import { useConfirm } from '../../../context/ConfirmContext';
 import { useToast } from '../../../context/ToastContext';
 import categoriesApi from '../../../services/pharmacy/categoriesApi';
-import CategoryForm from './CategoryForm';
 import { extractApiError } from '../../../utils/apiError';
+import CategoryForm from './CategoryForm';
 
 /**
  * CategoryMasterView – parent view for managing medicine categories.
@@ -30,6 +31,7 @@ const CategoryMasterView = () => {
   });
 
   const toast = useToast();
+  const confirm = useConfirm();
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -99,6 +101,16 @@ const CategoryMasterView = () => {
   };
 
   const handleToggleStatus = async (category) => {
+    if (
+      category.isActive &&
+      !(await confirm({
+        title: `Deactivate ${category.name}?`,
+        message:
+          'It is no longer offered when adding medicines or purchases. Existing records are kept.',
+        confirmLabel: 'Deactivate',
+      }))
+    )
+      return;
     try {
       await categoriesApi.toggleStatus(category.id);
       toast.success(`Category ${category.isActive ? 'deactivated' : 'activated'} successfully`);

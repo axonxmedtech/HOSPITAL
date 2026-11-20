@@ -10,25 +10,28 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/hospital/notifications")
 @RequireModule("NURSING")
+// Nurse incharges use the same dashboard bell as staff nurses. NURSE_INCHARGE was missing from
+// every endpoint below, so their bell 403'd on each page load. The service only ever returns the
+// caller's own notifications, so widening the role exposes nothing.
 public class NotificationController {
 
     @Autowired
     private NotificationService notificationService;
 
     @GetMapping
-    @PreAuthorize("hasRole('NURSE')")
+    @PreAuthorize("hasAnyRole('NURSE', 'NURSE_INCHARGE')")
     public ResponseEntity<?> listMy() {
         return ResponseEntity.ok(notificationService.getMyNotifications());
     }
 
     @GetMapping("/unread-count")
-    @PreAuthorize("hasRole('NURSE')")
+    @PreAuthorize("hasAnyRole('NURSE', 'NURSE_INCHARGE')")
     public ResponseEntity<?> unreadCount() {
         return ResponseEntity.ok(notificationService.getUnreadCount());
     }
 
     @PutMapping("/{publicId}/read")
-    @PreAuthorize("hasRole('NURSE')")
+    @PreAuthorize("hasAnyRole('NURSE', 'NURSE_INCHARGE')")
     public ResponseEntity<?> markRead(@PathVariable String publicId) {
         try {
             return ResponseEntity.ok(notificationService.markAsRead(publicId));
@@ -38,7 +41,7 @@ public class NotificationController {
     }
 
     @PutMapping("/read-all")
-    @PreAuthorize("hasRole('NURSE')")
+    @PreAuthorize("hasAnyRole('NURSE', 'NURSE_INCHARGE')")
     public ResponseEntity<?> markAllRead() {
         notificationService.markAllAsRead();
         return ResponseEntity.ok().build();

@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useToast } from '../../../context/ToastContext';
+import useLiveRefresh from '../../../hooks/useLiveRefresh';
 import otService from '../../../services/otService';
 import { extractApiError } from '../../../utils/apiError';
 
@@ -22,31 +23,82 @@ const statusColor = (s) =>
     COMPLETED: 'bg-gray-100 border-gray-300 text-gray-600',
   })[s] || 'bg-gray-100 border-gray-300 text-gray-600';
 
+const timeOf = (dt) => new Date(dt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+/** The day's cases as a time-ordered list, for hospitals without OT Theatres set up. */
+const DayList = ({ cases, onSelect }) => {
+  const sorted = cases
+    .filter((c) => c.scheduledAt)
+    .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
+  if (sorted.length === 0) {
+    return (
+      <div className="text-center text-gray-500 py-16 border border-dashed border-gray-200 rounded-xl bg-white">
+        No surgeries scheduled for today.
+      </div>
+    );
+  }
+  return (
+    <ul className="divide-y divide-gray-100 border border-gray-200 rounded-xl bg-white">
+      {sorted.map((c) => (
+        <li key={c.publicId}>
+          <button
+            type="button"
+            onClick={() => onSelect?.(c)}
+            className="w-full text-left px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-1 hover:bg-gray-50"
+          >
+            <span className="w-20 shrink-0 font-semibold text-gray-900">
+              {timeOf(c.scheduledAt)}
+            </span>
+            <span className="flex-1 min-w-[12rem]">
+              <span className="block font-medium text-gray-900">{c.procedureName}</span>
+              <span className="block text-xs text-gray-500">
+                {c.patientName}
+                {c.ipdNumber ? ` · ${c.ipdNumber}` : ''} · {c.surgeonName || 'Surgeon TBD'}
+              </span>
+            </span>
+            <span className="text-xs text-gray-600">{c.otRoomName || c.otWardName || '—'}</span>
+            <span
+              className={`text-xs font-semibold px-2 py-0.5 rounded border ${statusColor(c.status)}`}
+            >
+              {c.status?.replace('_', ' ')}
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+};
+
 const OtDayBoard = ({ date, onSelect }) => {
   const { error: toastError } = useToast();
   const [rooms, setRooms] = useState([]);
   const [cases, setCases] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [r, list] = await Promise.all([
-        otService.getRooms().catch(() => []),
-        otService.getOtList(date).catch(() => []),
-      ]);
-      setRooms(Array.isArray(r) ? r : []);
-      setCases(Array.isArray(list) ? list : []);
-    } catch (e) {
-      toastError(extractApiError(e, 'Failed to load day board'));
-    } finally {
-      setLoading(false);
-    }
-  }, [date, toastError]);
+  const load = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true);
+      try {
+        const [r, list] = await Promise.all([
+          otService.getRooms().catch(() => []),
+          otService.getOtList(date).catch(() => []),
+        ]);
+        setRooms(Array.isArray(r) ? r : []);
+        setCases(Array.isArray(list) ? list : []);
+      } catch (e) {
+        if (!silent) toastError(extractApiError(e, 'Failed to load day board'));
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [date, toastError]
+  );
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useLiveRefresh(() => load(true));
 
   const hours = useMemo(() => {
     const out = [];
@@ -70,7 +122,10 @@ const OtDayBoard = ({ date, onSelect }) => {
   );
 
   if (loading) return <div className="text-center text-gray-400 py-16">Loading…</div>;
-  if (rooms.length === 0) return null; // caller shows the list/legacy board instead
+  // No OT Theatres configured (cases sit in legacy OT-named wards): there are no grid columns,
+  // so list the day's cases by time. This used to `return null`, and neither caller had a
+  // fallback — "Scheduled today: 1" sat above a blank page.
+  if (rooms.length === 0) return <DayList cases={cases} onSelect={onSelect} />;
 
   return (
     <div className="overflow-x-auto border border-gray-200 rounded-xl bg-white">

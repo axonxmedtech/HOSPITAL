@@ -38,11 +38,21 @@ class MedicationAdministrationServiceTest {
     @Mock AuditLogService auditLogService;
 
     @Mock com.hms.service.RealtimeNotifier notifier;
+    // Who may record (Settings) and stock for GIVEN doses; empty settings = every clinical role.
+    @Mock com.hms.repository.HospitalSettingRepository hospitalSettingRepository;
+    @Mock MedicationStockService medicationStock;
+    @Mock com.hms.repository.StockMovementRepository stockMovementRepository;
 
     @InjectMocks MedicationAdministrationService service;
 
+    @org.junit.jupiter.api.BeforeEach
+    void actAsNurse() {
+        org.mockito.Mockito.lenient().when(securityHelper.getCurrentUserRole()).thenReturn("NURSE");
+    }
+
     private IpdAdmission admission() {
         IpdAdmission a = new IpdAdmission();
+        a.setStatus("ADMITTED");
         a.setId(1L);
         a.setHospitalId(7L);
         a.setPatientId(500L);

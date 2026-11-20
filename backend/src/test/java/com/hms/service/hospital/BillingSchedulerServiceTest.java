@@ -33,6 +33,7 @@ class BillingSchedulerServiceTest {
     @Mock BillingRepository billingRepository;
     @Mock BillingItemRepository billingItemRepository;
     @Mock BillingService billingService;
+    @Mock com.hms.repository.IpdBedHistoryRepository ipdBedHistoryRepository;
     @Mock PlatformTransactionManager transactionManager;
 
     @InjectMocks BillingSchedulerService scheduler;
@@ -67,7 +68,7 @@ class BillingSchedulerServiceTest {
 
     @Test
     void aBedChargeReDerivesTheStatus_soAPaidBillShowsTheNewBalance() {
-        when(ipdAdmissionRepository.findAll()).thenReturn(List.of(admission(1L)));
+        when(ipdAdmissionRepository.findByStatusIn(any())).thenReturn(List.of(admission(1L)));
         when(billingRepository.findByIpdAdmissionId(1L)).thenReturn(List.of(bill(20L, "PAID")));
         when(billingItemRepository.findByBillingId(20L)).thenReturn(List.of());
         wardPriced("800.00");
@@ -81,7 +82,7 @@ class BillingSchedulerServiceTest {
 
     @Test
     void aClosedBillTakesNoFurtherCharges() {
-        when(ipdAdmissionRepository.findAll()).thenReturn(List.of(admission(1L)));
+        when(ipdAdmissionRepository.findByStatusIn(any())).thenReturn(List.of(admission(1L)));
         when(billingRepository.findByIpdAdmissionId(1L)).thenReturn(List.of(bill(21L, "CLOSED")));
         // A priced bed and no charge yet today, so only the CLOSED rule can stop the charge.
         lenient().when(billingItemRepository.findByBillingId(21L)).thenReturn(List.of());
@@ -97,7 +98,7 @@ class BillingSchedulerServiceTest {
 
     @Test
     void oneFailingAdmissionDoesNotStopTheOthers() {
-        when(ipdAdmissionRepository.findAll()).thenReturn(List.of(admission(1L), admission(2L)));
+        when(ipdAdmissionRepository.findByStatusIn(any())).thenReturn(List.of(admission(1L), admission(2L)));
         when(billingRepository.findByIpdAdmissionId(1L)).thenThrow(new RuntimeException("db blip"));
         when(billingRepository.findByIpdAdmissionId(2L)).thenReturn(List.of(bill(22L, "PENDING")));
         when(billingItemRepository.findByBillingId(22L)).thenReturn(List.of());

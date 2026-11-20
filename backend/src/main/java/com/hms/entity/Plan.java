@@ -49,6 +49,16 @@ public class Plan {
     @Column(name = "feature_name")
     private List<String> features = new ArrayList<>();
 
+    /**
+     * Capacity caps by {@link com.hms.entitlement.PlanLimit} key (BEDS, DOCTORS, ...). A key that
+     * is absent, or mapped to null, is unlimited. A hospital's own override wins over this.
+     */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "plan_limits", joinColumns = @JoinColumn(name = "plan_id"))
+    @MapKeyColumn(name = "limit_key", length = 40)
+    @Column(name = "max_value")
+    private java.util.Map<String, Integer> limits = new java.util.HashMap<>();
+
     @Column(name = "in_clinic", nullable = false)
     private Boolean inClinic = false;
 

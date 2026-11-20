@@ -32,6 +32,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 public class OpdController {
 
     @Autowired
+    private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+
+    @Autowired
+    private com.hms.service.hospital.BillingService billingService;
+
+    @Autowired
     private com.hms.service.hospital.OpdIdempotencyService opdIdempotencyService;
 
     @Autowired
@@ -124,6 +130,29 @@ public class OpdController {
             opdIdempotencyService.release(hospitalId, key);
             throw failed;
         }
+    }
+
+    /**
+     * Cancels a visit the doctor has not seen yet. Body: {"reason": "...", "refundMode": "CASH"}.
+     * Without this a patient who left without being seen stayed in the doctor's queue for ever.
+     */
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    @RequireModule("OPD")
+    @PostMapping("/{id}/cancel")
+    public ResponseEntity<?> cancelOpd(@PathVariable Long id,
+                                       @RequestBody(required = false) java.util.Map<String, String> body) {
+        java.util.Map<String, String> b = body == null ? java.util.Map.of() : body;
+        return ResponseEntity.ok(opdService.cancelVisit(id, b.get("reason"), b.get("refundMode")));
+    }
+
+    /** Moves a waiting patient to another doctor. Body: {"doctorId": "<id or publicId>"}. */
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    @RequireModule("OPD")
+    @PutMapping("/{id}/doctor")
+    public ResponseEntity<?> changeOpdDoctor(@PathVariable Long id,
+                                             @RequestBody(required = false) java.util.Map<String, Object> body) {
+        Object doc = body == null ? null : body.get("doctorId");
+        return ResponseEntity.ok(opdService.changeDoctor(id, doc == null ? null : String.valueOf(doc)));
     }
 
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
@@ -284,7 +313,46 @@ public class OpdController {
             @RequestParam(defaultValue = "10") int size) {
         org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
         var result = opdService.getOpds(search, date, status, pageable);
-        return ResponseEntity.ok(result);
+        return ResponseEntity.ok(withBillSummaries(result));
+    }
+
+    /**
+     * Attach each visit's bill (number, net amount, paid, balance, status) so the OPD screen can
+     * show whether the patient has paid and offer "Collect" right there. Without it, billing was
+     * only reachable from the separate Billing tab and the OPD list never said who still owed.
+     */
+    private org.springframework.data.domain.Page<?> withBillSummaries(
+            org.springframework.data.domain.Page<com.hms.entity.Opd> page) {
+        java.util.List<Long> ids = page.getContent().stream().map(com.hms.entity.Opd::getId)
+                .filter(java.util.Objects::nonNull).toList();
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        java.util.Map<Long, com.hms.entity.Billing> byOpd = new java.util.HashMap<>();
+        if (!ids.isEmpty() && hospitalId != null) {
+            for (com.hms.entity.Billing b : billingRepository.findByHospitalIdAndOpdIdIn(hospitalId, ids)) {
+                if (!"IPD".equalsIgnoreCase(b.getBillingType())) byOpd.putIfAbsent(b.getOpdId(), b);
+            }
+        }
+        return page.map(opd -> {
+            @SuppressWarnings("unchecked")
+            java.util.Map<String, Object> m = objectMapper.convertValue(opd, java.util.Map.class);
+            com.hms.entity.Billing b = byOpd.get(opd.getId());
+            if (b != null) {
+                com.hms.service.hospital.BillMoney money = billingService.moneyFor(b);
+                java.util.Map<String, Object> bill = new java.util.HashMap<>();
+                bill.put("id", b.getId());
+                bill.put("customId", b.getCustomId());
+                bill.put("billingType", b.getBillingType());
+                bill.put("status", b.getPaymentStatus());
+                bill.put("grossAmount", money.gross());
+                bill.put("discountAmount", money.discount());
+                bill.put("discountReason", b.getDiscountReason());
+                bill.put("amount", money.net());
+                bill.put("paidAmount", money.paid());
+                bill.put("balance", money.balance());
+                m.put("bill", bill);
+            }
+            return m;
+        });
     }
 
     /**

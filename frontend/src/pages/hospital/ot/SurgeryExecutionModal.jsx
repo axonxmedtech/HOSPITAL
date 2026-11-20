@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useConfirm } from '../../../context/ConfirmContext';
 import { useToast } from '../../../context/ToastContext';
 import useOtPermissions from '../../../hooks/useOtPermissions';
 import otService from '../../../services/otService';
@@ -34,6 +35,7 @@ const fmt = (dt) =>
 
 const SurgeryExecutionModal = ({ surgery, onClose }) => {
   const { success, error: toastError } = useToast();
+  const confirm = useConfirm();
   const sid = surgery.surgeryId;
   const [who, setWho] = useState(null);
   const [milestones, setMilestones] = useState([]);
@@ -79,7 +81,15 @@ const SurgeryExecutionModal = ({ surgery, onClose }) => {
     }
   };
 
-  const record = async (milestone) => {
+  const record = async (milestone, label) => {
+    if (
+      !(await confirm({
+        title: `Record ${label}?`,
+        message: 'It is stamped with the current time and cannot be recorded again.',
+        confirmLabel: `Record ${label}`,
+      }))
+    )
+      return;
     setBusy(true);
     try {
       const created = await otService.recordMilestone(sid, { milestone });
@@ -188,7 +198,7 @@ const SurgeryExecutionModal = ({ surgery, onClose }) => {
                       key={code}
                       disabled={busy || !!d || !canRecordMilestone}
                       title={canRecordMilestone ? undefined : 'Recorded by the theatre team'}
-                      onClick={() => record(code)}
+                      onClick={() => record(code, label)}
                       className={`px-3 py-1 rounded-full text-xs font-medium border ${d ? 'bg-gray-100 text-gray-500 border-gray-200' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
                     >
                       {d ? `✓ ${label}` : `+ ${label}`}
@@ -213,15 +223,15 @@ const SurgeryExecutionModal = ({ surgery, onClose }) => {
                 className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm ${canWriteNote ? '' : 'bg-gray-50 text-gray-600'}`}
               />
               {canWriteNote && (
-              <div className="flex justify-end mt-2">
-                <button
-                  disabled={busy || !note.trim()}
-                  onClick={saveNote}
-                  className="px-4 py-2 rounded-lg text-xs font-semibold bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-300"
-                >
-                  Save note
-                </button>
-              </div>
+                <div className="flex justify-end mt-2">
+                  <button
+                    disabled={busy || !note.trim()}
+                    onClick={saveNote}
+                    className="px-4 py-2 rounded-lg text-xs font-semibold bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-300"
+                  >
+                    Save note
+                  </button>
+                </div>
               )}
             </div>
           </div>

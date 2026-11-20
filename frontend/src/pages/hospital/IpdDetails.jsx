@@ -1,22 +1,32 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { DiscountModal } from '../../components/billing/BillActionModals';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import DateSelect from '../../components/DateSelect';
 import EmptyState from '../../components/EmptyState';
 import FrequencyInput from '../../components/FrequencyInput';
 import IcuAdmitModal from '../../components/IcuAdmitModal';
 import IcuDischargeToIpdModal from '../../components/IcuDischargeToIpdModal';
+import {
+  ConfirmDischargeModal,
+  DischargeTypeFields,
+  dischargeNoteRequired,
+  dischargeTypeLabel,
+} from '../../components/ipd/DischargeType';
 import Navbar from '../../components/Navbar';
+import { ChangeDoctorModal } from '../../components/opd/OpdVisitActions';
 import PageHeader from '../../components/PageHeader';
 import ProfileModal from '../../components/ProfileModal';
 import Sidebar from '../../components/Sidebar';
 import { SkeletonDetailCard, SkeletonFormCard } from '../../components/Skeleton';
+import { StockBadge } from '../../components/stock/StockPicker';
 import { useToast } from '../../context/ToastContext';
 import useWebSocket from '../../hooks/useWebSocket';
 import authService from '../../services/authService';
 import formAccessService from '../../services/formAccessService';
 import hospitalService from '../../services/hospitalService';
 import icuService from '../../services/icuService';
+import nurseService from '../../services/nurseService';
 import otService from '../../services/otService';
 import wardService from '../../services/wardService';
 import { extractApiError } from '../../utils/apiError';
@@ -44,6 +54,11 @@ const IpdDetails = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
+  // MedicationPanel fetches its own chart once; bump this after prescribing or stopping a
+  // medicine so it reloads instead of saying "No prescriptions yet" beside the new order.
+  const [medChartVersion, setMedChartVersion] = useState(0);
+  // The admission's bill, loaded when Discount is opened (DiscountModal needs gross/paid).
+  const [discountBill, setDiscountBill] = useState(null);
   const [user, setUser] = useState(() => authService.getCurrentUser() || {});
   const isDoctor = authService.isDoctor();
   const isNurse = user?.role === 'NURSE' || user?.role === 'NURSE_INCHARGE';
@@ -54,6 +69,7 @@ const IpdDetails = () => {
   const { success, error: toastError } = useToast();
   const [otSurgery, setOtSurgery] = useState(null);
   const [otModalOpen, setOtModalOpen] = useState(false);
+  const [changeDoctorOpen, setChangeDoctorOpen] = useState(false);
   const hasOT = (user?.modules || []).includes('OT');
 
   // ICU admission & discharge state
@@ -99,6 +115,9 @@ const IpdDetails = () => {
   const verdictFor = (tabId) => formVerdicts[FORM_KEY_BY_TAB[tabId]] || 'EDITABLE';
   const admissionId = Number(id);
 
+  // Fluid balance, ventilation, severity scores and infusions are ICU charting: the server
+  // serves them only to a facility with the ICU module, so they are not offered without it.
+  const hasIcuModule = (authService.getCurrentUser()?.modules || []).includes('ICU');
   const tabs = [
     { id: 'overview', label: 'Overview' },
     ...(verdictFor('vitals') !== 'HIDDEN' ? [{ id: 'vitals', label: 'Vitals' }] : []),
@@ -110,9 +129,15 @@ const IpdDetails = () => {
       ? [{ id: 'vulnerability', label: 'Vulnerability Assessment' }]
       : []),
     ...(verdictFor('sugar') !== 'HIDDEN' ? [{ id: 'sugar', label: 'Sugar Chart' }] : []),
-    ...(verdictFor('io') !== 'HIDDEN' ? [{ id: 'io', label: 'Intake / Output' }] : []),
-    ...(verdictFor('ventilator') !== 'HIDDEN' ? [{ id: 'ventilator', label: 'Ventilator' }] : []),
-    ...(verdictFor('scores') !== 'HIDDEN' ? [{ id: 'scores', label: 'Severity Scores' }] : []),
+    ...(hasIcuModule && verdictFor('io') !== 'HIDDEN'
+      ? [{ id: 'io', label: 'Intake / Output' }]
+      : []),
+    ...(hasIcuModule && verdictFor('ventilator') !== 'HIDDEN'
+      ? [{ id: 'ventilator', label: 'Ventilator' }]
+      : []),
+    ...(hasIcuModule && verdictFor('scores') !== 'HIDDEN'
+      ? [{ id: 'scores', label: 'Severity Scores' }]
+      : []),
     ...(hasOT && otSurgery ? [{ id: 'consent', label: 'Consent Forms' }] : []),
   ];
   // If the active tab got hidden by a Files & Access change, fall back to Overview.
@@ -221,6 +246,9 @@ const IpdDetails = () => {
     isOpen: false,
     medicineId: null,
     medicineName: '',
+    hospitalItemName: null,
+    quantityPerDose: 1,
+    stock: null, // the picked stock row: available, low, out of stock
     type: 'TABLET',
     route: 'ORAL',
     dose: '',
@@ -232,80 +260,21 @@ const IpdDetails = () => {
   });
   const [medSearchResults, setMedSearchResults] = useState([]);
 
-  const [inventory, setInventory] = useState([]);
-  const [administeredList, setAdministeredList] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showSuggestions, setShowSuggestions] = useState(false);
-
-  const [medicineTab, setMedicineTab] = useState('prescribe'); // 'prescribe', 'administer', or 'hospital-item'
-
-  const [hospitalInventory, setHospitalInventory] = useState([]);
-  const [hospitalInventoryCatalog, setHospitalInventoryCatalog] = useState([]);
-  const [hospitalInvItems, setHospitalInvItems] = useState([]); // Selected items: [{stockId, name, qty, maxStock, linkedFeeId, feeName, feeAmount}]
-  const [hospitalInvSearch, setHospitalInvSearch] = useState('');
-  const [hospitalInvDropdown, setHospitalInvDropdown] = useState(false);
-  const [availableCustomFees, setAvailableCustomFees] = useState([]);
-
-  useEffect(() => {
-    if (medicineModal.isOpen) {
-      if (medicineTab === 'administer' && user?.inClinic !== false) {
-        const fetchInventory = async () => {
-          try {
-            const res = await hospitalService.getInventoryMedicines();
-            const filtered = (res || []).filter((item) => {
-              if (!item) return false;
-              // Handle both active and isActive serialization key variations
-              const activeVal = item.isActive !== undefined ? item.isActive : item.active;
-              const isNotInactive = activeVal !== false && activeVal !== 0 && activeVal !== '0';
-              // Safety checks for stock quantity
-              const stock = item.stockQuantity !== undefined ? item.stockQuantity : 0;
-              return isNotInactive && stock > 0;
-            });
-            setInventory(filtered);
-          } catch (err) {
-            console.error('Failed to load clinical stock inventory', err);
-          }
-        };
-        fetchInventory();
-      } else if (medicineTab === 'hospital-item') {
-        const fetchHospitalInventory = async () => {
-          try {
-            const [invRes, catRes, feesRes] = await Promise.all([
-              hospitalService.getHospitalInventory(),
-              hospitalService.getHospitalInventoryCatalog(),
-              hospitalService.getCustomFees(),
-            ]);
-            setHospitalInventory(
-              (invRes || []).filter((x) => x.isActive !== false && x.stockQuantity > 0)
-            );
-            setHospitalInventoryCatalog(catRes || []);
-            setAvailableCustomFees(feesRes || []);
-          } catch (err) {
-            console.error('Failed to load hospital inventory or fees', err);
-          }
-        };
-        fetchHospitalInventory();
-      }
-    }
-    if (!medicineModal.isOpen) {
-      setAdministeredList([]);
-      setSearchQuery('');
-      setShowSuggestions(false);
-      setHospitalInvItems([]);
-      setHospitalInvSearch('');
-      setHospitalInvDropdown(false);
-      setMedicineTab('prescribe');
-    }
-  }, [medicineModal.isOpen, medicineTab]);
+  // Stock levels for the search box: medicines by id, and hospital items (saline, IV fluids).
+  const [stockResults, setStockResults] = useState([]);
 
   useEffect(() => {
     const q = medicineModal.medicineName || '';
     // Only search if query string is non-null and length >= 3, AND we don't currently have an active locked medicineId (meaning doctor is typing new)
-    if (q.length >= 3 && !medicineModal.medicineId) {
+    if (q.length >= 3 && !medicineModal.medicineId && !medicineModal.hospitalItemName) {
       const delay = setTimeout(async () => {
         try {
-          const resp = await hospitalService.searchMedicines(q);
+          const [resp, stock] = await Promise.all([
+            hospitalService.searchMedicines(q),
+            nurseService.searchStock(q).catch(() => []),
+          ]);
           setMedSearchResults(resp || []);
+          setStockResults(Array.isArray(stock) ? stock : []);
         } catch (e) {
           console.error(e);
         }
@@ -313,8 +282,13 @@ const IpdDetails = () => {
       return () => clearTimeout(delay);
     } else {
       setMedSearchResults([]);
+      setStockResults([]);
     }
-  }, [medicineModal.medicineName, medicineModal.medicineId]);
+  }, [medicineModal.medicineName, medicineModal.medicineId, medicineModal.hospitalItemName]);
+  const medicineStockById = Object.fromEntries(
+    stockResults.filter((o) => o.source === 'MEDICINE').map((o) => [o.medicineId, o])
+  );
+  const hospitalItemResults = stockResults.filter((o) => o.source === 'HOSPITAL_ITEM');
   const [billModal, setBillModal] = useState({ isOpen: false, loading: false, bill: null });
   const [printingBill, setPrintingBill] = useState(false);
   const [payment, setPayment] = useState({ amount: '', mode: 'CASH', saving: false });
@@ -371,7 +345,7 @@ const IpdDetails = () => {
     try {
       const [resp, stays] = await Promise.all([
         hospitalService.getIpdDetails(id),
-        icuService.getStaysForAdmission(id).catch(() => []),
+        hasIcuModule ? icuService.getStaysForAdmission(id).catch(() => []) : [],
       ]);
       setData(resp);
       setIcuStays(Array.isArray(stays) ? stays : []);
@@ -440,7 +414,11 @@ const IpdDetails = () => {
   const onAddMedicine = () => {
     setMedicineModal({
       isOpen: true,
+      medicineId: null,
       medicineName: '',
+      hospitalItemName: null,
+      quantityPerDose: 1,
+      stock: null,
       type: 'TABLET',
       route: 'ORAL',
       dose: '',
@@ -461,6 +439,7 @@ const IpdDetails = () => {
         try {
           await hospitalService.stopPrescription(prescriptionId);
           success('Medicine stopped');
+          setMedChartVersion((v) => v + 1);
           setLoading(true);
           const resp = await hospitalService.getIpdDetails(id);
           setData(resp);
@@ -474,6 +453,8 @@ const IpdDetails = () => {
     });
   };
 
+  const [confirmDischargeOpen, setConfirmDischargeOpen] = useState(false);
+
   const onPlanDischarge = () => {
     setDischargeModal({
       isOpen: true,
@@ -481,12 +462,44 @@ const IpdDetails = () => {
       treatmentGiven: '',
       dischargeNotes: '',
       followUpDate: '',
+      dischargeType: 'NORMAL',
+      dischargeTypeNote: '',
       saving: false,
+    });
+  };
+
+  const onCancelDischargePlan = () => {
+    setConfirmState({
+      open: true,
+      title: 'Cancel planned discharge',
+      message:
+        'The patient stays admitted and returns to normal care. You can plan the discharge again later.',
+      onConfirm: async () => {
+        try {
+          setLoading(true);
+          await hospitalService.cancelDischargePlan(id);
+          success('Discharge plan cancelled');
+          setData(await hospitalService.getIpdDetails(id));
+        } catch (err) {
+          toastError(parseError(err, 'Failed to cancel the discharge plan'));
+        } finally {
+          setLoading(false);
+        }
+      },
     });
   };
 
   const savePlanDischarge = async () => {
     if (!dischargeModal.finalDiagnosis) return toastError('Final diagnosis is required');
+    if (
+      dischargeNoteRequired(dischargeModal.dischargeType) &&
+      !dischargeModal.dischargeTypeNote?.trim()
+    )
+      return toastError(
+        dischargeModal.dischargeType === 'EXPIRED'
+          ? 'Enter the time and cause of death'
+          : 'Enter the hospital the patient is referred to'
+      );
     setDischargeModal((prev) => ({ ...prev, saving: true }));
     try {
       const payload = {
@@ -494,6 +507,8 @@ const IpdDetails = () => {
         treatmentGiven: dischargeModal.treatmentGiven,
         dischargeNotes: dischargeModal.dischargeNotes,
         followUpDate: dischargeModal.followUpDate || null,
+        dischargeType: dischargeModal.dischargeType || 'NORMAL',
+        dischargeTypeNote: dischargeModal.dischargeTypeNote?.trim() || null,
       };
       await hospitalService.planDischarge(id, payload);
       success('Discharge planned');
@@ -517,25 +532,33 @@ const IpdDetails = () => {
     }
   };
 
-  const onConfirmDischarge = () => {
-    setConfirmState({
-      open: true,
-      title: 'Confirm Discharge',
-      message: 'Confirm discharge? This will finalize the admission and free the bed.',
-      onConfirm: async () => {
-        try {
-          setLoading(true);
-          await hospitalService.confirmDischarge(id);
-          success('Discharge completed');
-          navigate('/');
-        } catch (err) {
-          console.error('Failed to confirm discharge', err);
-          toastError(parseError(err, 'Failed to confirm discharge'));
-        } finally {
-          setLoading(false);
-        }
-      },
-    });
+  // Every unpaid bill of the patient blocks a normal discharge — the IPD bill and the OPD bill
+  // from the consultation that led to admission. The server lists them; show them up front.
+  const owingText = () => {
+    const owing = data?.billing?.outstandingBills || [];
+    const balance = Number(data?.billing?.balance) || 0;
+    return owing.length
+      ? owing.map((o) => `${o.customId} (${o.billingType}) ₹${o.balance}`).join(', ')
+      : balance > 0
+        ? `₹${balance} on this admission's bill`
+        : '';
+  };
+
+  const onConfirmDischarge = () => setConfirmDischargeOpen(true);
+
+  const doConfirmDischarge = async (body) => {
+    try {
+      setLoading(true);
+      await hospitalService.confirmDischarge(id, body);
+      setConfirmDischargeOpen(false);
+      success('Discharge completed');
+      navigate('/');
+    } catch (err) {
+      console.error('Failed to confirm discharge', err);
+      toastError(parseError(err, 'Failed to confirm discharge'));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const openBillModal = async () => {
@@ -543,9 +566,11 @@ const IpdDetails = () => {
     try {
       const b = await hospitalService.getIpdBill(id);
       setBillModal({ isOpen: true, loading: false, bill: b });
+      // Start from the balance due; the user can lower it for a part payment.
+      const due = Number(b?.balance) || 0;
+      setPayment((prev) => ({ ...prev, amount: due > 0 ? String(due) : '' }));
     } catch (err) {
-      console.error('Failed to load bill', err);
-      toastError('Failed to load bill');
+      toastError(extractApiError(err, 'Failed to load bill'));
       setBillModal({ isOpen: false, loading: false, bill: null });
     }
   };
@@ -595,7 +620,7 @@ const IpdDetails = () => {
         />
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-[#fafafa] p-6">
+        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-[#fafafa] p-4 md:p-6">
           {loading && !data ? (
             <SkeletonDetailCard />
           ) : !data ? (
@@ -628,7 +653,12 @@ const IpdDetails = () => {
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
                   <PageHeader
-                    title={`IPD ${data.ipdNumber || ''}`}
+                    title={
+                      // ipdNumber already carries the prefix ("IPD-1"); don't print "IPD IPD-1".
+                      /^IPD/i.test(data.ipdNumber || '')
+                        ? data.ipdNumber
+                        : `IPD ${data.ipdNumber || ''}`.trim()
+                    }
                     subtitle={`${data.patient?.name || ''} • ${data.patient?.age || ''} • ${data.patient?.gender || ''}`}
                   />
                 </div>
@@ -642,7 +672,7 @@ const IpdDetails = () => {
                     </button>
                   )}
                   {/* The admission form is commonly filled and signed at the admission desk. */}
-                  {(isReceptionist || isAdmin) &&
+                  {(isReceptionist || isAdmin || isSoloDoctor) &&
                     !data.admission?.admissionConfirmed &&
                     (data.status === 'ADMITTED' || data.status === 'DISCHARGE_PLANNED') && (
                       <button
@@ -707,6 +737,14 @@ const IpdDetails = () => {
                       className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white bg-yellow-600 hover:bg-yellow-700 whitespace-nowrap"
                     >
                       Plan Discharge
+                    </button>
+                  )}
+                  {(isDoctor || isAdmin) && data.status === 'DISCHARGE_PLANNED' && (
+                    <button
+                      onClick={onCancelDischargePlan}
+                      className="px-3 py-1.5 rounded-lg text-sm font-semibold text-yellow-800 bg-yellow-50 border border-yellow-300 hover:bg-yellow-100 whitespace-nowrap"
+                    >
+                      Cancel Discharge Plan
                     </button>
                   )}
                   {(isReceptionist || isSoloDoctor || isAdmin) &&
@@ -825,6 +863,17 @@ const IpdDetails = () => {
                         </div>
                         <div>
                           <strong>Doctor:</strong> {data.admission?.doctor || '-'}
+                          {(isReceptionist || isAdmin || isDoctor) &&
+                            (data.status === 'ADMITTED' || data.status === 'DISCHARGE_PLANNED') && (
+                              <button
+                                type="button"
+                                onClick={() => setChangeDoctorOpen(true)}
+                                aria-label="Change doctor"
+                                className="ml-2 text-xs font-semibold text-sky-700 hover:underline"
+                              >
+                                Change
+                              </button>
+                            )}
                         </div>
                         <div>
                           <strong>Diagnosis:</strong> {data.admission?.primaryDiagnosis || '-'}
@@ -851,6 +900,16 @@ const IpdDetails = () => {
                         </div>
                         <div>
                           <strong>Status:</strong> {data.status || '-'}
+                          {data.dischargeType &&
+                            (data.status === 'DISCHARGE_PLANNED' ||
+                              data.status === 'DISCHARGED') && (
+                              <span
+                                className={`ml-2 text-xs px-2 py-0.5 rounded-full ${data.dischargeType === 'EXPIRED' ? 'bg-gray-800 text-white' : data.dischargeType === 'NORMAL' ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-800'}`}
+                              >
+                                {dischargeTypeLabel(data.dischargeType)}
+                                {data.dischargeNote ? ` — ${data.dischargeNote}` : ''}
+                              </span>
+                            )}
                         </div>
                       </div>
 
@@ -874,16 +933,14 @@ const IpdDetails = () => {
                       )}
 
                       <div className="mt-3 flex items-center gap-2">
-                        {isDoctor &&
-                          data.status !== 'DISCHARGE_PLANNED' &&
-                          data.status !== 'DISCHARGED' && (
-                            <button
-                              className="px-3 py-1 bg-green-600 text-white rounded"
-                              onClick={onAddFollowUp}
-                            >
-                              + Add Follow-up
-                            </button>
-                          )}
+                        {isDoctor && data.status !== 'DISCHARGED' && (
+                          <button
+                            className="px-3 py-1 bg-green-700 text-white rounded hover:bg-green-800"
+                            onClick={onAddFollowUp}
+                          >
+                            + Add Follow-up
+                          </button>
+                        )}
                       </div>
                     </>
                   )}
@@ -931,7 +988,7 @@ const IpdDetails = () => {
                           <button
                             onClick={saveFollowup}
                             disabled={followupModal.saving}
-                            className="px-3 py-1 bg-green-600 text-white rounded"
+                            className="px-3 py-1 bg-green-700 text-white rounded hover:bg-green-800"
                           >
                             {followupModal.saving ? 'Saving...' : 'Save'}
                           </button>
@@ -943,47 +1000,14 @@ const IpdDetails = () => {
                   {medicineModal.isOpen && (
                     <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
                       <div className="bg-white rounded-lg w-full max-w-lg p-6">
-                        <h3 className="text-lg font-semibold mb-3">Add Medicine / Stock Item</h3>
+                        <h3 className="text-lg font-semibold mb-3">Prescribe Medicine</h3>
+                        <p className="text-xs text-gray-500 -mt-2 mb-3">
+                          Pick from stock (medicines, saline, IV fluids) so each dose given comes
+                          off the inventory and onto the bill, or type a name the patient will
+                          bring.
+                        </p>
 
-                        <div className="flex border-b mb-4">
-                          <button
-                            type="button"
-                            onClick={() => setMedicineTab('prescribe')}
-                            className={`flex-1 py-2 text-sm font-semibold border-b-2 transition-all ${
-                              medicineTab === 'prescribe'
-                                ? 'border-blue-600 text-blue-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700'
-                            }`}
-                          >
-                            Prescribe Medicine
-                          </button>
-                          {user?.inClinic !== false && (
-                            <button
-                              type="button"
-                              onClick={() => setMedicineTab('administer')}
-                              className={`flex-1 py-2 text-sm font-semibold border-b-2 transition-all ${
-                                medicineTab === 'administer'
-                                  ? 'border-blue-600 text-blue-600'
-                                  : 'border-transparent text-gray-500 hover:text-gray-700'
-                              }`}
-                            >
-                              Administer Stock Item
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => setMedicineTab('hospital-item')}
-                            className={`flex-1 py-2 text-sm font-semibold border-b-2 transition-all ${
-                              medicineTab === 'hospital-item'
-                                ? 'border-blue-600 text-blue-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700'
-                            }`}
-                          >
-                            Hospital Items
-                          </button>
-                        </div>
-
-                        {medicineTab === 'prescribe' && (
+                        {
                           <>
                             <div className="grid grid-cols-2 gap-3">
                               <div className="relative">
@@ -998,13 +1022,56 @@ const IpdDetails = () => {
                                       ...prev,
                                       medicineName: e.target.value,
                                       medicineId: null,
+                                      hospitalItemName: null,
+                                      stock: null,
                                     }))
                                   }
                                   className="w-full border p-2 rounded text-sm outline-none bg-white"
                                   placeholder="Type min 3 letters..."
                                 />
-                                {medSearchResults.length > 0 && (
-                                  <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded shadow-lg max-h-48 overflow-y-auto">
+                                {(medSearchResults.length > 0 ||
+                                  hospitalItemResults.length > 0) && (
+                                  <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded shadow-lg max-h-64 overflow-y-auto">
+                                    {hospitalItemResults.length > 0 && (
+                                      <>
+                                        <p className="px-2 pt-2 text-[11px] font-semibold text-gray-500 uppercase">
+                                          Hospital inventory
+                                        </p>
+                                        {hospitalItemResults.map((o) => (
+                                          <button
+                                            type="button"
+                                            key={o.itemName}
+                                            onClick={() => {
+                                              const fluid = /fluid|saline|ringer|dextrose|iv/i.test(
+                                                `${o.type} ${o.name}`
+                                              );
+                                              setMedicineModal((prev) => ({
+                                                ...prev,
+                                                medicineId: null,
+                                                hospitalItemName: o.itemName,
+                                                medicineName: o.name,
+                                                stock: o,
+                                                type: fluid ? 'IV_FLUID' : prev.type,
+                                                route: fluid ? 'IV' : prev.route,
+                                                foodTiming: fluid ? '' : prev.foodTiming,
+                                              }));
+                                              setStockResults([]);
+                                            }}
+                                            className="w-full text-left p-2 hover:bg-blue-50 border-b text-sm flex justify-between items-center"
+                                          >
+                                            <span className="font-medium text-gray-800">
+                                              {o.name}
+                                            </span>
+                                            <StockBadge option={o} />
+                                          </button>
+                                        ))}
+                                      </>
+                                    )}
+                                    {medSearchResults.length > 0 && (
+                                      <p className="px-2 pt-2 text-[11px] font-semibold text-gray-500 uppercase">
+                                        Medicines
+                                      </p>
+                                    )}
                                     {medSearchResults.map((m) => (
                                       <div
                                         key={m.id}
@@ -1028,6 +1095,8 @@ const IpdDetails = () => {
                                             ...prev,
                                             medicineId: m.id,
                                             medicineName: m.name,
+                                            hospitalItemName: null,
+                                            stock: medicineStockById[m.id] || null,
                                             type: pickedType,
                                             dose: m.defaultDosage || '',
                                             frequency: m.defaultFrequency || '',
@@ -1048,11 +1117,33 @@ const IpdDetails = () => {
                                         className="p-2 hover:bg-blue-50 cursor-pointer border-b text-sm flex justify-between items-center"
                                       >
                                         <span className="font-medium text-gray-800">{m.name}</span>
-                                        <span className="text-xs text-gray-500">{m.type}</span>
+                                        <span className="text-xs text-gray-500 flex items-center gap-2">
+                                          {m.type}
+                                          <StockBadge option={medicineStockById[m.id]} />
+                                        </span>
                                       </div>
                                     ))}
                                   </div>
                                 )}
+                                {medicineModal.stock?.outOfStock && (
+                                  <p className="mt-1 text-xs text-red-700">
+                                    Out of stock — ask the patient to bring it, and get it
+                                    reordered.
+                                  </p>
+                                )}
+                                {medicineModal.stock?.low && !medicineModal.stock?.outOfStock && (
+                                  <p className="mt-1 text-xs text-amber-800">
+                                    Low stock: {medicineModal.stock.available} left — ask for it to
+                                    be reordered soon.
+                                  </p>
+                                )}
+                                {!medicineModal.medicineId &&
+                                  !medicineModal.hospitalItemName &&
+                                  medicineModal.medicineName.length >= 3 && (
+                                    <p className="mt-1 text-xs text-gray-500">
+                                      Not picked from stock — the patient brings it.
+                                    </p>
+                                  )}
                               </div>
                               <div>
                                 <label htmlFor="fld-128" className="block text-sm font-medium mb-1">
@@ -1075,8 +1166,13 @@ const IpdDetails = () => {
                                   className="w-full border p-2 rounded text-sm"
                                 >
                                   <option>TABLET</option>
+                                  <option>CAPSULE</option>
                                   <option>SYRUP</option>
                                   <option>INJECTION</option>
+                                  <option value="IV_FLUID">IV FLUID</option>
+                                  <option>OINTMENT</option>
+                                  <option>DROPS</option>
+                                  <option>INHALER</option>
                                 </select>
                               </div>
                               <div>
@@ -1117,6 +1213,29 @@ const IpdDetails = () => {
                                   className="w-full border p-2 rounded text-sm"
                                 />
                               </div>
+                              {(medicineModal.medicineId || medicineModal.hospitalItemName) && (
+                                <div>
+                                  <label
+                                    htmlFor="fld-qty-per-dose"
+                                    className="block text-sm font-medium mb-1"
+                                  >
+                                    Units per dose (from stock)
+                                  </label>
+                                  <input
+                                    id="fld-qty-per-dose"
+                                    type="number"
+                                    min="1"
+                                    value={medicineModal.quantityPerDose}
+                                    onChange={(e) =>
+                                      setMedicineModal((prev) => ({
+                                        ...prev,
+                                        quantityPerDose: e.target.value,
+                                      }))
+                                    }
+                                    className="w-full border p-2 rounded text-sm"
+                                  />
+                                </div>
+                              )}
                               <div>
                                 <span className="block text-sm font-medium mb-1">Frequency</span>
                                 <div className="w-full border p-2 rounded">
@@ -1242,6 +1361,8 @@ const IpdDetails = () => {
                                   try {
                                     const payload = {
                                       medicineId: medicineModal.medicineId,
+                                      hospitalItemName: medicineModal.hospitalItemName,
+                                      quantityPerDose: Number(medicineModal.quantityPerDose) || 1,
                                       medicineName: medicineModal.medicineName,
                                       type: medicineModal.type,
                                       route: medicineModal.route,
@@ -1263,6 +1384,7 @@ const IpdDetails = () => {
                                     await hospitalService.addIpdPrescription(id, payload);
                                     success('Medicine prescribed successfully');
                                     setMedicineModal((prev) => ({ ...prev, isOpen: false }));
+                                    setMedChartVersion((v) => v + 1);
                                     await load(false); // Silent reload to show updated prescriptions
                                   } catch (err) {
                                     console.error('Failed to add medicine', err);
@@ -1278,496 +1400,7 @@ const IpdDetails = () => {
                               </button>
                             </div>
                           </>
-                        )}
-
-                        {medicineTab === 'administer' && (
-                          <>
-                            <div className="bg-slate-50 p-3 rounded-lg border border-gray-200 mb-3 space-y-3">
-                              <div>
-                                <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wide">
-                                  Administered Clinical Stock Items
-                                </h4>
-                                <p className="text-[10px] text-gray-500 mt-0.5">
-                                  Deducted from physical stock and billed to patient.
-                                </p>
-                              </div>
-
-                              <div className="relative">
-                                <input
-                                  type="text"
-                                  placeholder="Search active inventory stock..."
-                                  value={searchQuery}
-                                  onChange={(e) => {
-                                    setSearchQuery(e.target.value);
-                                    setShowSuggestions(true);
-                                  }}
-                                  onFocus={() => setShowSuggestions(true)}
-                                  className="w-full border border-gray-300 p-2 text-xs rounded outline-none bg-white"
-                                />
-
-                                {showSuggestions && searchQuery.trim().length >= 1 && (
-                                  <div className="absolute left-0 right-0 mt-1 max-h-40 overflow-auto bg-white rounded border border-gray-200 shadow-lg z-50 divide-y divide-gray-100">
-                                    {inventory
-                                      .filter(
-                                        (item) =>
-                                          item &&
-                                          item.name &&
-                                          item.name
-                                            .toLowerCase()
-                                            .includes(searchQuery.toLowerCase().trim())
-                                      )
-                                      .map((item) => (
-                                        <button
-                                          key={item.id}
-                                          type="button"
-                                          onClick={() => {
-                                            const existing = administeredList.find(
-                                              (x) => x.medicineId === item.id
-                                            );
-                                            if (existing) {
-                                              if (existing.quantity < item.stockQuantity) {
-                                                setAdministeredList((prev) =>
-                                                  prev.map((x) =>
-                                                    x.medicineId === item.id
-                                                      ? { ...x, quantity: x.quantity + 1 }
-                                                      : x
-                                                  )
-                                                );
-                                              } else {
-                                                toastError(
-                                                  `Cannot add more. Only ${item.stockQuantity} units available.`
-                                                );
-                                              }
-                                            } else {
-                                              setAdministeredList((prev) => [
-                                                ...prev,
-                                                {
-                                                  medicineId: item.id,
-                                                  medicineName: item.name,
-                                                  quantity: 1,
-                                                  maxStock: item.stockQuantity,
-                                                },
-                                              ]);
-                                            }
-                                            setSearchQuery('');
-                                            setShowSuggestions(false);
-                                          }}
-                                          className="w-full text-left px-3 py-2 hover:bg-slate-50 flex justify-between items-center text-xs"
-                                        >
-                                          <div>
-                                            <span className="font-semibold text-gray-800">
-                                              {item.name}
-                                            </span>
-                                          </div>
-                                          <span className="text-[10px] text-gray-500 font-bold">
-                                            Stock: {item.stockQuantity}
-                                          </span>
-                                        </button>
-                                      ))}
-                                    {inventory.filter(
-                                      (item) =>
-                                        item &&
-                                        item.name &&
-                                        item.name
-                                          .toLowerCase()
-                                          .includes(searchQuery.toLowerCase().trim())
-                                    ).length === 0 && (
-                                      <div className="p-2 text-center text-xs text-gray-400">
-                                        No matching stock found.
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-
-                              {administeredList.length > 0 && (
-                                <div className="border border-gray-200 rounded overflow-hidden bg-white max-h-48 overflow-y-auto">
-                                  <table className="min-w-full text-xs">
-                                    <thead className="bg-slate-50 text-gray-500 font-medium border-b border-gray-200">
-                                      <tr>
-                                        <th className="px-3 py-1.5 text-left">Item</th>
-                                        <th className="px-3 py-1.5 text-center">Qty</th>
-                                        <th className="px-3 py-1.5 text-right">Action</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                      {administeredList.map((item) => (
-                                        <tr key={item.medicineId} className="hover:bg-slate-50/50">
-                                          <td className="px-3 py-2 font-semibold text-gray-800">
-                                            {item.medicineName}
-                                          </td>
-                                          <td className="px-3 py-2 text-center">
-                                            <div className="inline-flex items-center gap-1.5">
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  if (item.quantity > 1) {
-                                                    setAdministeredList((prev) =>
-                                                      prev.map((x) =>
-                                                        x.medicineId === item.medicineId
-                                                          ? { ...x, quantity: x.quantity - 1 }
-                                                          : x
-                                                      )
-                                                    );
-                                                  }
-                                                }}
-                                                disabled={item.quantity <= 1}
-                                                className="w-5 h-5 flex items-center justify-center border border-gray-300 rounded text-gray-500 hover:bg-slate-100 disabled:opacity-50"
-                                              >
-                                                -
-                                              </button>
-                                              <span className="font-bold text-xs w-4 text-center">
-                                                {item.quantity}
-                                              </span>
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  if (item.quantity < item.maxStock) {
-                                                    setAdministeredList((prev) =>
-                                                      prev.map((x) =>
-                                                        x.medicineId === item.medicineId
-                                                          ? { ...x, quantity: x.quantity + 1 }
-                                                          : x
-                                                      )
-                                                    );
-                                                  } else {
-                                                    toastError(`Only ${item.maxStock} available.`);
-                                                  }
-                                                }}
-                                                className="w-5 h-5 flex items-center justify-center border border-gray-300 rounded text-gray-500 hover:bg-slate-100"
-                                              >
-                                                +
-                                              </button>
-                                            </div>
-                                          </td>
-                                          <td className="px-3 py-2 text-right">
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                setAdministeredList((prev) =>
-                                                  prev.filter(
-                                                    (x) => x.medicineId !== item.medicineId
-                                                  )
-                                                );
-                                              }}
-                                              className="text-red-500 hover:text-red-700 font-semibold"
-                                            >
-                                              Remove
-                                            </button>
-                                          </td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex justify-end gap-3 mt-4">
-                              <button
-                                onClick={() =>
-                                  setMedicineModal((prev) => ({ ...prev, isOpen: false }))
-                                }
-                                className="px-3 py-1 bg-gray-100 rounded text-sm"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                onClick={async () => {
-                                  if (administeredList.length === 0)
-                                    return toastError('No stock items selected');
-                                  setMedicineModal((prev) => ({ ...prev, saving: true }));
-                                  try {
-                                    const itemsPayload = administeredList.map((item) => ({
-                                      medicineId: item.medicineId,
-                                      medicineName: item.medicineName,
-                                      quantity: item.quantity,
-                                    }));
-                                    await hospitalService.administerIpdItems(id, itemsPayload);
-                                    success('Stock items administered successfully');
-                                    setMedicineModal((prev) => ({ ...prev, isOpen: false }));
-                                    setLoading(true);
-                                    const resp = await hospitalService.getIpdDetails(id);
-                                    setData(resp);
-                                  } catch (err) {
-                                    console.error('Failed to administer items', err);
-                                    toastError(parseError(err, 'Failed to administer items'));
-                                  } finally {
-                                    setMedicineModal((prev) => ({ ...prev, saving: false }));
-                                    setLoading(false);
-                                  }
-                                }}
-                                disabled={medicineModal.saving}
-                                className="px-3 py-1 bg-blue-600 text-white rounded text-sm"
-                              >
-                                {medicineModal.saving ? 'Administering...' : 'Administer Stock'}
-                              </button>
-                            </div>
-                          </>
-                        )}
-
-                        {medicineTab === 'hospital-item' && (
-                          <>
-                            <div className="bg-slate-50 p-3 rounded-lg border border-gray-200 mb-3 space-y-3">
-                              <div>
-                                <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wide">
-                                  Administered Hospital Stock Items
-                                </h4>
-                                <p className="text-[10px] text-gray-500 mt-0.5">
-                                  Deducted from physical stock and added to IPD bill.
-                                </p>
-                              </div>
-
-                              <div className="relative">
-                                <input
-                                  type="text"
-                                  placeholder="Search hospital inventory stock (saline, injections, gloves...)..."
-                                  value={hospitalInvSearch}
-                                  onChange={(e) => {
-                                    setHospitalInvSearch(e.target.value);
-                                    setHospitalInvDropdown(true);
-                                  }}
-                                  onFocus={() => setHospitalInvDropdown(true)}
-                                  onBlur={() =>
-                                    setTimeout(() => setHospitalInvDropdown(false), 200)
-                                  }
-                                  className="w-full border border-gray-300 p-2 text-xs rounded outline-none bg-white"
-                                />
-
-                                {hospitalInvDropdown && hospitalInvSearch.trim().length >= 1 && (
-                                  <div className="absolute left-0 right-0 mt-1 max-h-40 overflow-auto bg-white rounded border border-gray-200 shadow-lg z-50 divide-y divide-gray-100">
-                                    {hospitalInventory
-                                      .filter(
-                                        (item) =>
-                                          item &&
-                                          item.name &&
-                                          item.name
-                                            .toLowerCase()
-                                            .includes(hospitalInvSearch.toLowerCase().trim())
-                                      )
-                                      .map((item) => {
-                                        const catItem = hospitalInventoryCatalog.find(
-                                          (c) => c.name?.toLowerCase() === item.name?.toLowerCase()
-                                        );
-                                        const linkedFeeId = catItem?.linkedFeeId || null;
-                                        return (
-                                          <button
-                                            key={item.id}
-                                            type="button"
-                                            onMouseDown={() => {
-                                              const existing = hospitalInvItems.find(
-                                                (x) => x.stockId === item.id
-                                              );
-                                              if (existing) {
-                                                if (existing.qty < item.stockQuantity) {
-                                                  setHospitalInvItems((prev) =>
-                                                    prev.map((x) =>
-                                                      x.stockId === item.id
-                                                        ? { ...x, qty: x.qty + 1 }
-                                                        : x
-                                                    )
-                                                  );
-                                                } else {
-                                                  toastError(
-                                                    `Cannot add more. Only ${item.stockQuantity} units available.`
-                                                  );
-                                                }
-                                              } else {
-                                                let feeName = null,
-                                                  feeAmount = 0;
-                                                if (linkedFeeId) {
-                                                  const fee = availableCustomFees.find(
-                                                    (f) => String(f.id) === String(linkedFeeId)
-                                                  );
-                                                  if (fee) {
-                                                    feeName = fee.name;
-                                                    feeAmount = Number(fee.defaultAmount);
-                                                  }
-                                                }
-                                                setHospitalInvItems((prev) => [
-                                                  ...prev,
-                                                  {
-                                                    stockId: item.id,
-                                                    name: item.name,
-                                                    qty: 1,
-                                                    maxStock: item.stockQuantity,
-                                                    linkedFeeId,
-                                                    feeName: feeName || item.name,
-                                                    feeAmount,
-                                                  },
-                                                ]);
-                                              }
-                                              setHospitalInvSearch('');
-                                              setHospitalInvDropdown(false);
-                                            }}
-                                            className="w-full text-left px-3 py-2 hover:bg-slate-50 flex justify-between items-center text-xs"
-                                          >
-                                            <div>
-                                              <span className="font-semibold text-gray-800">
-                                                {item.name}
-                                              </span>
-                                              {catItem?.linkedFeeId && (
-                                                <span className="ml-2 text-[10px] text-teal-600 font-bold border border-teal-200 bg-teal-50 px-1 rounded">
-                                                  +fee
-                                                </span>
-                                              )}
-                                            </div>
-                                            <span className="text-[10px] text-gray-500 font-bold">
-                                              Stock: {item.stockQuantity}
-                                            </span>
-                                          </button>
-                                        );
-                                      })}
-                                    {hospitalInventory.filter(
-                                      (item) =>
-                                        item &&
-                                        item.name &&
-                                        item.name
-                                          .toLowerCase()
-                                          .includes(hospitalInvSearch.toLowerCase().trim())
-                                    ).length === 0 && (
-                                      <div className="p-2 text-center text-xs text-gray-400">
-                                        No matching hospital stock found.
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-
-                              {hospitalInvItems.length > 0 && (
-                                <div className="border border-gray-200 rounded overflow-hidden bg-white max-h-48 overflow-y-auto">
-                                  <table className="min-w-full text-xs">
-                                    <thead className="bg-slate-50 text-gray-500 font-medium border-b border-gray-200">
-                                      <tr>
-                                        <th className="px-3 py-1.5 text-left">Item</th>
-                                        <th className="px-3 py-1.5 text-center">Qty</th>
-                                        <th className="px-3 py-1.5 text-right">Fee Charge</th>
-                                        <th className="px-3 py-1.5 text-right">Action</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                      {hospitalInvItems.map((item) => (
-                                        <tr key={item.stockId} className="hover:bg-slate-50/50">
-                                          <td className="px-3 py-2 font-semibold text-gray-800">
-                                            {item.name}
-                                          </td>
-                                          <td className="px-3 py-2 text-center">
-                                            <div className="inline-flex items-center gap-1.5">
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  if (item.qty > 1) {
-                                                    setHospitalInvItems((prev) =>
-                                                      prev.map((x) =>
-                                                        x.stockId === item.stockId
-                                                          ? { ...x, qty: x.qty - 1 }
-                                                          : x
-                                                      )
-                                                    );
-                                                  }
-                                                }}
-                                                disabled={item.qty <= 1}
-                                                className="w-5 h-5 flex items-center justify-center border border-gray-300 rounded text-gray-500 hover:bg-slate-100 disabled:opacity-50"
-                                              >
-                                                -
-                                              </button>
-                                              <span className="font-bold text-xs w-4 text-center">
-                                                {item.qty}
-                                              </span>
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  if (item.qty < item.maxStock) {
-                                                    setHospitalInvItems((prev) =>
-                                                      prev.map((x) =>
-                                                        x.stockId === item.stockId
-                                                          ? { ...x, qty: x.qty + 1 }
-                                                          : x
-                                                      )
-                                                    );
-                                                  } else {
-                                                    toastError(`Only ${item.maxStock} available.`);
-                                                  }
-                                                }}
-                                                className="w-5 h-5 flex items-center justify-center border border-gray-300 rounded text-gray-500 hover:bg-slate-100"
-                                              >
-                                                +
-                                              </button>
-                                            </div>
-                                          </td>
-                                          <td className="px-3 py-2 text-right text-teal-700 font-bold">
-                                            {item.feeAmount
-                                              ? `₹${item.feeAmount * item.qty}`
-                                              : 'No Charge'}
-                                          </td>
-                                          <td className="px-3 py-2 text-right">
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                setHospitalInvItems((prev) =>
-                                                  prev.filter((x) => x.stockId !== item.stockId)
-                                                );
-                                              }}
-                                              className="text-red-500 hover:text-red-700 font-semibold"
-                                            >
-                                              Remove
-                                            </button>
-                                          </td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex justify-end gap-3 mt-4">
-                              <button
-                                onClick={() =>
-                                  setMedicineModal((prev) => ({ ...prev, isOpen: false }))
-                                }
-                                className="px-3 py-1 bg-gray-100 rounded text-sm"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                onClick={async () => {
-                                  if (hospitalInvItems.length === 0)
-                                    return toastError('No hospital items selected');
-                                  setMedicineModal((prev) => ({ ...prev, saving: true }));
-                                  try {
-                                    const itemsPayload = hospitalInvItems.map((item) => ({
-                                      stockId: item.stockId,
-                                      name: item.name,
-                                      quantity: item.qty,
-                                      feeName: item.feeName,
-                                      feeAmount: item.feeAmount,
-                                    }));
-                                    await hospitalService.administerIpdHospitalItems(
-                                      id,
-                                      itemsPayload
-                                    );
-                                    success('Hospital items administered successfully');
-                                    setMedicineModal((prev) => ({ ...prev, isOpen: false }));
-                                    setLoading(true);
-                                    const resp = await hospitalService.getIpdDetails(id);
-                                    setData(resp);
-                                  } catch (err) {
-                                    console.error('Failed to administer hospital items', err);
-                                    toastError(
-                                      parseError(err, 'Failed to administer hospital items')
-                                    );
-                                  } finally {
-                                    setMedicineModal((prev) => ({ ...prev, saving: false }));
-                                    setLoading(false);
-                                  }
-                                }}
-                                disabled={medicineModal.saving}
-                                className="px-3 py-1 bg-blue-600 text-white rounded text-sm"
-                              >
-                                {medicineModal.saving ? 'Administering...' : 'Administer Items'}
-                              </button>
-                            </div>
-                          </>
-                        )}
+                        }
                       </div>
                     </div>
                   )}
@@ -1874,36 +1507,37 @@ const IpdDetails = () => {
                           </div>
                         )}
 
-                      {isDoctor &&
-                        data.status !== 'DISCHARGE_PLANNED' &&
-                        data.status !== 'DISCHARGED' && (
-                          <div className="mt-3">
-                            <button
-                              className="px-3 py-1 bg-blue-600 text-white rounded"
-                              onClick={onAddMedicine}
-                            >
-                              + Add Medicine
-                            </button>
-                          </div>
-                        )}
+                      {isDoctor && data.status !== 'DISCHARGED' && (
+                        <div className="mt-3">
+                          <button
+                            className="px-3 py-1 bg-blue-600 text-white rounded"
+                            onClick={onAddMedicine}
+                          >
+                            + Add Medicine
+                          </button>
+                        </div>
+                      )}
 
-                      {/* Medication Administration Record — read-only here; nurses record it. */}
+                      {/* Medication Administration Record — recorded here by whoever the hospital allows
+                          (Settings → who may record medicines). */}
                       <hr className="my-4" />
                       <h3 className="font-semibold mb-2">
                         Medication Administration History (MAR)
                       </h3>
-                      <MedicationPanel admissionId={admissionId} readOnly />
+                      <MedicationPanel key={medChartVersion} admissionId={admissionId} />
 
                       {/* Continuous infusions sit with the MAR. Unlike the MAR above — which is
                           read-only here because nurses record administration — infusions follow
                           Files & Access like every other panel on this page, so whoever the
                           server lets edit MEDICATION can start and titrate one from the case. */}
                       <hr className="my-4" />
-                      <InfusionPanel
-                        admissionId={admissionId}
-                        readOnly={verdictFor('medication') === 'READ_ONLY'}
-                        refreshKey={panelRefreshKey}
-                      />
+                      {hasIcuModule && (
+                        <InfusionPanel
+                          admissionId={admissionId}
+                          readOnly={verdictFor('medication') === 'READ_ONLY'}
+                          refreshKey={panelRefreshKey}
+                        />
+                      )}
                     </>
                   )}
                 </div>
@@ -1911,7 +1545,9 @@ const IpdDetails = () => {
                 <aside className="bg-white border rounded p-4">
                   {/* Discharge + Create Surgery Request now live in the case header (top right). */}
                   {/* ICU-10: renders nothing unless this admission has an ICU stay. */}
-                  <IcuStayCard admissionId={admissionId} refreshKey={panelRefreshKey} />
+                  {hasIcuModule && (
+                    <IcuStayCard admissionId={admissionId} refreshKey={panelRefreshKey} />
+                  )}
                   {hasOT && otSurgery && (
                     <>
                       <h3 className="font-semibold mb-2">Operation Theatre</h3>
@@ -1998,6 +1634,11 @@ const IpdDetails = () => {
                           <div>
                             <strong>Total:</strong> ₹{data.billing.totalAmount}
                           </div>
+                          {Number(data.billing.discountAmount) > 0 && (
+                            <div className="text-emerald-700">
+                              <strong>Discount:</strong> ₹{data.billing.discountAmount} (included)
+                            </div>
+                          )}
                           <div>
                             <strong>Paid:</strong> ₹{data.billing.paidAmount}
                           </div>
@@ -2010,10 +1651,22 @@ const IpdDetails = () => {
                       )}
                       <div className="mt-3 flex gap-2">
                         <button
-                          className="px-3 py-1 bg-green-600 text-white rounded"
+                          className="px-3 py-1 bg-green-700 text-white rounded hover:bg-green-800"
                           onClick={openBillModal}
                         >
                           Take Payment
+                        </button>
+                        <button
+                          className="px-3 py-1 border border-gray-300 text-gray-700 rounded hover:bg-gray-50"
+                          onClick={async () => {
+                            try {
+                              setDiscountBill(await hospitalService.getIpdBill(id));
+                            } catch (err) {
+                              toastError(parseError(err, 'Could not load the bill'));
+                            }
+                          }}
+                        >
+                          Discount
                         </button>
                         <button
                           className="px-3 py-1 bg-gray-600 text-white rounded disabled:opacity-50"
@@ -2089,6 +1742,26 @@ const IpdDetails = () => {
                 />
               )}
 
+              {changeDoctorOpen && (
+                <ChangeDoctorModal
+                  title="Change attending doctor"
+                  subtitle={`${data.patient?.name || ''} · now under ${data.admission?.doctor || 'no doctor'}`}
+                  currentDoctorId={data.admission?.doctorId}
+                  onSave={(doctorId) => hospitalService.changeIpdDoctor(id, doctorId)}
+                  onClose={() => setChangeDoctorOpen(false)}
+                  onDone={() => load(false)}
+                />
+              )}
+              {confirmDischargeOpen && (
+                <ConfirmDischargeModal
+                  initialType={data.dischargeType}
+                  initialNote={data.dischargeNote}
+                  owing={owingText()}
+                  onClose={() => setConfirmDischargeOpen(false)}
+                  onConfirm={doConfirmDischarge}
+                />
+              )}
+
               {/* Discharge Modal */}
               {dischargeModal.isOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
@@ -2136,6 +1809,15 @@ const IpdDetails = () => {
                         rows={3}
                       />
                     </div>
+                    <DischargeTypeFields
+                      type={dischargeModal.dischargeType || 'NORMAL'}
+                      note={dischargeModal.dischargeTypeNote || ''}
+                      onType={(v) => setDischargeModal((prev) => ({ ...prev, dischargeType: v }))}
+                      onNote={(v) =>
+                        setDischargeModal((prev) => ({ ...prev, dischargeTypeNote: v }))
+                      }
+                      idPrefix="plan-dt"
+                    />
                     <div className="mb-3">
                       <label htmlFor="fld-120" className="block text-sm font-medium mb-1">
                         Follow-up Date
@@ -2264,6 +1946,12 @@ const IpdDetails = () => {
                         <div className="mb-3 text-sm">
                           <div>
                             <strong>Total:</strong> ₹{billModal.bill.totalAmount}
+                            {Number(billModal.bill.discountAmount) > 0 && (
+                              <span className="text-emerald-700 text-xs">
+                                {' '}
+                                (after ₹{billModal.bill.discountAmount} discount)
+                              </span>
+                            )}
                           </div>
                           <div>
                             <strong>Paid:</strong> ₹{billModal.bill.paidAmount}
@@ -2306,6 +1994,23 @@ const IpdDetails = () => {
                               <option value="UPI">UPI</option>
                             </select>
                           </div>
+                          {payment.mode !== 'CASH' && (
+                            <input
+                              value={payment.reference || ''}
+                              onChange={(e) =>
+                                setPayment((prev) => ({ ...prev, reference: e.target.value }))
+                              }
+                              aria-label={
+                                payment.mode === 'UPI' ? 'UTR / reference' : 'Card reference'
+                              }
+                              placeholder={
+                                payment.mode === 'UPI'
+                                  ? 'UTR / transaction reference (required)'
+                                  : 'Card reference / last 4 digits (optional)'
+                              }
+                              className="border p-2 rounded w-full mt-3"
+                            />
+                          )}
                           {Number(payment.amount) > billModal.bill.balance && (
                             <p className="text-xs text-amber-600 font-semibold mt-2">
                               ⚠️ Warning: The bill is less than the payment amount
@@ -2333,7 +2038,14 @@ const IpdDetails = () => {
                                 }
                                 setPayment((prev) => ({ ...prev, saving: true }));
                                 try {
-                                  const payload = { amount: amountVal, mode: payment.mode };
+                                  if (payment.mode === 'UPI' && !(payment.reference || '').trim()) {
+                                    return toastError('Enter the UPI UTR / reference');
+                                  }
+                                  const payload = {
+                                    amount: amountVal,
+                                    mode: payment.mode,
+                                    reference: (payment.reference || '').trim() || null,
+                                  };
                                   const resp = await hospitalService.payBilling(
                                     billModal.bill.billingId,
                                     payload
@@ -2354,7 +2066,7 @@ const IpdDetails = () => {
                               }}
                               disabled={payment.saving}
                               title={payment.saving ? 'Recording payment…' : undefined}
-                              className="px-3 py-1 bg-green-600 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="px-3 py-1 bg-green-700 text-white rounded hover:bg-green-800 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               {payment.saving ? 'Recording…' : 'Paid'}
                             </button>
@@ -2455,6 +2167,16 @@ const IpdDetails = () => {
       {/* Profile Settings Modal */}
       <ProfileModal isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
 
+      {discountBill && (
+        <DiscountModal
+          bill={{ ...discountBill, patientName: data?.patient?.name }}
+          onClose={() => setDiscountBill(null)}
+          onDone={async () => {
+            setDiscountBill(null);
+            await load(false);
+          }}
+        />
+      )}
       <ConfirmationModal
         isOpen={confirmState.open}
         title={confirmState.title}

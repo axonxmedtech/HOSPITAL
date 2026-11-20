@@ -47,6 +47,7 @@ public class PlatformPlanService {
         plan.setFeatures(req.getFeatures() != null ? req.getFeatures() : new ArrayList<>());
         plan.setInClinic(Boolean.TRUE.equals(req.getInClinic()));
         applyOutletSettings(plan, req);
+        plan.setLimits(com.hms.service.subscription.PlanLimitService.normalisePlanLimits(req.getLimits()));
         ensurePharmacyBaseModule(plan);
         plan.setIsActive(true);
         Plan saved = planRepository.save(plan);
@@ -97,6 +98,11 @@ public class PlatformPlanService {
         if (req.getFeatures() != null) {
             plan.getFeatures().clear();
             plan.getFeatures().addAll(req.getFeatures());
+        }
+        // Lowering a limit never removes anything a hospital already has; it only stops adding.
+        if (req.getLimits() != null) {
+            plan.getLimits().clear();
+            plan.getLimits().putAll(com.hms.service.subscription.PlanLimitService.normalisePlanLimits(req.getLimits()));
         }
         ensurePharmacyBaseModule(plan);
 

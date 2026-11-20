@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { SkeletonDashboard } from '../../../components/Skeleton';
 import { useToast } from '../../../context/ToastContext';
 import reportsApi from '../../../services/pharmacy/reportsApi';
+import { localIsoDate } from '../../../utils/date';
 
 const ReportsView = () => {
   const { success, error: toastError } = useToast();
@@ -59,10 +60,7 @@ const ReportsView = () => {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute(
-        'download',
-        `pharmacy_tax_ledger_${new Date().toISOString().slice(0, 10)}.csv`
-      );
+      link.setAttribute('download', `pharmacy_tax_ledger_${localIsoDate()}.csv`);
       document.body.appendChild(link);
       link.click();
       link.remove();

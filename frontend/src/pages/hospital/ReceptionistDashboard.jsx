@@ -3,6 +3,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import ActionMenu from '../../components/ActionMenu';
 import AppointmentModal from '../../components/AppointmentModal';
+import DailyCollectionReport from '../../components/billing/DailyCollectionReport';
+import OpdBillCell from '../../components/billing/OpdBillCell';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import DataTable from '../../components/DataTable';
 import DateSelect from '../../components/DateSelect';
@@ -15,6 +17,8 @@ import IpdAdmitModal from '../../components/IpdAdmitModal';
 import LowStockBanner from '../../components/LowStockBanner';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
 import Navbar from '../../components/Navbar';
+import NoDoctorsHint from '../../components/NoDoctorsHint';
+import OpdVisitActions from '../../components/opd/OpdVisitActions';
 import OpdPaymentFields, {
   isPayFirst,
   validateOpdPayment,
@@ -35,12 +39,10 @@ import StatusBadge from '../../components/StatusBadge';
 import { useToast } from '../../context/ToastContext';
 import useDebounce from '../../hooks/useDebounce'; // BUG-017: standardised debounce hook
 import useEnabledVitals from '../../hooks/useEnabledVitals';
-import useOtPermissions from '../../hooks/useOtPermissions';
 import useWebSocket from '../../hooks/useWebSocket';
 import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
 // BUG-028: single source-of-truth for base URL
-import otService from '../../services/otService';
 import { extractApiError, safeLoadMessage } from '../../utils/apiError';
 import { canManageBilling } from '../../utils/billingAccess';
 import { formatDateTime, formatTime } from '../../utils/date';
@@ -51,17 +53,8 @@ import { validateForm } from '../../utils/validation';
 import BillingTable from './BillingTable';
 import IcuBedBoard from './icu/IcuBedBoard';
 import IcuDashboard from './icu/IcuDashboard';
-import AnaesthesiaClearanceModal from './ot/AnaesthesiaClearanceModal';
-import DayCareSurgeryModal from './ot/DayCareSurgeryModal';
-import OtAnalyticsStrip from './ot/OtAnalyticsStrip';
-import OtBoard from './ot/OtBoard';
-import OtDayBoard from './ot/OtDayBoard';
-import OtListPrint from './ot/OtListPrint';
-import RecoveryModal from './ot/RecoveryModal';
-import ScheduleSurgeryModal from './ot/ScheduleSurgeryModal';
-import SurgeryExecutionModal from './ot/SurgeryExecutionModal';
-import SurgeryTeamModal from './ot/SurgeryTeamModal';
 import IcuDashboardView from './IcuDashboardView';
+import OtWorkspace from './ot/OtWorkspace';
 
 const ReceptionistDashboard = () => {
   const [user, setUser] = useState(() => authService.getCurrentUser());
@@ -217,6 +210,9 @@ const ReceptionistDashboard = () => {
     amount: null,
     patientName: '',
   });
+  // UTR for an Online/UPI collection, typed in the dialog. It used to be a window.prompt(),
+  // which looks like a browser error in front of a patient and is blocked by some browsers.
+  const [upiRef, setUpiRef] = useState('');
 
   // Payment Success Modal State
   const [paymentSuccessModal, setPaymentSuccessModal] = useState({
@@ -280,18 +276,7 @@ const ReceptionistDashboard = () => {
   // Patient Details Modal
   const [patientDetailsModal, setPatientDetailsModal] = useState({ isOpen: false, patient: null });
 
-  // OT (Operation Theatre) tab
-  const [otFilter, setOtFilter] = useState('board'); // 'board' | 'day' | 'requests'
-  const [isDayCareModalOpen, setIsDayCareModalOpen] = useState(false);
-  const [isOtListOpen, setIsOtListOpen] = useState(false);
-  const [otTeamTarget, setOtTeamTarget] = useState(null);
-  const [otExecTarget, setOtExecTarget] = useState(null);
-  const [otRecoveryTarget, setOtRecoveryTarget] = useState(null);
-  const { can: canOt } = useOtPermissions();
-  const [otRows, setOtRows] = useState([]);
-  const [otLoading, setOtLoading] = useState(false);
-  const [otScheduleTarget, setOtScheduleTarget] = useState(null);
-  const [otAnaesthesiaTarget, setOtAnaesthesiaTarget] = useState(null);
+  // OT (Operation Theatre) tab: see ot/OtWorkspace.
 
   const { success, error: toastError, info } = useToast();
   const navigate = useNavigate();
@@ -338,19 +323,6 @@ const ReceptionistDashboard = () => {
       setOpdForm((prev) => ({ ...prev, doctorId: doctors[0].id }));
     }
   }, [isOpdModalOpen, doctors]);
-
-  const loadOt = React.useCallback(() => {
-    if (!hasOT) return;
-    setOtLoading(true);
-    const p = otFilter === 'requests' ? otService.getRequests() : otService.getBoard();
-    p.then((d) => setOtRows(Array.isArray(d) ? d : []))
-      .catch(() => setOtRows([]))
-      .finally(() => setOtLoading(false));
-  }, [hasOT, otFilter]);
-
-  useEffect(() => {
-    if (activeTab === 'ot') loadOt();
-  }, [activeTab, otFilter, loadOt]);
 
   /**
    * Appointment reads that must never take the desk down — see utils/optionalModule. This is the
@@ -713,6 +685,7 @@ const ReceptionistDashboard = () => {
   const handleBillStatus = async (id, status, billObj = null) => {
     // Open payment modal when marking PAID from receptionist
     if (status === 'PAID') {
+      setUpiRef('');
       setPaymentModal({
         isOpen: true,
         billId: id,
@@ -941,6 +914,7 @@ const ReceptionistDashboard = () => {
       toastError('No bill found for this patient.');
       return;
     }
+    setUpiRef('');
     setPaymentModal({
       isOpen: true,
       billId: patient.latestBill.id,
@@ -958,8 +932,8 @@ const ReceptionistDashboard = () => {
       const pm = method === 'Online' ? 'UPI' : 'CASH';
       let reference = null;
       if (pm === 'UPI') {
-        reference = window.prompt('Enter UTR / transaction reference (required for UPI):');
-        if (!reference || !reference.trim()) {
+        reference = upiRef.trim();
+        if (!reference) {
           toastError('UTR / reference is required for UPI payments');
           setPaymentProcessing(false);
           return;
@@ -967,6 +941,7 @@ const ReceptionistDashboard = () => {
       }
       await hospitalService.updateBillStatus(paymentModal.billId, 'PAID', pm, reference);
       // Close Payment Modal
+      setUpiRef('');
       setPaymentModal({ isOpen: false, billId: null, amount: null, patientName: '' });
 
       // Open Success Modal immediately
@@ -1005,8 +980,9 @@ const ReceptionistDashboard = () => {
     ...(hasOPD ? [{ id: 'opd', label: 'OPD', icon: null }] : []),
     ...(hasOPD ? [{ id: 'follow-ups', label: 'Follow-ups', icon: null }] : []),
     ...(hasIPD ? [{ id: 'ipd', label: 'IPD', icon: null }] : []),
-    ...(hasIPD ? [{ id: 'icu', label: 'ICU', icon: null }] : []),
+    ...(hasIPD && hasICU ? [{ id: 'icu', label: 'ICU', icon: null }] : []),
     ...(hasBilling ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
+    ...(hasBilling ? [{ id: 'daily-collection', label: 'Daily Collection', icon: null }] : []),
     ...(hasMedicalInventory && user?.inClinic !== false
       ? [{ id: 'inventory', label: 'Medicine Inventory', icon: null }]
       : []),
@@ -1236,7 +1212,6 @@ const ReceptionistDashboard = () => {
         footerData={user?.hospitalName}
         variant="plain"
         isCollapsed={sidebarCollapsed}
-        showOnMobile={true}
       />
 
       {/* Main Content */}
@@ -1249,7 +1224,7 @@ const ReceptionistDashboard = () => {
           onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
         />
 
-        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-8">
+        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-4 md:p-8">
           {loadError && (
             <div
               role="alert"
@@ -1356,7 +1331,7 @@ const ReceptionistDashboard = () => {
                           setActiveTab('ipd');
                           setIpdSubTab('requested');
                         }}
-                        className="text-xs font-semibold text-sky-600 hover:text-sky-800 hover:underline flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0"
+                        className="text-xs font-semibold text-sky-700 hover:text-sky-900 hover:underline flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0"
                       >
                         <span>View Requests</span>
                         <span>→</span>
@@ -1440,7 +1415,7 @@ const ReceptionistDashboard = () => {
                             className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
                               viewFilter === view
                                 ? 'bg-white text-gray-900 shadow-sm border border-gray-100'
-                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                                : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                             }`}
                           >
                             {view.charAt(0).toUpperCase() + view.slice(1)}
@@ -1452,7 +1427,7 @@ const ReceptionistDashboard = () => {
                     {/* Appointment List Content */}
                     <div className="flex-1 overflow-auto p-6 space-y-6">
                       <div>
-                        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
                           <span className="w-1.5 h-3 bg-gray-900 rounded-full"></span>
                           Active Appointments
                         </h4>
@@ -1643,14 +1618,16 @@ const ReceptionistDashboard = () => {
             </div>
           )}
 
+          {activeTab === 'daily-collection' && <DailyCollectionReport />}
+
           {/* Standardized Header */}
-          {activeTab !== 'overview' && (
+          {activeTab !== 'overview' && activeTab !== 'daily-collection' && (
             <PageHeader
               title={
                 tabs.find((t) => t.id === activeTab)?.label ||
                 activeTab.charAt(0).toUpperCase() + activeTab.slice(1)
               }
-              subtitle={`Manage ${activeTab} records`}
+              subtitle={`Manage ${tabs.find((t) => t.id === activeTab)?.label || activeTab} records`}
               onSearch={
                 activeTab === 'queue' || activeTab === 'hospital-inventory'
                   ? null
@@ -1665,7 +1642,6 @@ const ReceptionistDashboard = () => {
               onAdd={
                 activeTab === 'queue' ||
                 activeTab === 'billing' ||
-                activeTab === 'ipd' ||
                 activeTab === 'inventory' ||
                 activeTab === 'hospital-inventory' ||
                 activeTab === 'ot' ||
@@ -1673,10 +1649,21 @@ const ReceptionistDashboard = () => {
                   ? null
                   : () => {
                       if (activeTab === 'opd') setIsOpdModalOpen(true);
-                      else setIsAddModalOpen(true);
+                      else if (activeTab === 'ipd') {
+                        // Direct admission (emergency, or a patient sent in by an outside doctor):
+                        // reception used to be able to admit only after a doctor recommended it.
+                        setIpdOpdForAdmit(null);
+                        setIsIpdAdmitOpen(true);
+                      } else setIsAddModalOpen(true);
                     }
               }
-              addLabel={activeTab === 'opd' ? 'New OPD / Case' : `Add ${activeTab.slice(0, -1)}`}
+              addLabel={
+                activeTab === 'opd'
+                  ? 'New OPD / Case'
+                  : activeTab === 'ipd'
+                    ? 'Admit Patient'
+                    : `Add ${activeTab.slice(0, -1)}`
+              }
               filter={
                 activeTab === 'appointments' && hasAppointments ? (
                   <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
@@ -1687,7 +1674,7 @@ const ReceptionistDashboard = () => {
                         className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
                           viewFilter === view
                             ? 'bg-white text-primary-600 shadow-sm border border-gray-100'
-                            : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                            : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                         }`}
                       >
                         {view.charAt(0).toUpperCase() + view.slice(1)}
@@ -1696,7 +1683,7 @@ const ReceptionistDashboard = () => {
                   </div>
                 ) : activeTab === 'billing' ? (
                   <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
-                    {['PENDING', 'PAID', 'PARTIAL'].map((status) => (
+                    {['PENDING', 'PARTIAL', 'PAID', 'CANCELLED'].map((status) => (
                       <button
                         key={status}
                         onClick={() => {
@@ -1706,7 +1693,7 @@ const ReceptionistDashboard = () => {
                         className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
                           billingStatus === status
                             ? 'bg-white text-primary-600 shadow-sm border border-gray-100'
-                            : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                            : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                         }`}
                       >
                         {status.charAt(0) + status.slice(1).toLowerCase()}
@@ -1748,7 +1735,7 @@ const ReceptionistDashboard = () => {
                           className={`px-4 py-1 text-sm font-medium rounded-md transition-all ${
                             patientTabView === view
                               ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'
-                              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                              : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                           }`}
                         >
                           {view}
@@ -1757,6 +1744,7 @@ const ReceptionistDashboard = () => {
                     </div>
                     {patientTabView === 'Date' && (
                       <DateSelect
+                        filter
                         value={patientDateFilter}
                         onChange={(v) => {
                           setPatientDateFilter(v);
@@ -1768,7 +1756,7 @@ const ReceptionistDashboard = () => {
                       type="button"
                       onClick={handleDownloadPatientsReport}
                       disabled={loading}
-                      className="bg-sky-600 hover:bg-sky-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px]"
+                      className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px] whitespace-nowrap shrink-0"
                     >
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -1802,7 +1790,7 @@ const ReceptionistDashboard = () => {
                           className={`px-4 py-1 text-sm font-medium rounded-md transition-all ${
                             opdTabView === view
                               ? 'bg-white text-sky-600 shadow-sm border border-gray-100 font-semibold'
-                              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                              : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                           }`}
                         >
                           {view}
@@ -1811,6 +1799,7 @@ const ReceptionistDashboard = () => {
                     </div>
                     {opdTabView === 'Date' && (
                       <DateSelect
+                        filter
                         value={opdDateFilter}
                         onChange={(v) => {
                           setOpdDateFilter(v);
@@ -1822,7 +1811,7 @@ const ReceptionistDashboard = () => {
                       type="button"
                       onClick={handleDownloadOpdReport}
                       disabled={loading}
-                      className="bg-sky-600 hover:bg-sky-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px]"
+                      className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px] whitespace-nowrap shrink-0"
                     >
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -1858,7 +1847,7 @@ const ReceptionistDashboard = () => {
                         className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
                           ipdSubTab === sub.value
                             ? 'bg-white text-primary-600 shadow-sm border border-gray-100 font-semibold'
-                            : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                            : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                         }`}
                       >
                         {sub.label}
@@ -1886,7 +1875,7 @@ const ReceptionistDashboard = () => {
             </div>
           )}
 
-          {!loading && activeTab !== 'overview' && (
+          {!loading && activeTab !== 'overview' && activeTab !== 'daily-collection' && (
             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
               {activeTab === 'appointments' &&
                 hasAppointments &&
@@ -1913,7 +1902,6 @@ const ReceptionistDashboard = () => {
                     onAction={() => setIsAddModalOpen(true)}
                   />
                 ))}
-              {/* eslint-disable-next-line jsx-a11y/aria-role -- `role` is FollowUpPanel's own prop, not an ARIA role */}
               {activeTab === 'follow-ups' && <FollowUpPanel role="RECEPTIONIST" />}
               {activeTab === 'opd' &&
                 (opds.length > 0 ? (
@@ -1927,6 +1915,7 @@ const ReceptionistDashboard = () => {
                           <th className="px-4 py-2">Doctor</th>
                           <th className="px-4 py-2">Visit</th>
                           <th className="px-4 py-2">Created</th>
+                          <th className="px-4 py-2">Bill</th>
                           <th className="px-4 py-2">Actions</th>
                         </tr>
                       </thead>
@@ -1939,6 +1928,20 @@ const ReceptionistDashboard = () => {
                             <td className="px-4 py-3">{o.doctor?.name || '-'}</td>
                             <td className="px-4 py-3">{o.visitType}</td>
                             <td className="px-4 py-3">{formatDateTime(o.createdAt)}</td>
+                            <td className="px-4 py-3">
+                              <OpdBillCell
+                                opd={o}
+                                onChanged={() => loadData(false)}
+                                onPaid={(bill, result) =>
+                                  setPaymentSuccessModal({
+                                    isOpen: true,
+                                    billId: bill.id,
+                                    patientName: bill.patientName || '',
+                                    amount: Number(result?.collected ?? bill.balance),
+                                  })
+                                }
+                              />
+                            </td>
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-2">
                                 <button
@@ -1953,6 +1956,15 @@ const ReceptionistDashboard = () => {
                                 >
                                   Prescription
                                 </button>
+                                <OpdVisitActions opd={o} onChanged={() => loadData(false)} />
+                                {o.status === 'CANCELLED' && (
+                                  <span
+                                    className="px-2 py-0.5 text-xs font-semibold rounded-full bg-red-50 text-red-700"
+                                    title={o.cancelReason || undefined}
+                                  >
+                                    Cancelled
+                                  </span>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -2060,7 +2072,7 @@ const ReceptionistDashboard = () => {
                     <EmptyState
                       icon={null}
                       title="No IPD Admissions"
-                      message="No IPD admissions found."
+                      message="Use Admit Patient (top right) to admit a patient directly, or Admit on a doctor's admission request."
                     />
                   )
                 ) : opds.length > 0 ? (
@@ -2092,7 +2104,7 @@ const ReceptionistDashboard = () => {
                                   setIpdOpdForAdmit(o);
                                   setIsIpdAdmitOpen(true);
                                 }}
-                                className="px-3 py-1 bg-green-600 text-white rounded text-xs font-semibold hover:bg-green-700 transition"
+                                className="px-3 py-1 bg-green-700 text-white rounded text-xs font-semibold hover:bg-green-800 transition"
                               >
                                 Admit to IPD
                               </button>
@@ -2189,6 +2201,15 @@ const ReceptionistDashboard = () => {
                   onPrint={handlePrintReceipt}
                   printingBillId={recPrintingId}
                   onEditItems={handleOpenEditBillItems}
+                  onChanged={() => loadData(false)}
+                  onPaid={(bill, result) =>
+                    setPaymentSuccessModal({
+                      isOpen: true,
+                      billId: bill.id,
+                      patientName: bill.patientName || '',
+                      amount: Number(result?.collected ?? bill.balance ?? bill.amount),
+                    })
+                  }
                 />
               )}
               {activeTab === 'inventory' && <MedicineInventoryTab hidePrescribingColumns />}
@@ -2198,201 +2219,7 @@ const ReceptionistDashboard = () => {
                 <IcuDashboard onOpenBedBoard={() => setActiveTab('icu-beds')} />
               )}
               {activeTab === 'icu-beds' && <IcuBedBoard />}
-              {activeTab === 'ot' && (
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    {/* Rendered by capability, not by role: a hospital grants OT_CREATE
-                                            to whoever books its day-care lists. */}
-                    <div className="flex items-center gap-2">
-                      {canOt('OT_CREATE') && (
-                        <button
-                          onClick={() => setIsDayCareModalOpen(true)}
-                          className="px-4 py-2 rounded-lg text-sm font-semibold bg-gray-900 text-white hover:bg-gray-800"
-                        >
-                          + Day-Care Surgery
-                        </button>
-                      )}
-                      <button
-                        onClick={() => setIsOtListOpen(true)}
-                        className="px-4 py-2 rounded-lg text-sm font-semibold border border-gray-300 text-gray-700 hover:bg-gray-50"
-                      >
-                        OT List
-                      </button>
-                    </div>
-                    <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden">
-                      <button
-                        onClick={() => setOtFilter('board')}
-                        className={`px-4 py-1.5 text-sm font-semibold ${otFilter === 'board' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600'}`}
-                      >
-                        Scheduled / Live
-                      </button>
-                      <button
-                        onClick={() => setOtFilter('day')}
-                        className={`px-4 py-1.5 text-sm font-semibold ${otFilter === 'day' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600'}`}
-                      >
-                        Day Board
-                      </button>
-                      <button
-                        onClick={() => setOtFilter('requests')}
-                        className={`px-4 py-1.5 text-sm font-semibold ${otFilter === 'requests' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600'}`}
-                      >
-                        Requests
-                      </button>
-                    </div>
-                  </div>
-                  <OtAnalyticsStrip />
-                  {otFilter === 'day' ? (
-                    <OtDayBoard
-                      date={new Date().toISOString().slice(0, 10)}
-                      onSelect={(c) => setOtExecTarget(c)}
-                    />
-                  ) : otLoading ? (
-                    <div className="text-center text-gray-400 py-16">Loading…</div>
-                  ) : (
-                    /* Each handler is supplied only when this user holds the permission its
-                       endpoint requires, so the board never draws a button that would 403. */
-                    <OtBoard
-                      rows={otRows}
-                      mode={otFilter}
-                      onSchedule={canOt('OT_SCHEDULE') ? (r) => setOtScheduleTarget(r) : undefined}
-                      onCancel={
-                        canOt('OT_CANCEL')
-                          ? async (r) => {
-                              try {
-                                await otService.cancel(r.publicId);
-                                loadOt();
-                              } catch (e) {
-                                toastError(extractApiError(e, 'Failed to cancel'));
-                              }
-                            }
-                          : undefined
-                      }
-                      onStart={
-                        canOt('OT_START')
-                          ? async (r) => {
-                              try {
-                                await otService.start(r.publicId);
-                                loadOt();
-                              } catch (e) {
-                                toastError(extractApiError(e, 'Failed to start'));
-                              }
-                            }
-                          : undefined
-                      }
-                      onComplete={
-                        canOt('OT_COMPLETE')
-                          ? async (r) => {
-                              try {
-                                await otService.complete(r.publicId);
-                                loadOt();
-                              } catch (e) {
-                                toastError(extractApiError(e, 'Failed to complete'));
-                              }
-                            }
-                          : undefined
-                      }
-                      onTeam={canOt('OT_ASSIGN_TEAM') ? (r) => setOtTeamTarget(r) : undefined}
-                      onExecute={canOt('OT_VIEW') ? (r) => setOtExecTarget(r) : undefined}
-                      onRecovery={
-                        canOt('OT_RECOVERY') || canOt('OT_TRANSFER')
-                          ? (r) => setOtRecoveryTarget(r)
-                          : undefined
-                      }
-                      onClose={
-                        canOt('OT_CLOSE')
-                          ? async (r) => {
-                              try {
-                                await otService.close(r.publicId);
-                                loadOt();
-                              } catch (e) {
-                                toastError(extractApiError(e, 'Failed to close'));
-                              }
-                            }
-                          : undefined
-                      }
-                      onApprove={
-                        canOt('OT_APPROVE')
-                          ? async (r) => {
-                              try {
-                                await otService.approve(r.publicId);
-                                loadOt();
-                              } catch (e) {
-                                toastError(extractApiError(e, 'Failed to approve'));
-                              }
-                            }
-                          : undefined
-                      }
-                      onPreOp={
-                        canOt('OT_PRE_OP')
-                          ? async (r) => {
-                              try {
-                                await otService.preOp(r.publicId);
-                                loadOt();
-                              } catch (e) {
-                                toastError(extractApiError(e, 'Failed to enter pre-op'));
-                              }
-                            }
-                          : undefined
-                      }
-                      onAnaesthesia={
-                        canOt('OT_ANAESTHESIA_CLEARANCE')
-                          ? (r) => setOtAnaesthesiaTarget(r)
-                          : undefined
-                      }
-                      onPostpone={
-                        canOt('OT_RESCHEDULE')
-                          ? async (r) => {
-                              try {
-                                await otService.postpone(r.publicId);
-                                loadOt();
-                              } catch (e) {
-                                toastError(extractApiError(e, 'Failed to postpone'));
-                              }
-                            }
-                          : undefined
-                      }
-                    />
-                  )}
-                  {otAnaesthesiaTarget && (
-                    <AnaesthesiaClearanceModal
-                      surgery={otAnaesthesiaTarget}
-                      onClose={() => setOtAnaesthesiaTarget(null)}
-                      onRecorded={loadOt}
-                    />
-                  )}
-                  {otTeamTarget && (
-                    <SurgeryTeamModal
-                      surgery={otTeamTarget}
-                      onClose={() => setOtTeamTarget(null)}
-                    />
-                  )}
-                  {otExecTarget && (
-                    <SurgeryExecutionModal
-                      surgery={otExecTarget}
-                      onClose={() => {
-                        setOtExecTarget(null);
-                        loadOt();
-                      }}
-                    />
-                  )}
-                  {otRecoveryTarget && (
-                    <RecoveryModal
-                      surgery={otRecoveryTarget}
-                      onClose={() => {
-                        setOtRecoveryTarget(null);
-                        loadOt();
-                      }}
-                    />
-                  )}
-                  {otScheduleTarget && (
-                    <ScheduleSurgeryModal
-                      surgery={otScheduleTarget}
-                      onClose={() => setOtScheduleTarget(null)}
-                      onScheduled={loadOt}
-                    />
-                  )}
-                </div>
-              )}
+              {activeTab === 'ot' && <OtWorkspace />}
             </div>
           )}
         </main>
@@ -2651,7 +2478,7 @@ const ReceptionistDashboard = () => {
                         setOpdForm((prev) => ({ ...prev, doctorId: e.target.value }))
                       }
                     >
-                      <option value="">Unassigned</option>
+                      <option value="">Select Doctor...</option>
                       {doctors.map((d) => (
                         <option key={d.id} value={d.id}>
                           {d.name}
@@ -2659,6 +2486,7 @@ const ReceptionistDashboard = () => {
                       ))}
                     </select>
                   )}
+                  <NoDoctorsHint doctors={doctors} />
                 </div>
               </div>
 
@@ -2956,7 +2784,22 @@ const ReceptionistDashboard = () => {
             <div className="inline-block align-bottom bg-white rounded-lg text-left max-h-[90vh] overflow-y-auto shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
               <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                 <div className="sm:flex sm:items-start">
-                  <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-gray-100 sm:mx-0 sm:h-10 sm:w-10"></div>
+                  <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-sky-100 sm:mx-0 sm:h-10 sm:w-10">
+                    <svg
+                      className="h-6 w-6 text-sky-700"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"
+                      />
+                    </svg>
+                  </div>
                   <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
                     <h3 className="text-lg leading-6 font-medium text-gray-900">Collect Payment</h3>
                     <div className="mt-2">
@@ -2972,6 +2815,20 @@ const ReceptionistDashboard = () => {
                       <p className="text-sm font-medium text-gray-700 mb-3">
                         Select Payment Method:
                       </p>
+                      <label
+                        className="block text-xs font-medium text-gray-600 mb-1"
+                        htmlFor="upi-ref"
+                      >
+                        UTR / reference (needed for Online / UPI)
+                      </label>
+                      <input
+                        id="upi-ref"
+                        type="text"
+                        value={upiRef}
+                        onChange={(e) => setUpiRef(e.target.value)}
+                        placeholder="e.g. 4321 8765 0912"
+                        className="w-full mb-3 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                      />
                       <div className="grid grid-cols-2 gap-3">
                         <button
                           onClick={() => handleProcessPayment('Cash')}
@@ -3028,7 +2885,22 @@ const ReceptionistDashboard = () => {
             <div className="inline-block align-bottom bg-white rounded-lg text-left max-h-[90vh] overflow-y-auto shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-sm sm:w-full">
               <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                 <div className="sm:flex sm:items-start">
-                  <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-gray-100 sm:mx-0 sm:h-10 sm:w-10"></div>
+                  <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-emerald-100 sm:mx-0 sm:h-10 sm:w-10">
+                    <svg
+                      className="h-6 w-6 text-emerald-600"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                  </div>
                   <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
                     <h3 className="text-lg leading-6 font-medium text-gray-900">
                       Payment Successful
@@ -3105,12 +2977,12 @@ const ReceptionistDashboard = () => {
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
                     <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wide">
-                      Clinic Charges & Services
+                      Charges &amp; Services
                     </h4>
                     <button
                       type="button"
                       onClick={addBillItem}
-                      className="text-xs font-semibold text-sky-600 hover:text-sky-800"
+                      className="text-xs font-semibold text-sky-700 hover:text-sky-900"
                     >
                       + Add Charge Item
                     </button>
@@ -3272,13 +3144,6 @@ const ReceptionistDashboard = () => {
           </div>
         </div>
       )}
-
-      <DayCareSurgeryModal
-        isOpen={isDayCareModalOpen}
-        onClose={() => setIsDayCareModalOpen(false)}
-        onSuccess={loadOt}
-      />
-      {isOtListOpen && <OtListPrint onClose={() => setIsOtListOpen(false)} />}
     </div>
   );
 };
@@ -3415,7 +3280,6 @@ const AppointmentsTable = ({
 
   // DEBUG: Log first appointment structure to verify publicId
   if (appointments.length > 0) {
-    // console.log("DEBUG: First Appointment Record:", appointments[0]);
     const corruptAppointments = appointments.filter((a) => !a.publicId);
     if (corruptAppointments.length > 0) {
       console.error(

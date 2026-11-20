@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useConfirm } from '../../context/ConfirmContext';
 import { useToast } from '../../context/ToastContext';
 import vitalsService from '../../services/vitalsService';
 import { extractApiError } from '../../utils/apiError';
@@ -11,6 +12,7 @@ import { extractApiError } from '../../utils/apiError';
  */
 const VitalsSettingsCard = () => {
   const { success, error: toastError } = useToast();
+  const confirm = useConfirm();
   const [vitals, setVitals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
@@ -76,6 +78,14 @@ const VitalsSettingsCard = () => {
   };
 
   const remove = async (v) => {
+    if (
+      !(await confirm({
+        title: `Delete ${v.label}?`,
+        message: 'It is no longer offered when recording vitals. Readings already taken are kept.',
+        confirmLabel: 'Delete vital',
+      }))
+    )
+      return;
     const prev = vitals;
     setVitals((list) => list.filter((x) => x.key !== v.key));
     try {

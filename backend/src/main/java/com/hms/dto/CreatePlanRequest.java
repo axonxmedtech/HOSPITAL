@@ -43,4 +43,7 @@ public class CreatePlanRequest {
 
     @Min(value = 0, message = "Max outlets cannot be negative")
     private Integer maxOutlets;
+
+    /** Capacity caps by PlanLimit key (BEDS, ICU_BEDS, DOCTORS, STAFF_LOGINS, OT_THEATRES); null = unlimited. */
+    private java.util.Map<String, Integer> limits;
 }

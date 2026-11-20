@@ -42,6 +42,9 @@ public class BillingControllerTest {
     private JwtUtil jwtUtil;
 
     @MockBean
+    private com.hms.service.hospital.BillingSchedulerService billingSchedulerService;
+
+    @MockBean
     private AuditLogService auditLogService;
 
     @MockBean

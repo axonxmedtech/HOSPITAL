@@ -1,10 +1,22 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { helpStore } from '../help/helpStore';
+import { isPhoneViewport, mobileNav, useMobileNavOpen } from '../hooks/useMobileNav';
+import AccessBanner from './plan/AccessBanner';
+import AccessLabel from './plan/AccessLabel';
 import UserMenu from './UserMenu';
 
 const Navbar = ({ title, user, onLogout, onProfile, onSupport, actions, onToggleSidebar }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const drawerOpen = useMobileNavOpen();
+
+  // Phones have no visible sidebar, so the menu button opens the navigation drawer there;
+  // on wider screens it keeps collapsing/expanding the sidebar rail.
+  const handleMenuClick = () => {
+    if (isPhoneViewport()) mobileNav.open();
+    else onToggleSidebar?.();
+  };
 
   const isSingleDoctor = user?.role === 'HOSPITAL_ADMIN' && user?.isSingleDoctor;
   const isDoctorDashboard = location.pathname.includes('/hospital/doctor');
@@ -20,14 +32,24 @@ const Navbar = ({ title, user, onLogout, onProfile, onSupport, actions, onToggle
 
   return (
     <header className="bg-white border-b border-gray-200 z-10 w-full sticky top-0">
-      <div className="flex justify-between items-center px-6 py-3">
-        {/* Left side - Sidebar toggle button */}
+      <div className="flex justify-between items-center gap-2 px-3 sm:px-6 py-3">
+        {/* Left side - menu button: opens the drawer on phones, toggles the rail on desktop */}
         <button
-          onClick={onToggleSidebar}
-          className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+          type="button"
+          onClick={handleMenuClick}
+          aria-label="Toggle navigation menu"
+          aria-haspopup="dialog"
+          aria-expanded={drawerOpen}
+          className="p-2 flex-shrink-0 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"
           title="Toggle sidebar"
         >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg
+            className="w-5 h-5"
+            aria-hidden="true"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -36,9 +58,10 @@ const Navbar = ({ title, user, onLogout, onProfile, onSupport, actions, onToggle
             />
           </svg>
         </button>
+        <AccessLabel className="mr-auto ml-1" />
 
         {/* Right side - User menu and single doctor toggle */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
           {/* Quick actions if provided */}
           {actions && <div className="flex items-center gap-3">{actions}</div>}
 
@@ -158,10 +181,35 @@ const Navbar = ({ title, user, onLogout, onProfile, onSupport, actions, onToggle
             </div>
           )}
 
+          {/* Help for the screen the user is on (also F1) */}
+          <button
+            type="button"
+            onClick={() => helpStore.togglePanel()}
+            aria-label="Help for this screen"
+            title="Help (F1)"
+            className="p-2 flex-shrink-0 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"
+          >
+            <svg
+              className="w-5 h-5"
+              aria-hidden="true"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          </button>
+
           {/* User menu */}
           <UserMenu user={user} onLogout={onLogout} onProfile={onProfile} onSupport={onSupport} />
         </div>
       </div>
+      <AccessBanner />
     </header>
   );
 };

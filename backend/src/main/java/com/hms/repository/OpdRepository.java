@@ -207,4 +207,6 @@ public interface OpdRepository extends JpaRepository<Opd, Long> {
 			@Param("from") java.time.LocalDateTime from,
 			@Param("toExclusive") java.time.LocalDateTime toExclusive,
 			Pageable pageable);
+
+	long countByDoctor_IdAndStatus(Long doctorId, Opd.Status status);
 }

@@ -1,19 +1,39 @@
 import { createColumnHelper } from '@tanstack/react-table';
 import React, { useState } from 'react';
+import ActionMenu from '../../components/ActionMenu';
+import {
+  CancelBillModal,
+  CollectPaymentModal,
+  DiscountModal,
+  RefundModal,
+} from '../../components/billing/BillActionModals';
 import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
+import authService from '../../services/authService';
 
 const BillingTable = ({
   billing,
   startIndex = 0,
   pagination,
-  onUpdateStatus,
   onPrint,
-  updatingBillId,
   printingBillId,
   onEditItems,
+  // Called after any payment / discount / refund / cancel so the screen reloads its bills.
+  onChanged,
+  // Called after a payment with (bill, result) — e.g. to offer "Print Receipt".
+  onPaid,
 }) => {
   const [expandedIds, setExpandedIds] = useState([]);
+  // { type: 'pay' | 'discount' | 'refund' | 'cancel', bill }
+  const [action, setAction] = useState(null);
+  const isAdmin = authService.getCurrentUser()?.role === 'HOSPITAL_ADMIN';
+  const closeAction = () => setAction(null);
+  const done = (result) => {
+    const finished = action;
+    setAction(null);
+    if (finished?.type === 'pay') onPaid?.(finished.bill, result);
+    onChanged?.();
+  };
 
   const toggleExpand = (id) => {
     setExpandedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -52,21 +72,34 @@ const BillingTable = ({
     columnHelper.accessor('amount', {
       header: 'Amount',
       cell: (info) => {
-        const total = info.getValue() || 0;
-        const paid = info.row.original.paidAmount || 0;
-        const bal = info.row.original.balance ?? total - paid;
-        if (paid > 0 && info.row.original.paymentStatus !== 'PAID') {
-          return (
-            <div className="text-xs leading-tight">
-              <div className="text-gray-500">Total: ₹{total}</div>
-              <div className="text-emerald-600">Paid: ₹{paid}</div>
+        const row = info.row.original;
+        // amount = net payable after discount; grossAmount = charges before it (server-computed).
+        const net = Number(info.getValue() || 0);
+        const gross = Number(row.grossAmount ?? net);
+        const discount = Number(row.discountAmount || 0);
+        const paid = Number(row.paidAmount || 0);
+        const bal = Number(row.balance ?? net - paid);
+        const showBreakdown =
+          discount > 0 ||
+          (paid > 0 && row.paymentStatus !== 'PAID' && row.paymentStatus !== 'CLOSED');
+        if (!showBreakdown) return `₹${net}`;
+        return (
+          <div className="text-xs leading-tight">
+            {discount > 0 && (
+              <>
+                <div className="text-gray-400 line-through">₹{gross}</div>
+                <div className="text-emerald-700">− ₹{discount} discount</div>
+              </>
+            )}
+            <div className="text-gray-700 font-semibold">₹{net}</div>
+            {paid > 0 && bal > 0 && <div className="text-emerald-600">Paid: ₹{paid}</div>}
+            {bal > 0 && row.paymentStatus !== 'CANCELLED' && (
               <div className="font-bold text-red-700 mt-0.5 border-t border-dashed border-gray-200 pt-0.5">
                 Bal: ₹{bal}
               </div>
-            </div>
-          );
-        }
-        return `₹${total}`;
+            )}
+          </div>
+        );
       },
     }),
     columnHelper.accessor('paymentStatus', {
@@ -76,6 +109,7 @@ const BillingTable = ({
         let type = 'warning';
         if (status === 'PAID') type = 'success';
         else if (status === 'CLOSED') type = 'neutral';
+        else if (status === 'CANCELLED') type = 'danger';
         return <StatusBadge status={status} type={type} />;
       },
     }),
@@ -86,53 +120,79 @@ const BillingTable = ({
     columnHelper.display({
       id: 'actions',
       header: () => <div className="text-right">Actions</div>,
-      cell: (info) => (
-        <div className="flex justify-end gap-2">
-          {(info.row.original.paymentStatus === 'PENDING' ||
-            info.row.original.paymentStatus === 'PARTIAL') && (
-            <>
-              {onEditItems && (
-                <button
-                  onClick={() => onEditItems(info.row.original)}
-                  className="px-3 py-1 rounded-md text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
-                >
-                  Edit Charges
-                </button>
-              )}
+      cell: (info) => {
+        const bill = info.row.original;
+        const st = bill.paymentStatus;
+        const open = st === 'PENDING' || st === 'PARTIAL';
+        const paid = Number(bill.paidAmount || 0);
+        const menu = [
+          {
+            label: 'Discount',
+            onClick: () => setAction({ type: 'discount', bill }),
+            hidden: !open,
+          },
+          {
+            label: 'Refund',
+            onClick: () => setAction({ type: 'refund', bill }),
+            hidden: !isAdmin || paid <= 0 || st === 'CANCELLED',
+          },
+          {
+            label: 'Cancel Bill',
+            onClick: () => setAction({ type: 'cancel', bill }),
+            hidden: !isAdmin || st === 'CANCELLED' || st === 'CLOSED' || bill.billingType === 'IPD',
+            danger: true,
+          },
+        ];
+        return (
+          <div className="flex justify-end items-center gap-2">
+            {open && onEditItems && (
               <button
-                onClick={() => onUpdateStatus(info.row.original.id, 'PAID', info.row.original)}
-                disabled={!!updatingBillId}
-                className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${updatingBillId === info.row.original.id ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : updatingBillId ? 'opacity-50 cursor-not-allowed bg-gray-100 text-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                onClick={() => onEditItems(bill)}
+                className="px-3 py-1 rounded-md text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
               >
-                {updatingBillId === info.row.original.id ? 'Processing...' : 'Mark Paid'}
+                Edit Charges
               </button>
-            </>
-          )}
-          {info.row.original.paymentStatus === 'PAID' && (
-            <button
-              onClick={() => onPrint(info.row.original.id)}
-              disabled={!!printingBillId}
-              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors flex items-center gap-1 ${printingBillId === info.row.original.id ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : printingBillId ? 'opacity-50 cursor-not-allowed bg-gray-100 text-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-            >
-              <span>{printingBillId === info.row.original.id ? 'Printing...' : 'Print'}</span>
-            </button>
-          )}
-        </div>
-      ),
+            )}
+            {open && (
+              <button
+                onClick={() => setAction({ type: 'pay', bill })}
+                className="px-3 py-1 rounded-md text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+              >
+                Collect Payment
+              </button>
+            )}
+            {(paid > 0 || st === 'PAID' || st === 'CLOSED' || st === 'CANCELLED') && (
+              <button
+                onClick={() => onPrint(bill.id)}
+                disabled={!!printingBillId}
+                className={`px-3 py-1 rounded-md text-sm font-medium transition-colors flex items-center gap-1 ${printingBillId === bill.id ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : printingBillId ? 'opacity-50 cursor-not-allowed bg-gray-100 text-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+              >
+                <span>{printingBillId === bill.id ? 'Printing...' : 'Print'}</span>
+              </button>
+            )}
+            {menu.some((m) => !m.hidden) && <ActionMenu actions={menu} />}
+          </div>
+        );
+      },
     }),
   ];
 
   const renderExpandedRow = (row) => {
     const items = row.original.items || [];
     const medicines = row.original.medicines || [];
-    if (!items.length && !medicines.length)
+    if (
+      !items.length &&
+      !medicines.length &&
+      !Number(row.original.discountAmount) &&
+      row.original.paymentStatus !== 'CANCELLED'
+    )
       return <div className="text-sm text-slate-600">No items or medicines billed</div>;
     return (
       <div className="space-y-4 p-2 bg-slate-50/50 rounded-lg border border-dashed border-gray-200">
         {items.length > 0 && (
           <div>
             <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
-              Clinic Charges & Services
+              Charges &amp; Services
             </div>
             <table className="min-w-full">
               <thead>
@@ -183,6 +243,22 @@ const BillingTable = ({
             </table>
           </div>
         )}
+        {Number(row.original.discountAmount) > 0 && (
+          <div className="text-xs text-emerald-700">
+            Discount ₹{row.original.discountAmount}
+            {row.original.discountReason ? ` — ${row.original.discountReason}` : ''}
+            {row.original.discountedBy ? ` (by ${row.original.discountedBy})` : ''}
+          </div>
+        )}
+        {Number(row.original.refundedAmount) > 0 && (
+          <div className="text-xs text-red-700">Refunded ₹{row.original.refundedAmount}</div>
+        )}
+        {row.original.paymentStatus === 'CANCELLED' && (
+          <div className="text-xs text-red-700">
+            Cancelled{row.original.cancelReason ? `: ${row.original.cancelReason}` : ''}
+            {row.original.cancelledBy ? ` (by ${row.original.cancelledBy})` : ''}
+          </div>
+        )}
         {row.original.markedPaidBy && (
           <div className="mt-3 pt-2 border-t border-dashed border-gray-200 text-xs text-gray-500">
             Marked Paid By:{' '}
@@ -194,14 +270,28 @@ const BillingTable = ({
   };
 
   return (
-    <DataTable
-      data={billing}
-      columns={columns}
-      pagination={pagination}
-      expandedRowIds={expandedIds}
-      renderExpandedRow={renderExpandedRow}
-      idAccessor={'id'}
-    />
+    <>
+      <DataTable
+        data={billing}
+        columns={columns}
+        pagination={pagination}
+        expandedRowIds={expandedIds}
+        renderExpandedRow={renderExpandedRow}
+        idAccessor={'id'}
+      />
+      {action?.type === 'pay' && (
+        <CollectPaymentModal bill={action.bill} onClose={closeAction} onDone={done} />
+      )}
+      {action?.type === 'discount' && (
+        <DiscountModal bill={action.bill} onClose={closeAction} onDone={done} />
+      )}
+      {action?.type === 'refund' && (
+        <RefundModal bill={action.bill} onClose={closeAction} onDone={done} />
+      )}
+      {action?.type === 'cancel' && (
+        <CancelBillModal bill={action.bill} onClose={closeAction} onDone={done} />
+      )}
+    </>
   );
 };
 

@@ -116,7 +116,7 @@ jobs:
           HMS_SERVICE: ${{ inputs.service_name || vars.SERVICE_NAME }}
           HMS_BRANCH: ${{ inputs.git_branch || vars.BRANCH_NAME }}
           HMS_HEALTH_PORT: ${{ steps.hport.outputs.port }}
-        run: bash scripts/deploy/validate-config.sh HMS_SSH_HOST HMS_SSH_KEY HMS_REPO_PATH HMS_SERVICE HMS_BRANCH HMS_HEALTH_PORT:port
+        run: bash scripts/deploy/validate-config.sh HMS_SSH_HOST HMS_SSH_KEY:multiline HMS_REPO_PATH HMS_SERVICE HMS_BRANCH HMS_HEALTH_PORT:port
 
       # ── SSH Connection Diagnostics ───────────────────────────────────────
       # Retries TCP check 5 times before failing — surfaces Hostinger hPanel

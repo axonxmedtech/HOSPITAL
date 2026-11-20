@@ -40,6 +40,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
         /** True if any user, active or not, holds this role. */
         boolean existsByRole(String role);
 
+        /** How many ACTIVE users (null isActive counts as active) of one facility hold a role. */
+        @Query("SELECT COUNT(u) FROM User u WHERE u.hospitalId = :hospitalId AND u.role = :role "
+                        + "AND (u.isActive IS NULL OR u.isActive = true)")
+        long countActiveByHospitalIdAndRole(@org.springframework.data.repository.query.Param("hospitalId") Long hospitalId,
+                        @org.springframework.data.repository.query.Param("role") String role);
+
         /**
          * E-mail and stored password hash of every ACTIVE super admin, for the known-default
          * credential check at startup. Active means what the authentication filter means: null
@@ -182,4 +188,13 @@ public interface UserRepository extends JpaRepository<User, Long> {
                         @org.springframework.data.repository.query.Param("hospitalId") String hospitalId,
                         @org.springframework.data.repository.query.Param("search") String search,
                         org.springframework.data.domain.Pageable pageable);
+
+        // ── plan limits (PlanLimitService) ──
+        /** Every active login of one facility, the admin included (null isActive counts as active). */
+        @Query("SELECT COUNT(u) FROM User u WHERE u.hospitalId = :hospitalId AND (u.isActive IS NULL OR u.isActive = true)")
+        long countActiveByHospitalId(@org.springframework.data.repository.query.Param("hospitalId") Long hospitalId);
+
+        @Query("SELECT u.hospitalId, COUNT(u) FROM User u WHERE u.hospitalId IS NOT NULL "
+                        + "AND (u.isActive IS NULL OR u.isActive = true) GROUP BY u.hospitalId")
+        java.util.List<Object[]> countActivePerHospital();
 }

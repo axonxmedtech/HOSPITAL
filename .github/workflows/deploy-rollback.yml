@@ -84,7 +84,7 @@ jobs:
           HMS_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           # No fallback: the rollback must verify the same service the deploy did.
           HMS_HEALTH_PORT: ${{ steps.hport.outputs.port }}
-        run: bash scripts/deploy/validate-config.sh HMS_HOST HMS_KEY HMS_HEALTH_PORT:port
+        run: bash scripts/deploy/validate-config.sh HMS_HOST HMS_KEY:multiline HMS_HEALTH_PORT:port
 
       - name: Execute rollback on VPS
         id: run
