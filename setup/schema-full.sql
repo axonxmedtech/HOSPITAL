@@ -2365,3 +2365,15 @@ CREATE TABLE `medicine_purchase` (
   PRIMARY KEY (`id`),
   KEY `idx_medicine_purchase_hospital` (`hospital_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- In-app help progress per user (V33)
+CREATE TABLE IF NOT EXISTS help_progress (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    hospital_id BIGINT NULL,
+    scope_key VARCHAR(160) NOT NULL,
+    data TEXT NOT NULL,
+    updated_at DATETIME(6) NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY UK_help_progress_scope (scope_key),
+    KEY idx_help_progress_hospital (hospital_id)
+);

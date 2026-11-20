@@ -184,6 +184,7 @@ public class DatabaseMigrationRunner {
         ensureShiftTemplatesTable(); // NEW — Nursing Mgmt Phase B1
         ensureAppointmentSlotsTable(); // NEW — Nursing Mgmt Phase B1
         ensureNurseShiftSchedulesTable(); // NEW — Nursing Mgmt Phase B2
+        ensureHelpProgressTable();
         ensureNurseAttendanceTable(); // NEW — Nursing Mgmt Phase D
         ensureNurseWardAssignmentsTable(); // NEW — Nursing Mgmt Phase F
         ensureNurseSubstitutionsTable(); // NEW — Nursing Mgmt Phase F
@@ -571,6 +572,16 @@ public class DatabaseMigrationRunner {
                 log.info("DB migration applied: nurse_shift_schedules table created");
             }
         } catch (Exception e) { log.warn("DB migration skipped (nurse_shift_schedules): {}", e.getMessage()); }
+    }
+
+    /** In-app help progress per user (V33). Idempotent; mirrors setup/schema-full.sql. */
+    private void ensureHelpProgressTable() {
+        try {
+            jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS help_progress (" +
+                "id BIGINT NOT NULL AUTO_INCREMENT, hospital_id BIGINT NULL, scope_key VARCHAR(160) NOT NULL," +
+                "data TEXT NOT NULL, updated_at DATETIME(6) NULL, PRIMARY KEY (id)," +
+                "UNIQUE KEY UK_help_progress_scope (scope_key), KEY idx_help_progress_hospital (hospital_id))");
+        } catch (Exception e) { log.warn("DB migration skipped (help_progress): {}", e.getMessage()); }
     }
 
     private void ensureNurseWardAssignmentsTable() {

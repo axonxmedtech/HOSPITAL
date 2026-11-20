@@ -21,6 +21,8 @@ class TenantAccessGuardFilterTest {
         assertThat(TenantAccessGuardFilter.refuses(State.DEMO_ENDED, "POST", "/tickets")).isFalse();
         assertThat(TenantAccessGuardFilter.refuses(State.DEMO_ENDED, "PUT", "/notifications/5/read")).isFalse();
         assertThat(TenantAccessGuardFilter.refuses(State.DEMO_ENDED, "PUT", "/auth/profile")).isFalse();
+        // In-app help keeps working: a user can still learn the software after a demo ends.
+        assertThat(TenantAccessGuardFilter.refuses(State.DEMO_ENDED, "PUT", "/help/progress")).isFalse();
     }
 
     @Test

@@ -43,7 +43,8 @@ public class TenantAccessGuardFilter extends OncePerRequestFilter {
     /** Always allowed, even after a demo ends: asking for help, and housekeeping on one's own account. */
     private static final List<Pattern> ALWAYS_ALLOWED = List.of(
             Pattern.compile("^/tickets(/.*)?$"),
-            Pattern.compile("^/notifications(/.*)?$"));
+            Pattern.compile("^/notifications(/.*)?$"),
+            Pattern.compile("^/help(/.*)?$"));
     private static final Set<String> ALWAYS_ALLOWED_EXACT = Set.of("/auth/profile", "/login");
 
     /** New work that stops once a plan has expired (POST, after the tenant prefix is removed). */

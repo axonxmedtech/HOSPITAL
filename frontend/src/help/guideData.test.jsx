@@ -2,6 +2,12 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('../services/apiService', () => ({
+  default: {
+    get: vi.fn(() => Promise.reject(new Error('offline'))),
+    put: vi.fn(() => Promise.resolve({})),
+  },
+}));
 vi.mock('../services/hospitalService', () => ({
   default: { getSetupStatus: vi.fn(() => Promise.resolve(null)) },
 }));
@@ -10,6 +16,7 @@ import { ALL_ENTRIES, helpRolesFor } from './content';
 import { ALL_GUIDES, guidesFor } from './guideData';
 import Guides from './Guides';
 import { helpStore } from './helpStore';
+import { progressStore } from './progressStore';
 
 /** Every screen id of every dashboard, so a typo in help content is caught here. */
 const SCREENS = new Set(
@@ -133,6 +140,7 @@ describe('guides fit the facility', () => {
 
 describe('Guides tab', () => {
   beforeEach(() => {
+    progressStore.clear();
     const store = new Map();
     vi.stubGlobal('localStorage', {
       getItem: (k) => (store.has(k) ? store.get(k) : null),

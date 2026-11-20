@@ -52,7 +52,7 @@ const common = [
     category: 'Getting started',
     roles: [ALL],
     q: 'Is there a step-by-step guide for my work?',
-    a: 'Yes. Open Help & Support → Guides. "Getting started" walks a new user through their daily work, and the tutorials follow one task from start to finish — an OPD visit, an admission to discharge, a surgery, a pharmacy sale. Tick each step as you go; your progress is remembered on this computer.',
+    a: 'Yes. Open Help & Support → Guides. "Getting started" walks a new user through their daily work, and the tutorials follow one task from start to finish — an OPD visit, an admission to discharge, a surgery, a pharmacy sale. Tick each step as you go; your progress is saved to your account. Tours there highlight the real buttons on screen.',
     tags: ['guide', 'tutorial', 'training', 'onboarding', 'new user', 'how to start', 'learn'],
   },
   {

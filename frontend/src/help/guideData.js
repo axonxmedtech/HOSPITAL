@@ -830,26 +830,7 @@ export function guidesFor(user, helpRoles) {
     .filter((g) => g.steps.length > 0);
 }
 
-// ── Progress (per user, on this device) ─────────────────────────────────────
-
-const progressKey = (user) =>
-  `hms.help.guides.${user?.hospitalId ?? 'p'}.${user?.userId ?? user?.email ?? 'u'}`;
-
-export function readProgress(user) {
-  try {
-    return JSON.parse(window.localStorage.getItem(progressKey(user)) || '{}') || {};
-  } catch {
-    return {};
-  }
-}
-
-export function writeProgress(user, progress) {
-  try {
-    window.localStorage.setItem(progressKey(user), JSON.stringify(progress));
-  } catch {
-    /* private window: progress lasts for this visit only */
-  }
-}
+// Progress (ticked steps) lives in progressStore.js, which also saves it to the server.
 
 export const KINDS = [
   ['setup', 'Set up'],

@@ -28,6 +28,14 @@ const extra = [
     a: 'Click your initials → Profile → Edit Profile. The hospital name, address, contact number, parent organisation and logo (PNG, JPG, WEBP or GIF under 1 MB) are there. Bills, case papers and prescriptions print with them.',
     tags: ['logo', 'letterhead', 'hospital name', 'address', 'print header'],
   },
+  {
+    id: 'common-tour',
+    category: 'Getting started',
+    roles: [ALL],
+    q: 'How do I take the tour again?',
+    a: 'Open Help & Support → Guides. Under Tours, click Start (or Again) on "Find your way around" or the tour for your own work. A tour highlights the real buttons on screen; use Next or the → key, and Esc to stop. Your ticked guide steps and finished tours are saved to your account, so they follow you to any computer.',
+    tags: ['tour', 'walkthrough', 'demo', 'show me', 'onboarding', 'again', 'restart'],
+  },
   // ── Pharmacy owner ──
   {
     id: 'pa-setup',

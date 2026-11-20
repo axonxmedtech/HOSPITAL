@@ -1,14 +1,17 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import SetupChecklist from '../components/SetupChecklist';
 import { helpRolesFor } from './content';
 import { ADMIN } from './content/roles';
-import { guidesFor, KINDS, readProgress, writeProgress } from './guideData';
+import { guidesFor, KINDS } from './guideData';
 import { flattenTabs, helpStore } from './helpStore';
+import { progressStore, useHelpProgress } from './progressStore';
 import Shot from './Shot';
+import { toursFor } from './tourData';
+import { tourStore } from './tourStore';
 
 /**
  * Help → Guides: setup guides, first-day guides and how-to tutorials for this user. Each step
- * can be ticked off (remembered on this device) and has a button to its screen when the user's
+ * can be ticked off (saved for the user, on any computer) and has a button to its screen when the user's
  * dashboard has it. Admins of a hospital or clinic also see the live setup checklist, which
  * ticks itself from what is really set up.
  */
@@ -96,20 +99,19 @@ function GuideView({ guide, progress, onToggle, onBack, onGo }) {
 }
 
 export default function Guides({ user, onGo }) {
-  const guides = guidesFor(user, helpRolesFor(user));
-  const [progress, setProgress] = useState(() => readProgress(user));
+  const roles = helpRolesFor(user);
+  const guides = guidesFor(user, roles);
+  const { guides: progress, tours: toursDone } = useHelpProgress();
+  const screens = new Set(helpStore.destinations().map((d) => d.id));
+  const tours = toursFor(user, roles, screens.size ? screens : null);
   const [openId, setOpenId] = useState(null);
   const open = guides.find((g) => g.id === openId);
 
-  const toggle = (guideId, stepId) => {
-    const cur = progress[guideId] || [];
-    const next = {
-      ...progress,
-      [guideId]: cur.includes(stepId) ? cur.filter((s) => s !== stepId) : [...cur, stepId],
-    };
-    setProgress(next);
-    writeProgress(user, next);
-  };
+  useEffect(() => {
+    progressStore.load(user);
+  }, [user?.userId, user?.hospitalId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggle = (guideId, stepId) => progressStore.toggleStep(guideId, stepId);
 
   if (open) {
     return (
@@ -129,6 +131,36 @@ export default function Guides({ user, onGo }) {
   return (
     <div className="p-4 space-y-5 text-sm overflow-y-auto h-full">
       {showChecklist && <SetupChecklist alwaysShown onGo={onGo} />}
+      {tours.length > 0 && (
+        <section>
+          <h3 className="text-xs font-semibold uppercase text-gray-500 mb-2">Tours</h3>
+          <ul className="space-y-2">
+            {tours.map((t) => (
+              <li
+                key={t.id}
+                className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-3"
+              >
+                <span className="min-w-0">
+                  <span className="block font-semibold text-gray-900">{t.title}</span>
+                  <span className="block text-xs text-gray-600">
+                    {t.summary}
+                    {toursDone[t.id] === 'done' && (
+                      <span className="text-emerald-700"> · Done</span>
+                    )}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => tourStore.start(t)}
+                  className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-900 text-white hover:bg-gray-800"
+                >
+                  {toursDone[t.id] === 'done' ? 'Again' : 'Start'}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {guides.length === 0 && <p className="text-gray-500">No guides for your role yet.</p>}
       {KINDS.map(([kind, heading]) => {
         const list = guides.filter((g) => g.kind === kind);
