@@ -222,6 +222,14 @@ public class GlobalExceptionHandler {
      * <p>Without this the exception fell through to the catch-all as a 500, telling the caller
      * a server fault when the truth is that someone else got there first.
      */
+    /** A second open visit for the same patient: says where the open one is. */
+    @ExceptionHandler(ActiveEncounterConflictException.class)
+    public ResponseEntity<ApiErrorResponse> handleActiveEncounter(ActiveEncounterConflictException ex) {
+        return ResponseEntity.status(ErrorCode.CONFLICT.status())
+                .body(new ApiErrorResponse(false, ErrorCode.CONFLICT, ex.getMessage(), ex.getMessage(),
+                        ex.getEncounter(), null, CorrelationIdFilter.currentId(), null));
+    }
+
     @ExceptionHandler(ConflictException.class)
     public ResponseEntity<ApiErrorResponse> handleConflict(ConflictException ex) {
         return respond(ErrorCode.CONFLICT, ex.getMessage());

@@ -98,15 +98,16 @@ describe('DoctorDashboard — Reception Mode front-desk capabilities', () => {
     vi.clearAllMocks();
   });
 
-  it('hides front-desk actions when receptionMode is HAS_RECEPTIONIST', async () => {
+  // A doctor can always register a walk-in and open their OPD visit, whatever the mode.
+  it('lets a doctor register a patient and open an OPD visit even when HAS_RECEPTIONIST', async () => {
     await renderDashboard('HAS_RECEPTIONIST');
 
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Overview' })).toBeInTheDocument()
     );
 
-    expect(screen.queryByRole('button', { name: /Add Patient/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /OPD Intake/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Add Patient/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /OPD Intake/i })).toBeInTheDocument();
   });
 
   it('shows front-desk actions when receptionMode is BOTH', async () => {

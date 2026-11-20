@@ -39,7 +39,7 @@ const hospitalService = {
 
   getPatients: async (search, page = 0, size = 10, date = '', view = '') => {
     let query = `?page=${page}&size=${size}`;
-    if (search) query += `&search=${search}`;
+    if (search) query += `&search=${encodeURIComponent(search)}`;
     if (view) query += `&view=${view}`;
     if (date) query += `&date=${date}`;
     const response = await apiClient.get(`/hospital/patients${query}`);

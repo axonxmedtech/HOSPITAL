@@ -30,6 +30,7 @@ import PatientFormFields, {
   stripPatientPayload,
 } from '../../components/PatientFormFields';
 import PatientModal from '../../components/PatientModal';
+import PatientSearchPicker from '../../components/PatientSearchPicker';
 import PrescriptionModal from '../../components/PrescriptionModal';
 import PrescriptionViewModal from '../../components/PrescriptionViewModal';
 import ProfileModal from '../../components/ProfileModal';
@@ -39,6 +40,7 @@ import StatusBadge from '../../components/StatusBadge';
 import { useToast } from '../../context/ToastContext';
 import useDebounce from '../../hooks/useDebounce'; // BUG-017: standardised debounce hook
 import useEnabledVitals from '../../hooks/useEnabledVitals';
+import useOpdCreateError from '../../hooks/useOpdCreateError';
 import useWebSocket from '../../hooks/useWebSocket';
 import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
@@ -155,7 +157,6 @@ const ReceptionistDashboard = () => {
   const [createdOpd, setCreatedOpd] = useState(null);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [patientSearchText, setPatientSearchText] = useState('');
-  const [showPatientDropdown, setShowPatientDropdown] = useState(false);
   // OPD "New Patient": the patient fields are rendered inline in this same OPD form, so one
   // submit registers the patient and opens their OPD. Same fields, same client rules and the
   // same endpoint as the Patients tab - the existing-patient search path below is untouched.
@@ -170,7 +171,6 @@ const ReceptionistDashboard = () => {
   useEffect(() => {
     if (!isOpdModalOpen) {
       setPatientSearchText('');
-      setShowPatientDropdown(false);
       setOpdPatientMode('existing');
       setNewPatientForm({ insurance: 'NO' });
       setNewPatientErrors({});
@@ -280,6 +280,7 @@ const ReceptionistDashboard = () => {
 
   const { success, error: toastError, info } = useToast();
   const navigate = useNavigate();
+  const showOpdCreateError = useOpdCreateError();
 
   // Stats
   const [stats, setStats] = useState({ today: 0, pending: 0, total: 0 });
@@ -1020,20 +1021,6 @@ const ReceptionistDashboard = () => {
     return index !== -1 ? index + 1 : null;
   };
 
-  const filteredPatientsForOpd =
-    patientSearchText.trim().length >= 3
-      ? patients.filter((p) => {
-          const query = patientSearchText.toLowerCase();
-          return (
-            p.name?.toLowerCase().includes(query) ||
-            p.phone?.includes(query) ||
-            (p.customId || p.id?.toString())?.toLowerCase().includes(query)
-          );
-        })
-      : [];
-
-  const showPatientSuggestions = showPatientDropdown && patientSearchText.trim().length >= 3;
-
   // True while the OPD form is collecting a brand new patient inline instead of searching.
   const isNewOpdPatient = canCreatePatient && opdPatientMode === 'new';
 
@@ -1188,7 +1175,7 @@ const ReceptionistDashboard = () => {
       loadData(); // Refresh the data after OPD creation
     } catch (err) {
       console.error('Failed to create OPD', err);
-      toastError('Failed to create OPD');
+      await showOpdCreateError(err);
     } finally {
       opdInFlight.current = false;
       setOpdSubmitting(false);
@@ -2350,7 +2337,6 @@ const ReceptionistDashboard = () => {
                     aria-pressed={opdPatientMode === 'new'}
                     onClick={() => {
                       setOpdPatientMode('new');
-                      setShowPatientDropdown(false);
                       // Drop any patient picked by search, so only one of the two
                       // sources is ever in play.
                       setPatientSearchText('');
@@ -2382,83 +2368,20 @@ const ReceptionistDashboard = () => {
                     <span className="block text-sm font-semibold text-neutral-700 mb-2">
                       Patient <span className="text-red-600">*</span>
                     </span>
-                    <div className="relative">
-                      <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
-                        <svg
-                          className="w-5 h-5"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                          />
-                        </svg>
-                      </span>
-                      <input
-                        type="text"
-                        className="input-field pl-10"
-                        value={patientSearchText}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setPatientSearchText(val);
-                          setShowPatientDropdown(true);
-                          setOpdForm((prev) => ({ ...prev, patientId: null }));
-                        }}
-                        onFocus={() => setShowPatientDropdown(true)}
-                        onBlur={() => {
-                          setTimeout(() => {
-                            setShowPatientDropdown(false);
-                          }, 250);
-                        }}
-                        placeholder="Type at least 3 letters to search patient..."
-                        autoComplete="off"
-                      />
-                    </div>
-
-                    {showPatientSuggestions && (
-                      <div className="absolute left-0 right-0 mt-1 bg-white border border-neutral-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto divide-y divide-neutral-100 animate-scale-in">
-                        {filteredPatientsForOpd.length > 0 ? (
-                          filteredPatientsForOpd.map((p) => (
-                            <button
-                              type="button"
-                              key={p.id}
-                              onMouseDown={() => {
-                                setOpdForm((prev) => ({ ...prev, patientId: p.id }));
-                                setPatientSearchText(
-                                  `${p.name}${p.phone ? ` (${p.phone})` : ''}${p.customId ? ` [${p.customId}]` : ''}`
-                                );
-                                setShowPatientDropdown(false);
-                              }}
-                              className="w-full px-4 py-3 hover:bg-neutral-50 cursor-pointer transition-colors duration-150 flex flex-col gap-0.5 text-left"
-                            >
-                              <div className="flex justify-between items-center">
-                                <span className="font-semibold text-neutral-800 text-sm">
-                                  {p.name}
-                                </span>
-                                {p.customId && (
-                                  <span className="text-[10px] font-bold px-2 py-0.5 bg-neutral-100 text-neutral-600 rounded-full tracking-wide">
-                                    {p.customId}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="flex gap-4 text-xs text-neutral-500">
-                                {p.phone && <span>📞 {p.phone}</span>}
-                                {p.gender && <span>👤 {p.gender}</span>}
-                                {p.age && <span>🎂 {p.age} Yrs</span>}
-                              </div>
-                            </button>
-                          ))
-                        ) : (
-                          <div className="px-4 py-4 text-sm text-neutral-500 text-center">
-                            No matching patients found
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    <PatientSearchPicker
+                      text={patientSearchText}
+                      onTextChange={setPatientSearchText}
+                      onSelect={(p) =>
+                        setOpdForm((prev) => ({ ...prev, patientId: p ? p.id : null }))
+                      }
+                      onRegisterNew={(typed) => {
+                        setOpdPatientMode('new');
+                        setNewPatientForm((prev) => ({
+                          ...prev,
+                          ...(/^[\d\s+-]+$/.test(typed) ? { phone: typed } : { name: typed }),
+                        }));
+                      }}
+                    />
                   </div>
                 )}
                 <div>

@@ -99,15 +99,15 @@ class PatientApiTest {
             "{\"name\":\"Front Desk Doc\",\"dateOfBirth\":\"1990-01-01\",\"gender\":\"FEMALE\",\"phone\":\"9900112244\"}";
 
     /**
-     * The doctor-side front desk is a hospital setting, not a role. Under HAS_RECEPTIONIST the
-     * dashboard hides the button, but the API is the boundary: a doctor must still be refused.
+     * A doctor may register a walk-in in every reception mode, so their OPD visit can be opened.
+     * (Editing patient details stays with the front desk under HAS_RECEPTIONIST.)
      */
     @Test
-    void registerPatient_doctorUnderHasReceptionist_returns403() {
+    void registerPatient_doctorUnderHasReceptionist_succeeds() {
         // No settings row at all: the transient default is HAS_RECEPTIONIST.
         ResponseEntity<String> res = rest.exchange("/hospital/patients", HttpMethod.POST,
                 new HttpEntity<>(DOCTOR_PATIENT, doctorAuth()), String.class);
-        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
     }
 
     @Test

@@ -25,6 +25,7 @@ import OpdPaymentFields, {
 import PageHeader from '../../components/PageHeader';
 import PatientDetailsModal from '../../components/PatientDetailsModal';
 import PatientModal from '../../components/PatientModal';
+import PatientSearchPicker from '../../components/PatientSearchPicker';
 import PrescriptionViewModal from '../../components/PrescriptionViewModal';
 import ProfileModal from '../../components/ProfileModal';
 import Sidebar from '../../components/Sidebar';
@@ -33,6 +34,7 @@ import StatusBadge from '../../components/StatusBadge';
 import { useToast } from '../../context/ToastContext';
 import useDebounce from '../../hooks/useDebounce'; // BUG-017: standardised debounce hook
 import useEnabledVitals from '../../hooks/useEnabledVitals';
+import useOpdCreateError from '../../hooks/useOpdCreateError';
 import useOtPermissions from '../../hooks/useOtPermissions';
 import useWebSocket from '../../hooks/useWebSocket';
 import apiClient from '../../services/apiService';
@@ -133,6 +135,7 @@ const DoctorDashboard = () => {
 
   const { success, error: toastError, info } = useToast();
   const navigate = useNavigate();
+  const showOpdCreateError = useOpdCreateError();
 
   // Patient History Modal State (Removed in favor of HistoryDrawer)
   // const [historyModal, setHistoryModal] = useState({ isOpen: false, patient: null, history: [] });
@@ -284,13 +287,14 @@ const DoctorDashboard = () => {
   });
   const { isOn, customs } = useEnabledVitals();
   const [patientSearchText, setPatientSearchText] = useState('');
-  const [showPatientDropdown, setShowPatientDropdown] = useState(false);
+  // "+ Register new patient" from the OPD form: the registration form opens over it with what
+  // was typed, and the saved patient is selected straight back into the OPD form.
+  const [opdRegisterPrefill, setOpdRegisterPrefill] = useState(null);
 
   // Reset OPD form on modal open/close
   useEffect(() => {
     if (!isOpdModalOpen) {
       setPatientSearchText('');
-      setShowPatientDropdown(false);
       setOpdForm((prev) => ({
         ...prev,
         patientId: null,
@@ -1201,7 +1205,7 @@ const DoctorDashboard = () => {
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold text-gray-900">Overview</h2>
-                {canDoctorManageReception && (
+                {
                   <div className="flex items-center gap-3">
                     <button
                       onClick={() => setIsAddPatientModalOpen(true)}
@@ -1223,7 +1227,7 @@ const DoctorDashboard = () => {
                       Add Patient
                     </button>
                   </div>
-                )}
+                }
               </div>
               {/* Low stock warns the doctor early, so it is reordered before a dose is due. */}
               {(modules.includes('IPD') || modules.includes('HOSPITAL_INVENTORY')) && (
@@ -1430,7 +1434,7 @@ const DoctorDashboard = () => {
                       <h3 className="text-lg font-bold text-gray-955">Queue</h3>
                       <p className="text-xs text-gray-500 mt-0.5">Real-time OPD patient workflow</p>
                     </div>
-                    {canDoctorManageReception && (
+                    {
                       <button
                         onClick={() => setIsOpdModalOpen(true)}
                         className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-sky-700 hover:bg-sky-800 text-white text-xs font-semibold rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer animate-fade-in"
@@ -1450,7 +1454,7 @@ const DoctorDashboard = () => {
                         </svg>
                         OPD Intake
                       </button>
-                    )}
+                    }
                   </div>
 
                   {/* Queue Content */}
@@ -1570,10 +1574,11 @@ const DoctorDashboard = () => {
                 searchValue={searchInput}
                 searchPlaceholder={`Search ${activeTab}...`}
                 onAdd={
-                  canDoctorManageReception &&
-                  (activeTab === 'patients' ||
-                    activeTab === 'opd' ||
-                    (activeTab === 'appointments' && hasAppointments))
+                  // Registering a walk-in and opening their OPD visit is open to every doctor;
+                  // booking appointments stays front-desk work unless the mode allows it.
+                  activeTab === 'patients' ||
+                  activeTab === 'opd' ||
+                  (canDoctorManageReception && activeTab === 'appointments' && hasAppointments)
                     ? () => {
                         if (activeTab === 'patients') setIsAddPatientModalOpen(true);
                         if (activeTab === 'opd') setIsOpdModalOpen(true);
@@ -2341,7 +2346,7 @@ const DoctorDashboard = () => {
                     loadData();
                   } catch (err) {
                     console.error('Failed to create OPD', err);
-                    toastError('Failed to create OPD');
+                    await showOpdCreateError(err);
                   }
                 }}
                 className="p-6 space-y-4 max-h-[76vh] overflow-auto"
@@ -2351,80 +2356,18 @@ const DoctorDashboard = () => {
                     <span className="block text-sm font-semibold text-neutral-700 mb-2">
                       Patient <span className="text-red-600">*</span>
                     </span>
-                    <div className="relative">
-                      <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
-                        <svg
-                          className="w-5 h-5"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                          />
-                        </svg>
-                      </span>
-                      <input
-                        type="text"
-                        className="w-full border border-gray-300 rounded-xl pl-10 pr-4 py-2 focus:ring-2 focus:ring-primary-500 text-sm focus:border-transparent text-slate-800"
-                        value={patientSearchText}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setPatientSearchText(val);
-                          setShowPatientDropdown(true);
-                          setOpdForm((prev) => ({ ...prev, patientId: null }));
-                        }}
-                        onFocus={() => setShowPatientDropdown(true)}
-                        onBlur={() => {
-                          setTimeout(() => {
-                            setShowPatientDropdown(false);
-                          }, 250);
-                        }}
-                        placeholder="Type patient name to search..."
-                        autoComplete="off"
-                      />
-                    </div>
-
-                    {showPatientDropdown && patientSearchText.trim().length >= 2 && (
-                      <div className="absolute left-0 right-0 mt-1 bg-white border border-neutral-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto divide-y divide-neutral-100">
-                        {patients.filter((p) =>
-                          p.name?.toLowerCase().includes(patientSearchText.toLowerCase())
-                        ).length > 0 ? (
-                          patients
-                            .filter((p) =>
-                              p.name?.toLowerCase().includes(patientSearchText.toLowerCase())
-                            )
-                            .map((p) => (
-                              <button
-                                type="button"
-                                key={p.id}
-                                onMouseDown={() => {
-                                  setOpdForm((prev) => ({ ...prev, patientId: p.id }));
-                                  setPatientSearchText(
-                                    `${p.name}${p.phone ? ` (${p.phone})` : ''}`
-                                  );
-                                  setShowPatientDropdown(false);
-                                }}
-                                className="w-full px-4 py-3 hover:bg-neutral-50 cursor-pointer transition-colors duration-150 flex flex-col gap-0.5 text-left border-0"
-                              >
-                                <span className="font-semibold text-neutral-800 text-sm">
-                                  {p.name}
-                                </span>
-                                <span className="text-xs text-neutral-500">
-                                  {p.phone ? `📞 ${p.phone}` : ''} | {p.age} Yrs | {p.gender}
-                                </span>
-                              </button>
-                            ))
-                        ) : (
-                          <div className="px-4 py-4 text-sm text-neutral-500 text-center">
-                            No matching patients found
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    <PatientSearchPicker
+                      text={patientSearchText}
+                      onTextChange={setPatientSearchText}
+                      onSelect={(p) =>
+                        setOpdForm((prev) => ({ ...prev, patientId: p ? p.id : null }))
+                      }
+                      onRegisterNew={(typed) =>
+                        setOpdRegisterPrefill(
+                          /^[\d\s+-]+$/.test(typed) ? { phone: typed } : { name: typed }
+                        )
+                      }
+                    />
                   </div>
                   <div>
                     <span className="block text-sm font-semibold text-neutral-700 mb-2">
@@ -2650,6 +2593,21 @@ const DoctorDashboard = () => {
               </form>
             </div>
           </div>
+        )}
+
+        {/* Opened from the OPD form's patient search, so it is rendered after (above) that form. */}
+        {opdRegisterPrefill && (
+          <PatientModal
+            isOpen
+            prefill={opdRegisterPrefill}
+            onClose={() => setOpdRegisterPrefill(null)}
+            onSuccess={(saved) => {
+              if (saved?.id) {
+                setOpdForm((prev) => ({ ...prev, patientId: saved.id }));
+                setPatientSearchText(`${saved.name}${saved.phone ? ` (${saved.phone})` : ''}`);
+              }
+            }}
+          />
         )}
 
         {/* Payment Modal */}

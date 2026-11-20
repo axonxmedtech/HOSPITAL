@@ -30,6 +30,10 @@ public interface IpdAdmissionRepository extends JpaRepository<IpdAdmission, Long
 
     Optional<IpdAdmission> findByIdAndHospitalId(Long id, Long hospitalId);
 
+    /** The patient's current admission, if they are in hospital. */
+    Optional<IpdAdmission> findFirstByHospitalIdAndPatientIdAndStatusInOrderByIdDesc(Long hospitalId,
+            Long patientId, java.util.Collection<String> statuses);
+
     /** A patient's admissions in one facility. Used to decide nursing access to their records. */
     java.util.List<IpdAdmission> findByHospitalIdAndPatientId(Long hospitalId, Long patientId);
 

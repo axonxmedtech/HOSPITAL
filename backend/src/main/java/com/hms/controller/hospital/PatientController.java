@@ -41,17 +41,16 @@ public class PatientController {
      * shared-phone workflow into an opt-out. Both roles that may register a patient may also
      * acknowledge a shared number — they are the people standing in front of the family.
      *
-     * <p>A doctor may act as the front desk only when the hospital says so: under
-     * HAS_RECEPTIONIST these mutations stay with reception, SOLO and BOTH open them to the
-     * doctor. Admins and receptionists are untouched. The dashboard hides the buttons, but that
-     * is convenience — {@link FrontDeskAccessGuard} is the boundary.
+     * <p>A doctor may always register a patient, whatever the hospital's reception mode: a
+     * walk-in seen by the doctor must be registrable so their OPD visit can be opened. The
+     * duplicate-phone check above still applies. Editing an existing patient's details remains
+     * front-desk work, gated by {@link FrontDeskAccessGuard} on the update below.
      */
     @PostMapping
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> addPatient(@Valid @RequestBody com.hms.dto.PatientRequest patient,
             @RequestParam(name = "acknowledgeDuplicatePhone", defaultValue = "false")
             boolean acknowledgeDuplicatePhone) {
-        frontDeskAccessGuard.require();
         Patient createdPatient = patientService.addPatient(patient.toEntity(), acknowledgeDuplicatePhone);
         return ResponseEntity.ok(createdPatient);
     }
