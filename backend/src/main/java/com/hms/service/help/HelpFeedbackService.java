@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -31,8 +32,15 @@ public class HelpFeedbackService {
     static final int DAILY_LIMIT = 200;
     static final int MAX_QUESTION = 160;
 
-    private static final Pattern EMAIL = Pattern.compile("[\\w.+-]+@[\\w-]+(\\.[\\w-]+)+");
-    private static final Pattern NUMBERS = Pattern.compile("\\d[\\d\\s/.:-]{1,}\\d");
+    /** Input is cut to this length before any pattern runs, so no pattern can be made slow. */
+    static final int MAX_INPUT = 400;
+    private static final String NOT_HELPFUL_KEY = "notHelpful";
+    private static final ZoneId ZONE = ZoneId.systemDefault();
+    // Possessive quantifiers: the patterns never backtrack.
+    private static final Pattern EMAIL = Pattern.compile("[\\w.+-]++@[\\w-]++(?:\\.[\\w-]++)++");
+    /** Three or more digits, optionally split by single separators: phones, ids, dates. */
+    private static final Pattern NUMBERS = Pattern.compile("\\d(?:[\\s/.:-]?+\\d){2,}+");
+    private static final Pattern SPACES = Pattern.compile("\\s++");
     private static final Pattern ID = Pattern.compile("^[a-z0-9-]{1,60}$");
     private static final Pattern SCREEN = Pattern.compile("^[a-z0-9:_-]{1,60}$");
 
@@ -46,11 +54,11 @@ public class HelpFeedbackService {
 
     /** Records one piece of feedback from the signed-in user. Returns false if it was ignored. */
     @Transactional
-    public boolean record(String kind, String entryId, String question, String screen) {
+    public boolean submit(String kind, String entryId, String question, String screen) {
         Kind k = parseKind(kind);
         UserAuthenticationDetails me = securityHelper.getCurrentUserDetails();
         String scope = HelpProgressService.scopeKey(me);
-        if (repository.countByScopeKeyAndCreatedAtAfter(scope, LocalDateTime.now().minusDays(1)) >= DAILY_LIMIT) {
+        if (repository.countByScopeKeyAndCreatedAtAfter(scope, LocalDateTime.now(ZONE).minusDays(1)) >= DAILY_LIMIT) {
             return false;
         }
         HelpFeedback f = new HelpFeedback();
@@ -78,7 +86,7 @@ public class HelpFeedbackService {
     @Transactional(readOnly = true)
     public Map<String, Object> insights(int days) {
         int period = Math.max(1, Math.min(days, 365));
-        LocalDateTime since = LocalDateTime.now().minusDays(period);
+        LocalDateTime since = LocalDateTime.now(ZONE).minusDays(period);
 
         List<Object[]> open = repository.openQuestionsSince(since, PageRequest.of(0, 100));
         List<String> keys = open.stream().map(r -> (String) r[0]).toList();
@@ -95,7 +103,7 @@ public class HelpFeedbackService {
             q.put("question", r[1]);
             q.put("count", ((Number) r[2]).longValue());
             q.put("lastAsked", r[3]);
-            q.put("roles", roles.getOrDefault((String) r[0], new TreeSet<>()));
+            q.put("roles", roles.getOrDefault(r[0], new TreeSet<>()));
             questions.add(q);
         }
 
@@ -104,10 +112,10 @@ public class HelpFeedbackService {
             Map<String, Object> a = new LinkedHashMap<>();
             a.put("entryId", r[0]);
             a.put("helpful", ((Number) r[1]).longValue());
-            a.put("notHelpful", ((Number) r[2]).longValue());
+            a.put(NOT_HELPFUL_KEY, ((Number) r[2]).longValue());
             answers.add(a);
         }
-        answers.sort((a, b) -> Long.compare((long) b.get("notHelpful"), (long) a.get("notHelpful")));
+        answers.sort((a, b) -> Long.compare((long) b.get(NOT_HELPFUL_KEY), (long) a.get(NOT_HELPFUL_KEY)));
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("days", period);
@@ -125,9 +133,10 @@ public class HelpFeedbackService {
 
     static String scrub(String question) {
         if (question == null) return "";
-        String s = EMAIL.matcher(question).replaceAll("[email]");
+        String s = question.length() > MAX_INPUT ? question.substring(0, MAX_INPUT) : question;
+        s = EMAIL.matcher(s).replaceAll("[email]");
         s = NUMBERS.matcher(s).replaceAll("[number]");
-        s = s.replaceAll("\\s+", " ").trim();
+        s = SPACES.matcher(s).replaceAll(" ").trim();
         return s.length() > MAX_QUESTION ? s.substring(0, MAX_QUESTION).trim() : s;
     }
 

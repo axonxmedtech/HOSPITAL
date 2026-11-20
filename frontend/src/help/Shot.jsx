@@ -45,11 +45,11 @@ export default function Shot({ shotKey }) {
         </figcaption>
       </figure>
       {big && (
-        <div
-          role="dialog"
+        <dialog
+          open
           aria-modal="true"
           aria-label={shot.caption}
-          className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+          className="fixed inset-0 z-[60] m-0 flex h-full max-h-none w-full max-w-none items-center justify-center border-0 bg-transparent p-4"
         >
           <button
             type="button"
@@ -65,7 +65,7 @@ export default function Shot({ shotKey }) {
             />
             <figcaption className="text-center text-sm text-white">{shot.caption}</figcaption>
           </figure>
-        </div>
+        </dialog>
       )}
     </>
   );

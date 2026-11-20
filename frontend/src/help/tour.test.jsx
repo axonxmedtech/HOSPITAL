@@ -28,6 +28,7 @@ beforeEach(() => {
   apiClient.put.mockReset();
   apiClient.put.mockResolvedValue({});
   progressStore.clear();
+  sessionStorage.clear();
 });
 
 afterEach(() => {
@@ -159,8 +160,14 @@ describe('progress follows the user', () => {
     });
   });
 
+  const signIn = () => {
+    sessionStorage.setItem('token', 't');
+    sessionStorage.setItem('user', JSON.stringify(user));
+  };
+
   it('loads from the server, keeps ticks made on this device and saves the result', async () => {
     vi.useFakeTimers();
+    signIn();
     localStorage.setItem('hms.help.guides.1.7', JSON.stringify({ 'first-nurse': ['patients'] }));
     apiClient.get.mockResolvedValue({ data: { guides: { 'first-nurse': ['vitals'] }, tours: {} } });
     await progressStore.load(user);
@@ -171,6 +178,22 @@ describe('progress follows the user', () => {
       '/help/progress',
       expect.objectContaining({ guides: { 'first-nurse': ['vitals', 'patients'] } })
     );
+  });
+
+  it('never sends a save after the user signed out (it would fail without a session)', async () => {
+    vi.useFakeTimers();
+    signIn();
+    apiClient.get.mockResolvedValue({ data: {} });
+    await progressStore.load(user);
+    apiClient.put.mockClear();
+    progressStore.toggleStep('first-nurse', 'tasks');
+    sessionStorage.clear(); // logout
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(apiClient.put).not.toHaveBeenCalled();
+    // The tick is kept on this device for the next sign-in.
+    expect(JSON.parse(localStorage.getItem('hms.help.guides.1.7')).guides['first-nurse']).toEqual([
+      'tasks',
+    ]);
   });
 
   it('keeps working on this device when the server cannot be reached', async () => {

@@ -23,6 +23,10 @@ import Shot from './Shot';
 
 const SUPPORT_PHONE = '9022915865';
 
+/** Gives chat messages a stable id for React keys. */
+let lastMessageId = 0;
+const withIds = (...messages) => messages.map((m) => ({ ...m, id: ++lastMessageId }));
+
 /** "Was this helpful?" under an answer. One vote per answer shown. */
 function Rate({ entry, screen, isAdmin }) {
   const [vote, setVote] = useState(null);
@@ -132,13 +136,13 @@ function Assistant({ entries, screen, user, initialQuestion, initialAnswerId, on
     // Worked out once, outside the state update: React may run updates twice, and reply() can
     // report an unanswered question.
     const answer = reply(q);
-    setMessages((m) => [...m, { from: 'user', text: q }, answer]);
+    const added = withIds({ from: 'user', text: q }, answer);
+    setMessages((m) => [...m, ...added]);
     setText('');
   };
 
-  const showEntry = (entry) =>
-    setMessages((m) => [
-      ...m,
+  const showEntry = (entry) => {
+    const added = withIds(
       { from: 'user', text: entry.q },
       {
         from: 'bot',
@@ -146,8 +150,10 @@ function Assistant({ entries, screen, user, initialQuestion, initialAnswerId, on
         related: rank(entries, entry.q, { screen })
           .slice(1, 4)
           .map((r) => r.entry),
-      },
-    ]);
+      }
+    );
+    setMessages((m) => [...m, ...added]);
+  };
 
   // Answer what the panel was opened with, once (development mode runs effects twice).
   const startedWith = useRef(null);
@@ -179,13 +185,13 @@ function Assistant({ entries, screen, user, initialQuestion, initialAnswerId, on
           </p>
           <Chips entries={suggestions} onPick={showEntry} />
         </div>
-        {messages.map((m, i) =>
+        {messages.map((m) =>
           m.from === 'user' ? (
-            <div key={i} className="flex justify-end">
+            <div key={m.id} className="flex justify-end">
               <p className="max-w-[85%] bg-gray-900 text-white rounded-xl px-3 py-2">{m.text}</p>
             </div>
           ) : (
-            <div key={i} className="bg-white border border-gray-200 rounded-xl p-3 space-y-3">
+            <div key={m.id} className="bg-white border border-gray-200 rounded-xl p-3 space-y-3">
               {m.entry ? (
                 <Answer entry={m.entry} onGo={onGo} screen={screen} isAdmin={isAdmin} />
               ) : (

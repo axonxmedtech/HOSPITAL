@@ -43,6 +43,8 @@ public class DatabaseMigrationRunner {
     private static final String VARCHAR_255_NULL = "VARCHAR(255) NULL";
     private static final String VARCHAR_500_NULL = "VARCHAR(500) NULL";
     private static final String DATETIME_6_NULL = "DATETIME(6) NULL";
+    private static final String TINYINT_TRUE = "TINYINT(1) NOT NULL DEFAULT 1";
+    private static final String SURGERY_FORMS_TABLE = "surgery_forms";
 
     private static final Logger log = LoggerFactory.getLogger(DatabaseMigrationRunner.class);
 
@@ -248,10 +250,10 @@ public class DatabaseMigrationRunner {
         backfillPrescriptionPresetType();
 
         // Print Settings (pages in the consultation-complete print) + bill payment timing.
-        addColumnIfMissing(HOSPITAL_SETTINGS_TABLE, "print_case_paper", "TINYINT(1) NOT NULL DEFAULT 1");
-        addColumnIfMissing(HOSPITAL_SETTINGS_TABLE, "print_bill", "TINYINT(1) NOT NULL DEFAULT 1");
-        addColumnIfMissing(HOSPITAL_SETTINGS_TABLE, "print_prescription", "TINYINT(1) NOT NULL DEFAULT 1");
-        addColumnIfMissing(HOSPITAL_SETTINGS_TABLE, "print_in_clinic", "TINYINT(1) NOT NULL DEFAULT 1");
+        addColumnIfMissing(HOSPITAL_SETTINGS_TABLE, "print_case_paper", TINYINT_TRUE);
+        addColumnIfMissing(HOSPITAL_SETTINGS_TABLE, "print_bill", TINYINT_TRUE);
+        addColumnIfMissing(HOSPITAL_SETTINGS_TABLE, "print_prescription", TINYINT_TRUE);
+        addColumnIfMissing(HOSPITAL_SETTINGS_TABLE, "print_in_clinic", TINYINT_TRUE);
         addColumnIfMissing(HOSPITAL_SETTINGS_TABLE, "bill_payment_timing", "VARCHAR(10) NOT NULL DEFAULT 'LAST'");
         backfillPrintPaymentDefaults();
         widenVitalsDecimalColumns();
@@ -2144,7 +2146,7 @@ public class DatabaseMigrationRunner {
     }
 
     private void ensurePerformedByNurseIdColumns() {
-        for (String t : new String[]{"vitals_records","nursing_notes",MAR_TABLE,"sugar_chart_entries","surgery_forms"}) {
+        for (String t : new String[]{"vitals_records","nursing_notes",MAR_TABLE,"sugar_chart_entries",SURGERY_FORMS_TABLE}) {
             addColumnIfMissing(t, "performed_by_nurse_id", BIGINT_NULL);
         }
     }
@@ -2581,11 +2583,11 @@ public class DatabaseMigrationRunner {
      * treats NULLs in a unique key as distinct and would silently admit duplicates.
      */
     private void ensureSurgeryFormProcedureScope() {
-        addColumnIfMissing("surgery_forms", "version", "INT NOT NULL DEFAULT 1");
-        addColumnIfMissing("surgery_forms", "is_current", "TINYINT(1) DEFAULT 1");
-        addColumnIfMissing("surgery_forms", "signed_at", DATETIME_6_NULL);
-        addColumnIfMissing("surgery_forms", "signed_by_user_id", BIGINT_NULL);
-        addColumnIfMissing("surgery_forms", "recorded_by_user_id", BIGINT_NULL);
+        addColumnIfMissing(SURGERY_FORMS_TABLE, "version", "INT NOT NULL DEFAULT 1");
+        addColumnIfMissing(SURGERY_FORMS_TABLE, "is_current", "TINYINT(1) DEFAULT 1");
+        addColumnIfMissing(SURGERY_FORMS_TABLE, "signed_at", DATETIME_6_NULL);
+        addColumnIfMissing(SURGERY_FORMS_TABLE, "signed_by_user_id", BIGINT_NULL);
+        addColumnIfMissing(SURGERY_FORMS_TABLE, "recorded_by_user_id", BIGINT_NULL);
 
         // A day-care form has no admission.
         try {
@@ -2620,8 +2622,8 @@ public class DatabaseMigrationRunner {
         }
 
         // 2. Swap the unique key. Old key first, so the new one is never fighting it.
-        dropIndexIfExists("surgery_forms", "UK_surgery_form_admission_type");
-        if (!indexExists("surgery_forms", "UK_surgery_form_surgery_type")) {
+        dropIndexIfExists(SURGERY_FORMS_TABLE, "UK_surgery_form_admission_type");
+        if (!indexExists(SURGERY_FORMS_TABLE, "UK_surgery_form_surgery_type")) {
             try {
                 jdbcTemplate.execute("ALTER TABLE surgery_forms ADD CONSTRAINT UK_surgery_form_surgery_type " +
                         "UNIQUE (surgery_id, form_type, is_current)");

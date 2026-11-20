@@ -144,26 +144,35 @@ export function rank(entries, query, { screen } = {}) {
     .toLowerCase();
   const results = [];
   for (const entry of entries) {
-    const idx = indexOf(entry);
-    let score = 0;
-    let typedHits = 0;
-    for (const [w, weight] of words) {
-      let hit = 0;
-      if (idx.q.has(w)) hit = 3;
-      else if (idx.tags.has(w)) hit = 2;
-      else if (idx.body.has(w)) hit = 1;
-      if (hit && weight === 1) typedHits += 1;
-      score += hit * weight;
-    }
-    if (score === 0) continue;
-    if (phrase.length > 6 && idx.qText.includes(phrase)) score += 4;
-    // Answers that cover more of what was typed beat answers that repeat one word.
-    score += typedHits * 1.5;
-    if (screen && entry.screens?.includes(screen)) score += 1;
-    results.push({ entry, score });
+    const score = scoreEntry(entry, words, phrase, screen);
+    if (score > 0) results.push({ entry, score });
   }
   results.sort((x, y) => y.score - x.score);
   return results;
+}
+
+/** Where a word appears: the question counts most, then its keywords, then the answer text. */
+function wordHit(idx, w) {
+  if (idx.q.has(w)) return 3;
+  if (idx.tags.has(w)) return 2;
+  return idx.body.has(w) ? 1 : 0;
+}
+
+function scoreEntry(entry, words, phrase, screen) {
+  const idx = indexOf(entry);
+  let score = 0;
+  let typedHits = 0;
+  for (const [w, weight] of words) {
+    const hit = wordHit(idx, w);
+    if (hit && weight === 1) typedHits += 1;
+    score += hit * weight;
+  }
+  if (score === 0) return 0;
+  if (phrase.length > 6 && idx.qText.includes(phrase)) score += 4;
+  // Answers that cover more of what was typed beat answers that repeat one word.
+  score += typedHits * 1.5;
+  if (screen && entry.screens?.includes(screen)) score += 1;
+  return score;
 }
 
 /** Below this, the best match is too weak to present as "the answer". */

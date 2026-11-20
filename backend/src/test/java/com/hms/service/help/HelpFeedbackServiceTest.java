@@ -43,6 +43,16 @@ class HelpFeedbackServiceTest {
         // Short numbers in ordinary questions stay readable.
         assertThat(HelpFeedbackService.scrub("print 2 copies")).isEqualTo("print 2 copies");
         assertThat(HelpFeedbackService.scrub("x".repeat(500))).hasSize(HelpFeedbackService.MAX_QUESTION);
+        assertThat(HelpFeedbackService.scrub("call 98220 12345")).isEqualTo("call [number]");
+    }
+
+    @Test
+    void hostileInputCannotMakeTheScrubberSlow() {
+        String attack = "a+".repeat(50_000) + "@" + "1-".repeat(50_000) + "!";
+        long start = System.nanoTime();
+        String out = HelpFeedbackService.scrub(attack);
+        assertThat((System.nanoTime() - start) / 1_000_000).isLessThan(500);
+        assertThat(out.length()).isLessThanOrEqualTo(HelpFeedbackService.MAX_QUESTION);
     }
 
     @Test
@@ -53,7 +63,7 @@ class HelpFeedbackServiceTest {
 
     @Test
     void recordsAnUnansweredQuestionWithoutAName() {
-        service.record("unanswered", null, "where is the x-ray module for 9822012345", "opd");
+        service.submit("unanswered", null, "where is the x-ray module for 9822012345", "opd");
         ArgumentCaptor<HelpFeedback> saved = ArgumentCaptor.forClass(HelpFeedback.class);
         verify(repository).save(saved.capture());
         HelpFeedback f = saved.getValue();
@@ -66,20 +76,20 @@ class HelpFeedbackServiceTest {
 
     @Test
     void ratingsNeedARealAnswerId() {
-        service.record("HELPFUL", "desk-new-opd", null, null);
+        service.submit("HELPFUL", "desk-new-opd", null, null);
         verify(repository).save(any());
-        assertThatThrownBy(() -> service.record("NOT_HELPFUL", "<script>", null, null))
+        assertThatThrownBy(() -> service.submit("NOT_HELPFUL", "<script>", null, null))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> service.record("LOVE_IT", "desk-new-opd", null, null))
+        assertThatThrownBy(() -> service.submit("LOVE_IT", "desk-new-opd", null, null))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> service.record("UNANSWERED", null, "  ", null))
+        assertThatThrownBy(() -> service.submit("UNANSWERED", null, "  ", null))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void oneLoginCannotFloodIt() {
         when(repository.countByScopeKeyAndCreatedAtAfter(anyString(), any())).thenReturn((long) HelpFeedbackService.DAILY_LIMIT);
-        assertThat(service.record("HELPFUL", "desk-new-opd", null, null)).isFalse();
+        assertThat(service.submit("HELPFUL", "desk-new-opd", null, null)).isFalse();
         verify(repository, never()).save(any());
     }
 

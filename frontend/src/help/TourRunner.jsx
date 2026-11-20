@@ -14,7 +14,7 @@ const CARD_W = 320;
 function cardPosition(rect) {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  if (vw < 640) return { left: 12, right: 12, bottom: 12 }; // phones: a sheet at the bottom
+  if (vw < 640) return { left: 12, right: 12, bottom: 12, top: 'auto', width: 'auto' }; // phones: a sheet
   if (!rect) return { left: Math.max(12, (vw - CARD_W) / 2), top: Math.max(12, vh * 0.28) };
   const clampX = (x) => Math.min(Math.max(12, x), vw - CARD_W - 12);
   if (rect.right + PAD + 12 + CARD_W < vw && rect.height > vh * 0.5) {
@@ -144,14 +144,14 @@ export default function TourRunner() {
       ) : (
         <div aria-hidden="true" className="absolute inset-0 bg-gray-900/55" />
       )}
-      <div
+      <dialog
+        open
         data-tour-card
-        role="dialog"
         aria-modal="true"
         aria-labelledby="tour-step-title"
         aria-describedby="tour-step-text"
         className="absolute bg-white rounded-xl shadow-2xl border border-gray-200 p-4 space-y-3 sm:w-80"
-        style={pos}
+        style={{ margin: 0, right: 'auto', bottom: 'auto', ...pos }}
       >
         <div className="flex items-center justify-between gap-2">
           <span className="text-[11px] font-semibold uppercase text-sky-700">
@@ -190,7 +190,7 @@ export default function TourRunner() {
             {last ? 'Finish' : 'Next'}
           </button>
         </div>
-      </div>
+      </dialog>
     </div>
   );
 }

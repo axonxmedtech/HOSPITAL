@@ -57,7 +57,7 @@ export const TOURS = [
       {
         target: '[aria-label="User menu"]',
         title: 'Your account',
-        text: 'Your profile, password change and Logout are here.',
+        text: 'Profile Settings (your details and password) and Sign Out are here.',
       },
       {
         title: 'You’re all set',

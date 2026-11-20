@@ -50,7 +50,7 @@ export function shortcutGroups() {
 /** True while the user is typing, when single-key shortcuts must not fire. */
 export function isTyping(event) {
   const el = event.target;
-  if (!el || !el.tagName) return false;
+  if (!el?.tagName) return false;
   const tag = el.tagName.toLowerCase();
   return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable === true;
 }

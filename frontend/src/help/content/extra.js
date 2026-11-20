@@ -8,7 +8,7 @@ const extra = [
     category: 'Your account',
     roles: [ALL],
     q: 'How do I change my own password?',
-    a: 'Click your initials in the top-right corner → Profile → Edit Profile → Change Password. Enter your current password and the new one twice, then Save Settings.',
+    a: 'Click your initials in the top-right corner → Profile Settings → Edit Profile → Change Password. Enter your current password and the new one twice, then Save Settings.',
     tags: ['change password', 'new password', 'my password', 'profile'],
   },
   {
@@ -16,7 +16,7 @@ const extra = [
     category: 'Your account',
     roles: [ALL],
     q: 'How do I update my name, phone or details?',
-    a: 'Click your initials in the top-right corner → Profile → Edit Profile, change the details and Save Settings.',
+    a: 'Click your initials in the top-right corner → Profile Settings → Edit Profile, change the details and Save Settings.',
     tags: ['profile', 'my details', 'phone number', 'name change'],
   },
   {
@@ -25,7 +25,7 @@ const extra = [
     roles: [ADMIN],
     types: ['HOSPITAL', 'CLINIC'],
     q: 'How do I change the hospital name, address, phone or logo on prints?',
-    a: 'Click your initials → Profile → Edit Profile. The hospital name, address, contact number, parent organisation and logo (PNG, JPG, WEBP or GIF under 1 MB) are there. Bills, case papers and prescriptions print with them.',
+    a: 'Click your initials → Profile Settings → Edit Profile. The hospital name, address, contact number, parent organisation and logo (PNG, JPG, WEBP or GIF under 1 MB) are there. Bills, case papers and prescriptions print with them.',
     tags: ['logo', 'letterhead', 'hospital name', 'address', 'print header'],
   },
   {

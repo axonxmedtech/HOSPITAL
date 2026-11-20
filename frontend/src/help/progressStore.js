@@ -66,9 +66,23 @@ export function merge(a, b) {
   return { guides, tours, ...(welcome ? { welcome } : {}) };
 }
 
+/** Whether the user this progress belongs to is still signed in on this tab. */
+function stillSignedIn(key) {
+  try {
+    const user = JSON.parse(window.sessionStorage.getItem('user') || 'null');
+    return !!window.sessionStorage.getItem('token') && keyFor(user) === key;
+  } catch {
+    return false;
+  }
+}
+
 function scheduleSave() {
   clearTimeout(saveTimer);
+  const key = ownerKey;
   saveTimer = setTimeout(() => {
+    // Signed out (or someone else signed in) since the change: do not send it without a valid
+    // session. This device's copy keeps it and it is merged in at the next sign-in.
+    if (!key || !stillSignedIn(key)) return;
     apiClient.put('/help/progress', state).catch(() => {
       /* offline or refused: this device's copy is kept and sent with the next change */
     });

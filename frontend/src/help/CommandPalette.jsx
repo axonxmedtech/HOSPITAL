@@ -109,11 +109,11 @@ export default function CommandPalette() {
         className="absolute inset-0 bg-gray-900/30 cursor-default"
         onClick={helpStore.closePalette}
       />
-      <div
-        role="dialog"
+      <dialog
+        open
         aria-modal="true"
         aria-label="Command bar"
-        className="relative w-full max-w-lg bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden"
+        className="relative m-0 p-0 w-full max-w-lg bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden"
       >
         <input
           ref={inputRef}
@@ -148,7 +148,7 @@ export default function CommandPalette() {
             </li>
           ))}
         </ul>
-      </div>
+      </dialog>
     </div>
   );
 }

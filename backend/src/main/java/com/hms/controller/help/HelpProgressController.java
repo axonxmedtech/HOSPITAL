@@ -44,7 +44,7 @@ public class HelpProgressController {
     @PostMapping("/help/feedback")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Map<String, Object>> feedback(@RequestBody Map<String, String> body) {
-        boolean saved = feedback.record(body.get("kind"), body.get("entryId"), body.get("question"),
+        boolean saved = feedback.submit(body.get("kind"), body.get("entryId"), body.get("question"),
                 body.get("screen"));
         return ResponseEntity.ok(Map.of("saved", saved));
     }

@@ -25,7 +25,7 @@ export default function HelpRoot() {
 
   // Help progress (guide ticks, tours seen) follows the user; forget it when they sign out.
   useEffect(() => {
-    if (userKey) progressStore.load(authService.getCurrentUser());
+    if (userKey) void progressStore.load(authService.getCurrentUser());
     else progressStore.clear();
   }, [userKey]);
 

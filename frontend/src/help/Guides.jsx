@@ -108,7 +108,7 @@ export default function Guides({ user, onGo }) {
   const open = guides.find((g) => g.id === openId);
 
   useEffect(() => {
-    progressStore.load(user);
+    void progressStore.load(user);
   }, [user?.userId, user?.hospitalId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggle = (guideId, stepId) => progressStore.toggleStep(guideId, stepId);

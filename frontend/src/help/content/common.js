@@ -44,7 +44,7 @@ const common = [
     category: 'Account & login',
     roles: [ALL],
     q: 'How do I log out or change my profile?',
-    a: 'Click your initials in the top-right corner. The menu has Profile and Logout.',
+    a: 'Click your initials in the top-right corner. The menu has Profile Settings (your details and password) and Sign Out.',
     tags: ['sign out', 'profile', 'logout'],
   },
   {

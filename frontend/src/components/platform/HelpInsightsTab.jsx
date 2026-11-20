@@ -64,7 +64,8 @@ export default function HelpInsightsTab() {
   return (
     <div className="space-y-6">
       <div className="flex justify-end">
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg" role="group" aria-label="Period">
+        <fieldset className="flex gap-1 bg-gray-100 p-1 rounded-lg border-0 m-0 min-w-0">
+          <legend className="sr-only">Period</legend>
           {PERIODS.map((p) => (
             <button
               key={p}
@@ -78,7 +79,7 @@ export default function HelpInsightsTab() {
               Last {p} days
             </button>
           ))}
-        </div>
+        </fieldset>
       </div>
 
       {failed && (

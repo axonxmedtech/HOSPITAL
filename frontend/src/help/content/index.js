@@ -34,12 +34,12 @@ export function helpRolesFor(user) {
   return roles;
 }
 
-const PHARMACY_MODULES = [
+const PHARMACY_MODULES = new Set([
   'PHARMACY',
   'SINGLE_PHARMACIST_ADMIN',
   'SINGLE_PHARMACY',
   'MULTI_PHARMACY',
-];
+]);
 
 /**
  * Whether an answer fits the kind of facility. `types` limits it explicitly; otherwise a
@@ -48,7 +48,7 @@ const PHARMACY_MODULES = [
 function typeOk(e, type) {
   if (e.types) return e.types.includes(type);
   if (type !== 'PHARMACY') return true;
-  return e.roles.includes(ALL) || (e.modules || []).some((m) => PHARMACY_MODULES.includes(m));
+  return e.roles.includes(ALL) || (e.modules || []).some((m) => PHARMACY_MODULES.has(m));
 }
 
 /** Answers that apply to this user: their roles, their kind of facility and its modules. */
