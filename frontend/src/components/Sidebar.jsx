@@ -1,6 +1,7 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { helpStore } from '../help/helpStore';
+import useHiddenTabs from '../hooks/useHiddenTabs';
 import { mobileNav, useMobileNavOpen } from '../hooks/useMobileNav';
 import { titleCase } from '../utils/text';
 import AccessLabel from './plan/AccessLabel';
@@ -1109,9 +1110,18 @@ const MobileDrawer = ({ onClose, onTabChange, ...contentProps }) => {
   );
 };
 
+/** The tabs minus hidden ones; a group whose items are all hidden disappears too. */
+export function withoutHidden(tabs, hidden) {
+  if (!hidden || hidden.size === 0) return tabs;
+  return (tabs || [])
+    .filter((t) => !hidden.has(t.id))
+    .map((t) => (t.subItems ? { ...t, subItems: t.subItems.filter((s) => !hidden.has(s.id)) } : t))
+    .filter((t) => !t.subItems || t.subItems.length > 0);
+}
+
 const Sidebar = ({
   title: _title,
-  tabs,
+  tabs: allTabs,
   activeTab,
   onTabChange,
   onToggleGroup,
@@ -1120,6 +1130,15 @@ const Sidebar = ({
   variant = 'plain',
   isCollapsed = false,
 }) => {
+  // Settings → Sidebar: tabs the admin hid for this role are left out (display only).
+  const { hidden, loadedFor } = useHiddenTabs();
+  const tabs = useMemo(() => withoutHidden(allTabs, hidden), [allTabs, hidden]);
+  // A hidden screen opened by its address goes to the first screen still shown.
+  useEffect(() => {
+    if (!loadedFor || !hidden.has(activeTab) || !onTabChange) return;
+    const first = tabs.find((t) => !t.subItems?.length) || tabs[0]?.subItems?.[0];
+    if (first && first.id !== activeTab) onTabChange(first.id);
+  }, [loadedFor, hidden, activeTab, tabs, onTabChange]);
   const drawerOpen = useMobileNavOpen();
   // Never leave the drawer flagged open for the next dashboard that mounts.
   useEffect(() => mobileNav.close, []);

@@ -108,6 +108,7 @@ import BillingHistoryView from './pharmacy/BillingHistoryView';
 import SuppliersView from './pharmacy/SuppliersView';
 import PrintPaymentSettingsCard from './PrintPaymentSettingsCard';
 import ScoreSettingsCard from './ScoreSettingsCard';
+import SidebarSettingsCard from './SidebarSettingsCard';
 import TimeSlotsView from './TimeSlotsView';
 import VentilatorSettingsCard from './VentilatorSettingsCard';
 import VitalsSettingsCard from './VitalsSettingsCard';
@@ -3997,6 +3998,12 @@ const HospitalAdminDashboard = () => {
                           iconClass: 'bg-sky-50 text-sky-600',
                         },
                         {
+                          view: 'sidebar',
+                          title: 'Sidebar',
+                          desc: 'Choose which tabs each role sees in the menu.',
+                          iconClass: 'bg-indigo-50 text-indigo-600',
+                        },
+                        {
                           view: 'vitals',
                           title: 'Vitals',
                           desc: 'Which vitals are captured at OPD entry; add your own.',
@@ -4545,6 +4552,11 @@ const HospitalAdminDashboard = () => {
                           )}
                         </div>
                       )}
+                    </div>
+                  )}
+                  {!isPharmacyTenant && settingsView === 'sidebar' && (
+                    <div className="max-w-4xl mx-auto my-4">
+                      <SidebarSettingsCard user={user} adminTabs={tabs} />
                     </div>
                   )}
                   {!isPharmacyTenant && settingsView === 'vitals' && (

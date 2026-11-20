@@ -188,6 +188,7 @@ public class DatabaseMigrationRunner {
         ensureNurseShiftSchedulesTable(); // NEW — Nursing Mgmt Phase B2
         ensureHelpProgressTable();
         ensureHelpFeedbackTable();
+        ensureHospitalSidebarSettingsTable(); // V36
         ensureNurseAttendanceTable(); // NEW — Nursing Mgmt Phase D
         ensureNurseWardAssignmentsTable(); // NEW — Nursing Mgmt Phase F
         ensureNurseSubstitutionsTable(); // NEW — Nursing Mgmt Phase F
@@ -609,6 +610,17 @@ public class DatabaseMigrationRunner {
     }
 
     /** In-app help feedback (V34). Idempotent; mirrors setup/schema-full.sql. */
+    private void ensureHospitalSidebarSettingsTable() {
+        try {
+            jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS hospital_sidebar_settings (" +
+                "id BIGINT NOT NULL AUTO_INCREMENT, hospital_id BIGINT NOT NULL, role VARCHAR(30) NOT NULL," +
+                "hidden_tabs VARCHAR(1000) NOT NULL DEFAULT '', updated_by VARCHAR(100) NULL," +
+                "updated_at DATETIME(6) NULL, PRIMARY KEY (id)," +
+                "UNIQUE KEY uk_hospital_sidebar_role (hospital_id, role)," +
+                "CONSTRAINT fk_hospital_sidebar_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals (id) ON DELETE CASCADE)");
+        } catch (Exception e) { log.warn("DB migration skipped (hospital_sidebar_settings): {}", e.getMessage()); }
+    }
+
     private void ensureHelpFeedbackTable() {
         try {
             jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS help_feedback (" +

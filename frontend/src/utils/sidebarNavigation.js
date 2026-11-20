@@ -333,3 +333,29 @@ export function getRoleNavigateUrl(tabId, user, activeDashboard = null) {
       return `/hospital/admin?tab=${tabId}`;
   }
 }
+
+/**
+ * Every tab a role can have in this facility, for Settings → Sidebar. Front-desk tabs a doctor
+ * gets only in Solo / Both mode are included, so the admin can decide about them up front.
+ */
+export function tabsForRole(role, user) {
+  const tenantWord = user?.hospitalType === 'CLINIC' ? 'Clinic' : 'Hospital';
+  const u = { ...user, role, receptionMode: 'BOTH' };
+  switch (role) {
+    case 'HOSPITAL_ADMIN':
+      return getAdminTabs(user?.modules || [], tenantWord);
+    case 'DOCTOR':
+      return getDoctorTabs(u, tenantWord);
+    case 'RECEPTIONIST':
+      return getReceptionistTabs(u, tenantWord);
+    case 'NURSE':
+    case 'NURSE_INCHARGE':
+      return getNurseConfig(u, role).tabs;
+    case 'PHARMACIST':
+      return getPharmacistTabs(u);
+    case 'OT_INCHARGE':
+      return getOtInchargeConfig().tabs;
+    default:
+      return [];
+  }
+}

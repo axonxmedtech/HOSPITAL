@@ -2397,3 +2397,16 @@ CREATE TABLE IF NOT EXISTS help_feedback (
     KEY idx_help_feedback_kind (kind, resolved, created_at),
     KEY idx_help_feedback_hospital (hospital_id)
 );
+
+-- Settings → Sidebar (V36): tabs each role does not see. Display only.
+CREATE TABLE IF NOT EXISTS `hospital_sidebar_settings` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `role` varchar(30) NOT NULL,
+  `hidden_tabs` varchar(1000) NOT NULL DEFAULT '',
+  `updated_by` varchar(100) DEFAULT NULL,
+  `updated_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_hospital_sidebar_role` (`hospital_id`,`role`),
+  CONSTRAINT `fk_hospital_sidebar_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
