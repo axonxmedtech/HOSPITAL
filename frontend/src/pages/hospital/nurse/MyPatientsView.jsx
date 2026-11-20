@@ -111,8 +111,11 @@ const MyPatientsView = ({ onOpenPatient, refreshKey }) => {
                       ADMITTED
                     </span>
                   ) : (
-                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-700">
-                      ADMISSION PENDING
+                    <span
+                      className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-800"
+                      title="The patient is admitted and in the bed. The admission form still has to be completed (Complete Admission on the IPD case)."
+                    >
+                      ADMITTED · FORM PENDING
                     </span>
                   )}
                   {p.surgeryStatus && (
