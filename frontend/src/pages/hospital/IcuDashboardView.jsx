@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import { ConfirmDischargeModal } from '../../components/ipd/DischargeType';
 import IpdAdmitModal from '../../components/IpdAdmitModal';
+import { useConfirm } from '../../context/ConfirmContext';
 import { useToast } from '../../context/ToastContext';
 import useLiveRefresh from '../../hooks/useLiveRefresh';
 import authService from '../../services/authService';
@@ -13,6 +14,7 @@ import { extractApiError } from '../../utils/apiError';
 
 const IcuDashboardView = () => {
   const { success, error: toastError } = useToast();
+  const confirm = useConfirm();
   const currentUser = authService.getCurrentUser();
 
   // State
@@ -139,6 +141,16 @@ const IcuDashboardView = () => {
 
   // Handle Update Task Status
   const handleUpdateStatus = async (taskId, newStatus) => {
+    // Completing a cleaning task frees the bed for the next patient: ask once.
+    if (
+      newStatus === 'COMPLETED' &&
+      !(await confirm({
+        title: 'Complete this cleaning task?',
+        message: 'The bed becomes available for the next admission.',
+        confirmLabel: 'Mark completed',
+      }))
+    )
+      return;
     try {
       await hospitalService.updateIcuCleaningTaskStatus(taskId, newStatus);
 

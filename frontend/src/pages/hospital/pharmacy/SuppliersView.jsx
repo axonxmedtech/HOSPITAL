@@ -7,6 +7,7 @@ import {
   SearchInput,
 } from '../../../components/pharmacy/shared/ViewComponents';
 import SupplierForm from '../../../components/SupplierForm';
+import { useConfirm } from '../../../context/ConfirmContext';
 import { useToast } from '../../../context/ToastContext';
 import { useViewManager } from '../../../hooks/pharmacy/useViewManager';
 import authService from '../../../services/authService';
@@ -15,6 +16,7 @@ import { extractApiError } from '../../../utils/apiError';
 
 const SuppliersView = () => {
   const toast = useToast();
+  const confirm = useConfirm();
   const currentUser = authService.getCurrentUser();
   const isStandalonePharmacy =
     currentUser?.modules?.includes('PHARMACY') && !currentUser?.modules?.includes('OPD');
@@ -44,7 +46,13 @@ const SuppliersView = () => {
   } = useViewManager(suppliersApi.getAll);
 
   const handleDelete = async (supplier) => {
-    if (!window.confirm(`Delete supplier "${supplier.supplierName}"? This cannot be undone.`))
+    if (
+      !(await confirm({
+        title: `Delete ${supplier.supplierName}?`,
+        message: 'This cannot be undone.',
+        confirmLabel: 'Delete supplier',
+      }))
+    )
       return;
     try {
       await suppliersApi.delete(supplier.id);

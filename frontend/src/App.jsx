@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
 import PageMeta from './components/PageMeta';
+import { ConfirmProvider } from './context/ConfirmContext';
 import { ToastProvider } from './context/ToastContext';
 import HelpRoot from './help/HelpRoot';
 import authService from './services/authService';
@@ -151,210 +152,212 @@ const RouteShell = ({ children }) => {
 function App() {
   return (
     <ToastProvider>
-      <Router>
-        <RouteShell>
-          <Routes>
-            {/* Public / Login Pages */}
-            <Route
-              path="/platform/login"
-              element={
-                <PageMeta title="HMS - Super Admin Login">
-                  <PlatformLogin />
-                </PageMeta>
-              }
-            />
-
-            <Route path="/login" element={<Navigate to="/login/hospital" replace />} />
-
-            <Route
-              path="/login/hospital"
-              element={
-                <PageMeta title="HMS - Hospital Login">
-                  <HospitalLogin portalType="HOSPITAL" />
-                </PageMeta>
-              }
-            />
-
-            <Route
-              path="/login/clinic"
-              element={
-                <PageMeta title="HMS - Clinic Login">
-                  <HospitalLogin portalType="CLINIC" />
-                </PageMeta>
-              }
-            />
-
-            <Route
-              path="/login/pharmacy"
-              element={
-                <PageMeta title="HMS - Pharmacy Login">
-                  <HospitalLogin portalType="PHARMACY" />
-                </PageMeta>
-              }
-            />
-
-            {/* DASHBOARDS — PROTECTED */}
-            <Route
-              path="/hospital/patients/import"
-              element={
-                <ProtectedRoute allowedRoles={['HOSPITAL_ADMIN']}>
-                  <PageMeta title="HMS - Import Patients">
-                    <PatientImportPage />
+      <ConfirmProvider>
+        <Router>
+          <RouteShell>
+            <Routes>
+              {/* Public / Login Pages */}
+              <Route
+                path="/platform/login"
+                element={
+                  <PageMeta title="HMS - Super Admin Login">
+                    <PlatformLogin />
                   </PageMeta>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/platform/dashboard"
-              element={
-                <ProtectedRoute allowedRoles={['SUPER_ADMIN']}>
-                  <PageMeta title="HMS - Platform Admin">
-                    <PlatformDashboard />
-                  </PageMeta>
-                </ProtectedRoute>
-              }
-            />
+                }
+              />
 
-            <Route
-              path="/hospital/admin"
-              element={
-                <ProtectedRoute allowedRoles={['HOSPITAL_ADMIN']}>
-                  <PageMeta title="HMS - Hospital Admin">
-                    <HospitalAdminDashboard />
-                  </PageMeta>
-                </ProtectedRoute>
-              }
-            />
+              <Route path="/login" element={<Navigate to="/login/hospital" replace />} />
 
-            <Route
-              path="/hospital/doctor"
-              element={
-                <ProtectedRoute allowedRoles={['DOCTOR']}>
-                  <PageMeta title="HMS - Doctor Portal">
-                    <DoctorDashboard />
+              <Route
+                path="/login/hospital"
+                element={
+                  <PageMeta title="HMS - Hospital Login">
+                    <HospitalLogin portalType="HOSPITAL" />
                   </PageMeta>
-                </ProtectedRoute>
-              }
-            />
+                }
+              />
 
-            <Route
-              path="/hospital/receptionist"
-              element={
-                <ProtectedRoute allowedRoles={['RECEPTIONIST']}>
-                  <PageMeta title="HMS - Reception">
-                    <ReceptionistDashboard />
+              <Route
+                path="/login/clinic"
+                element={
+                  <PageMeta title="HMS - Clinic Login">
+                    <HospitalLogin portalType="CLINIC" />
                   </PageMeta>
-                </ProtectedRoute>
-              }
-            />
+                }
+              />
 
-            <Route
-              path="/hospital/pharmacy"
-              element={
-                <ProtectedRoute allowedRoles={['PHARMACIST', 'HOSPITAL_ADMIN']}>
-                  <PageMeta title="HMS - Pharmacy">
-                    <PharmacyDashboard />
+              <Route
+                path="/login/pharmacy"
+                element={
+                  <PageMeta title="HMS - Pharmacy Login">
+                    <HospitalLogin portalType="PHARMACY" />
                   </PageMeta>
-                </ProtectedRoute>
-              }
-            />
+                }
+              />
 
-            {/* PHARMACY TENANT — same dashboards under a /pharmacy/* namespace so the
+              {/* DASHBOARDS — PROTECTED */}
+              <Route
+                path="/hospital/patients/import"
+                element={
+                  <ProtectedRoute allowedRoles={['HOSPITAL_ADMIN']}>
+                    <PageMeta title="HMS - Import Patients">
+                      <PatientImportPage />
+                    </PageMeta>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/platform/dashboard"
+                element={
+                  <ProtectedRoute allowedRoles={['SUPER_ADMIN']}>
+                    <PageMeta title="HMS - Platform Admin">
+                      <PlatformDashboard />
+                    </PageMeta>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/hospital/admin"
+                element={
+                  <ProtectedRoute allowedRoles={['HOSPITAL_ADMIN']}>
+                    <PageMeta title="HMS - Hospital Admin">
+                      <HospitalAdminDashboard />
+                    </PageMeta>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/hospital/doctor"
+                element={
+                  <ProtectedRoute allowedRoles={['DOCTOR']}>
+                    <PageMeta title="HMS - Doctor Portal">
+                      <DoctorDashboard />
+                    </PageMeta>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/hospital/receptionist"
+                element={
+                  <ProtectedRoute allowedRoles={['RECEPTIONIST']}>
+                    <PageMeta title="HMS - Reception">
+                      <ReceptionistDashboard />
+                    </PageMeta>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/hospital/pharmacy"
+                element={
+                  <ProtectedRoute allowedRoles={['PHARMACIST', 'HOSPITAL_ADMIN']}>
+                    <PageMeta title="HMS - Pharmacy">
+                      <PharmacyDashboard />
+                    </PageMeta>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* PHARMACY TENANT — same dashboards under a /pharmacy/* namespace so the
                 address bar reads "pharmacy" instead of "hospital". Hospital/clinic keep
                 their /hospital/* routes above untouched. */}
-            <Route
-              path="/pharmacy/admin"
-              element={
-                <ProtectedRoute allowedRoles={['HOSPITAL_ADMIN']}>
-                  <PageMeta title="HMS - Pharmacy Admin">
-                    <HospitalAdminDashboard />
+              <Route
+                path="/pharmacy/admin"
+                element={
+                  <ProtectedRoute allowedRoles={['HOSPITAL_ADMIN']}>
+                    <PageMeta title="HMS - Pharmacy Admin">
+                      <HospitalAdminDashboard />
+                    </PageMeta>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/pharmacy/pharmacy"
+                element={
+                  <ProtectedRoute allowedRoles={['PHARMACIST', 'HOSPITAL_ADMIN']}>
+                    <PageMeta title="HMS - Pharmacy">
+                      <PharmacyDashboard />
+                    </PageMeta>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/hospital/nurse"
+                element={
+                  <ProtectedRoute allowedRoles={['NURSE']}>
+                    <PageMeta title="HMS - Nurse">
+                      <NurseDashboard />
+                    </PageMeta>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/hospital/ot-incharge"
+                element={
+                  <ProtectedRoute allowedRoles={['OT_INCHARGE']}>
+                    <PageMeta title="HMS - Operation Theatre">
+                      <OtInchargeDashboard />
+                    </PageMeta>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/hospital/nurse-incharge"
+                element={
+                  <ProtectedRoute allowedRoles={['NURSE_INCHARGE']}>
+                    <PageMeta title="HMS - Nurse Incharge">
+                      <NurseInchargeDashboard />
+                    </PageMeta>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/ipd/:id"
+                element={
+                  <ProtectedRoute
+                    allowedRoles={[
+                      'RECEPTIONIST',
+                      'DOCTOR',
+                      'HOSPITAL_ADMIN',
+                      'NURSE',
+                      'NURSE_INCHARGE',
+                      'OT_INCHARGE',
+                    ]}
+                  >
+                    <PageMeta title="HMS - IPD Details">
+                      <IpdDetails />
+                    </PageMeta>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Default landing */}
+              <Route path="/" element={<LandingRedirect />} />
+
+              {/* Catch-all: a real 404 page instead of a silent redirect */}
+              <Route
+                path="*"
+                element={
+                  <PageMeta title="HMS - Page not found">
+                    <NotFound />
                   </PageMeta>
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="/pharmacy/pharmacy"
-              element={
-                <ProtectedRoute allowedRoles={['PHARMACIST', 'HOSPITAL_ADMIN']}>
-                  <PageMeta title="HMS - Pharmacy">
-                    <PharmacyDashboard />
-                  </PageMeta>
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="/hospital/nurse"
-              element={
-                <ProtectedRoute allowedRoles={['NURSE']}>
-                  <PageMeta title="HMS - Nurse">
-                    <NurseDashboard />
-                  </PageMeta>
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="/hospital/ot-incharge"
-              element={
-                <ProtectedRoute allowedRoles={['OT_INCHARGE']}>
-                  <PageMeta title="HMS - Operation Theatre">
-                    <OtInchargeDashboard />
-                  </PageMeta>
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="/hospital/nurse-incharge"
-              element={
-                <ProtectedRoute allowedRoles={['NURSE_INCHARGE']}>
-                  <PageMeta title="HMS - Nurse Incharge">
-                    <NurseInchargeDashboard />
-                  </PageMeta>
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="/ipd/:id"
-              element={
-                <ProtectedRoute
-                  allowedRoles={[
-                    'RECEPTIONIST',
-                    'DOCTOR',
-                    'HOSPITAL_ADMIN',
-                    'NURSE',
-                    'NURSE_INCHARGE',
-                    'OT_INCHARGE',
-                  ]}
-                >
-                  <PageMeta title="HMS - IPD Details">
-                    <IpdDetails />
-                  </PageMeta>
-                </ProtectedRoute>
-              }
-            />
-
-            {/* Default landing */}
-            <Route path="/" element={<LandingRedirect />} />
-
-            {/* Catch-all: a real 404 page instead of a silent redirect */}
-            <Route
-              path="*"
-              element={
-                <PageMeta title="HMS - Page not found">
-                  <NotFound />
-                </PageMeta>
-              }
-            />
-          </Routes>
-        </RouteShell>
-        <ErrorBoundary>
-          <HelpRoot />
-        </ErrorBoundary>
-      </Router>
+                }
+              />
+            </Routes>
+          </RouteShell>
+          <ErrorBoundary>
+            <HelpRoot />
+          </ErrorBoundary>
+        </Router>
+      </ConfirmProvider>
     </ToastProvider>
   );
 }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useConfirm } from '../context/ConfirmContext';
 import { useToast } from '../context/ToastContext';
 import platformService from '../services/platformService';
 import { extractApiError } from '../utils/apiError';
@@ -9,6 +10,7 @@ const PAGE_SIZE = 10;
 // BUG-013: Local error extractor aligned with the PlatformDashboard pattern.
 export default function PlatformMedicinesTab({ hospitalType = null }) {
   const { success, error: toastError } = useToast();
+  const confirm = useConfirm();
   const [medicines, setMedicines] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -122,9 +124,11 @@ export default function PlatformMedicinesTab({ hospitalType = null }) {
 
   const handleDelete = async (med) => {
     if (
-      !window.confirm(
-        `Are you sure you want to delete "${med.name}"? This will remove it from the global catalog.`
-      )
+      !(await confirm({
+        title: `Delete ${med.name}?`,
+        message: 'It is removed from the global medicine catalogue for every hospital.',
+        confirmLabel: 'Delete medicine',
+      }))
     )
       return;
     try {

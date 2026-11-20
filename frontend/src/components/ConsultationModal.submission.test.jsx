@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ConfirmProvider } from '../context/ConfirmContext';
 import hospitalService from '../services/hospitalService';
 import ConsultationModal from './ConsultationModal';
 
@@ -453,5 +454,66 @@ describe('ConsultationModal — submission', () => {
     await user.click(button);
     await waitFor(() => expect(hospitalService.submitConsultation).toHaveBeenCalledTimes(2));
     expect(hospitalService.submitConsultation.mock.calls[1][0].diagnosis).toBe('Viral fever');
+  });
+});
+
+describe('ConsultationModal — second step before final actions', () => {
+  const opd = { id: 42, patient: { id: 7, publicId: 'ppub-7' } };
+  const patient = { id: 7, publicId: 'ppub-7', name: 'Ravi Kumar' };
+  const open = () =>
+    render(
+      <ConfirmProvider>
+        <ConsultationModal
+          isOpen
+          onClose={vi.fn()}
+          onSuccess={vi.fn()}
+          appointment={null}
+          patient={patient}
+          opd={opd}
+        />
+      </ConfirmProvider>
+    );
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    hospitalService.getHospitalOperationsSettings.mockResolvedValue({
+      defaultConsultationLanguage: 'EN',
+    });
+    hospitalService.getConsultationStatements.mockResolvedValue([]);
+    hospitalService.getInventoryMedicines.mockResolvedValue([]);
+    hospitalService.submitConsultation.mockResolvedValue({ message: 'ok' });
+  });
+
+  it('asks before completing; "Keep editing" sends nothing', async () => {
+    const user = userEvent.setup();
+    open();
+    await user.type(screen.getByPlaceholderText('Enter diagnosis...'), 'Viral fever');
+    await user.click(screen.getByRole('button', { name: /Complete Consultation/, hidden: true }));
+
+    expect(await screen.findByText('Complete this consultation?')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Keep editing' }));
+    expect(hospitalService.submitConsultation).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: /Complete Consultation/, hidden: true }));
+    await user.click(await screen.findByRole('button', { name: 'Complete consultation' }));
+    await waitFor(() => expect(hospitalService.submitConsultation).toHaveBeenCalledTimes(1));
+  });
+
+  it('asks before sending the patient for admission, naming the patient', async () => {
+    const user = userEvent.setup();
+    open();
+    await user.type(screen.getByPlaceholderText('Enter diagnosis...'), 'Pneumonia');
+    await user.click(screen.getByRole('button', { name: /Admit to IPD/, hidden: true }));
+
+    expect(await screen.findByText('Send for admission?')).toBeInTheDocument();
+    expect(screen.getByText(/Ravi Kumar/, { selector: 'p' })).toBeInTheDocument();
+    expect(hospitalService.submitConsultation).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Send for admission' }));
+    await waitFor(() =>
+      expect(hospitalService.submitConsultation).toHaveBeenCalledWith(
+        expect.objectContaining({ ipdAdmitRecommended: true })
+      )
+    );
   });
 });
