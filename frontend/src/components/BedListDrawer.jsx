@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useToast } from '../context/ToastContext';
+import useLiveRefresh from '../hooks/useLiveRefresh';
 import authService from '../services/authService';
 import WardService from '../services/wardService';
 import { extractApiError } from '../utils/apiError';
@@ -15,17 +16,20 @@ const BedListDrawer = ({ open, ward, onClose, onStatusChange }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, ward]);
 
-  const fetchBeds = async () => {
-    setLoading(true);
+  const fetchBeds = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const data = await WardService.getBeds(ward.wardId);
       setBeds(data);
     } catch (e) {
       console.error(e);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
+
+  // A bed admitted to or freed by someone else changes here without reopening the list.
+  useLiveRefresh(() => fetchBeds(true), open && !!ward);
 
   const [updatingBedId, setUpdatingBedId] = useState(null);
   const role = authService.getCurrentUser()?.role;

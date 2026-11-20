@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import useLiveRefresh from '../../../hooks/useLiveRefresh';
 import otService from '../../../services/otService';
 import SURGERY_FORMS from '../ot/surgeryFormsRegistry';
 
@@ -22,6 +23,8 @@ const ConsentFormsPanel = ({ admissionId, formVerdicts = {} }) => {
   useEffect(() => {
     refreshSaved();
   }, [refreshSaved]);
+
+  useLiveRefresh(refreshSaved);
 
   const closeForm = () => {
     setOpenForm(null);

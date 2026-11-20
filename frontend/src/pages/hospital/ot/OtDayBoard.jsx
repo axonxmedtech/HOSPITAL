@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useToast } from '../../../context/ToastContext';
+import useLiveRefresh from '../../../hooks/useLiveRefresh';
 import otService from '../../../services/otService';
 import { extractApiError } from '../../../utils/apiError';
 
@@ -74,25 +75,30 @@ const OtDayBoard = ({ date, onSelect }) => {
   const [cases, setCases] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [r, list] = await Promise.all([
-        otService.getRooms().catch(() => []),
-        otService.getOtList(date).catch(() => []),
-      ]);
-      setRooms(Array.isArray(r) ? r : []);
-      setCases(Array.isArray(list) ? list : []);
-    } catch (e) {
-      toastError(extractApiError(e, 'Failed to load day board'));
-    } finally {
-      setLoading(false);
-    }
-  }, [date, toastError]);
+  const load = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true);
+      try {
+        const [r, list] = await Promise.all([
+          otService.getRooms().catch(() => []),
+          otService.getOtList(date).catch(() => []),
+        ]);
+        setRooms(Array.isArray(r) ? r : []);
+        setCases(Array.isArray(list) ? list : []);
+      } catch (e) {
+        if (!silent) toastError(extractApiError(e, 'Failed to load day board'));
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [date, toastError]
+  );
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useLiveRefresh(() => load(true));
 
   const hours = useMemo(() => {
     const out = [];

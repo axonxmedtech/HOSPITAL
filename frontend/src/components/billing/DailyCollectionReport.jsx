@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import useLiveRefresh from '../../hooks/useLiveRefresh';
 import hospitalService from '../../services/hospitalService';
 import { extractApiError } from '../../utils/apiError';
 import { localIsoDate } from '../../utils/date';
@@ -28,22 +29,34 @@ const DailyCollectionReport = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setData(await hospitalService.getDailyCollection(date));
-    } catch (e) {
-      setError(extractApiError(e, "Couldn't load the collection report"));
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [date]);
+  const load = useCallback(
+    async (silent = false) => {
+      if (!silent) {
+        setLoading(true);
+        setError(null);
+      }
+      try {
+        setData(await hospitalService.getDailyCollection(date));
+        setError(null);
+      } catch (e) {
+        // A failed background refresh keeps the figures already on screen.
+        if (!silent) {
+          setError(extractApiError(e, "Couldn't load the collection report"));
+          setData(null);
+        }
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [date]
+  );
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // Payments and refunds taken at any desk show up without a refresh.
+  useLiveRefresh(() => load(true));
 
   const txns = data?.transactions || [];
 

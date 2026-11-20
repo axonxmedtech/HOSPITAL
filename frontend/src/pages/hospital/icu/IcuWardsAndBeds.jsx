@@ -4,6 +4,7 @@ import Button from '../../../components/Button';
 import ConfirmationModal from '../../../components/ConfirmationModal';
 import IcuWardModal from '../../../components/IcuWardModal';
 import { useToast } from '../../../context/ToastContext';
+import useLiveRefresh from '../../../hooks/useLiveRefresh';
 import authService from '../../../services/authService';
 import hospitalService from '../../../services/hospitalService';
 import icuWardService from '../../../services/icuWardService';
@@ -35,18 +36,20 @@ const IcuWardsAndBeds = () => {
     if (nursingEnabled) fetchNurseIncharges();
   }, [nursingEnabled]);
 
-  const fetchIcuWards = async () => {
-    setLoading(true);
+  const fetchIcuWards = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const data = await icuWardService.getIcuWards();
       setIcuWards(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error(e);
-      toastError(extractApiError(e, 'Failed to load ICU wards'));
+      if (!silent) toastError(extractApiError(e, 'Failed to load ICU wards'));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
+
+  useLiveRefresh(() => fetchIcuWards(true));
 
   const fetchNurseIncharges = async () => {
     try {

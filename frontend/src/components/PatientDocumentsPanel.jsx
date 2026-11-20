@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import ConfirmationModal from './ConfirmationModal';
-import PatientDocumentPreviewModal from './PatientDocumentPreviewModal';
+import useLiveRefresh from '../hooks/useLiveRefresh';
 import authService from '../services/authService';
 import patientDocumentService from '../services/patientDocumentService';
 import { extractApiError, safeLoadMessage } from '../utils/apiError';
@@ -11,6 +10,8 @@ import {
   formatFileSize,
   validateDocumentFile,
 } from '../utils/patientDocuments';
+import ConfirmationModal from './ConfirmationModal';
+import PatientDocumentPreviewModal from './PatientDocumentPreviewModal';
 
 /**
  * Everything on file for one patient: reports they brought in, scans, insurance paperwork.
@@ -54,25 +55,31 @@ const PatientDocumentsPanel = ({ patientId, opdId, ipdAdmissionId, readOnly = fa
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await patientDocumentService.listForPatient(patientId);
-      setDocuments(Array.isArray(data) ? data : []);
-      setLoadError('');
-      setLoaded(true);
-    } catch (err) {
-      // A failed read is not an empty file. Whatever was already on screen stays there, and the
-      // banner says plainly that this may no longer be the whole picture.
-      setLoadError(safeLoadMessage(err, "Couldn't load documents for this patient."));
-    } finally {
-      setLoading(false);
-    }
-  }, [patientId]);
+  const load = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true);
+      try {
+        const data = await patientDocumentService.listForPatient(patientId);
+        setDocuments(Array.isArray(data) ? data : []);
+        setLoadError('');
+        setLoaded(true);
+      } catch (err) {
+        // A failed read is not an empty file. Whatever was already on screen stays there, and the
+        // banner says plainly that this may no longer be the whole picture.
+        setLoadError(safeLoadMessage(err, "Couldn't load documents for this patient."));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [patientId]
+  );
 
   useEffect(() => {
     if (patientId && canView) load();
   }, [patientId, canView, load]);
+
+  // Documents added on another screen appear without a refresh.
+  useLiveRefresh(() => load(true), !!patientId && canView);
 
   if (!canView) return null;
 

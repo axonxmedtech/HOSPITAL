@@ -3,6 +3,7 @@ import ConfirmationModal from '../../components/ConfirmationModal';
 import { ConfirmDischargeModal } from '../../components/ipd/DischargeType';
 import IpdAdmitModal from '../../components/IpdAdmitModal';
 import { useToast } from '../../context/ToastContext';
+import useLiveRefresh from '../../hooks/useLiveRefresh';
 import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
 import icuService from '../../services/icuService';
@@ -44,62 +45,68 @@ const IcuDashboardView = () => {
   const [submittingTask, setSubmittingTask] = useState(false);
 
   // Fetch Data
-  const fetchIcuData = useCallback(async () => {
-    setLoading(true);
-    try {
-      // 1. Critical-care wards only. This screen used to list every ward and every admitted
-      // patient, so a general-ward patient appeared under "ICU Active Patients" and could be
-      // discharged from here by mistake. ICU wards are the ones registered under ICU Wards.
-      const icuUnits = await icuWardService.getIcuWards().catch(() => []);
-      const icuWardIds = new Set((icuUnits || []).map((u) => u.wardId));
-      const rawWards = ((await wardService.getWards()) || []).filter((w) =>
-        icuWardIds.has(w.wardId || w.id)
-      );
-      const wardsWithBeds = await Promise.all(
-        (rawWards || []).map(async (w) => {
-          try {
-            const beds = await wardService.getBeds(w.wardId || w.id);
-            const occupiedCount = (beds || []).filter(
-              (b) => b.status && b.status.toLowerCase() === 'occupied'
-            ).length;
-            return {
-              ...w,
-              beds: beds || [],
-              totalBeds: w.totalBeds || beds?.length || 0,
-              occupiedBeds: occupiedCount,
-            };
-          } catch (e) {
-            return { ...w, beds: [], occupiedBeds: 0 };
-          }
-        })
-      );
-      setIcuWards(wardsWithBeds);
+  const fetchIcuData = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true);
+      try {
+        // 1. Critical-care wards only. This screen used to list every ward and every admitted
+        // patient, so a general-ward patient appeared under "ICU Active Patients" and could be
+        // discharged from here by mistake. ICU wards are the ones registered under ICU Wards.
+        const icuUnits = await icuWardService.getIcuWards().catch(() => []);
+        const icuWardIds = new Set((icuUnits || []).map((u) => u.wardId));
+        const rawWards = ((await wardService.getWards()) || []).filter((w) =>
+          icuWardIds.has(w.wardId || w.id)
+        );
+        const wardsWithBeds = await Promise.all(
+          (rawWards || []).map(async (w) => {
+            try {
+              const beds = await wardService.getBeds(w.wardId || w.id);
+              const occupiedCount = (beds || []).filter(
+                (b) => b.status && b.status.toLowerCase() === 'occupied'
+              ).length;
+              return {
+                ...w,
+                beds: beds || [],
+                totalBeds: w.totalBeds || beds?.length || 0,
+                occupiedBeds: occupiedCount,
+              };
+            } catch (e) {
+              return { ...w, beds: [], occupiedBeds: 0 };
+            }
+          })
+        );
+        setIcuWards(wardsWithBeds);
 
-      // 2. Patients currently in critical care. The IPD admissions list deliberately leaves
-      // ICU patients out (they live here), so reading it showed the ward patients instead.
-      const icuRows = await icuService.getIcuPatients().catch(() => []);
-      setIcuPatients(
-        (icuRows || []).map((p) => ({
-          ...p,
-          id: p.ipdId,
-          wardName: p.icuWardName,
-        }))
-      );
+        // 2. Patients currently in critical care. The IPD admissions list deliberately leaves
+        // ICU patients out (they live here), so reading it showed the ward patients instead.
+        const icuRows = await icuService.getIcuPatients().catch(() => []);
+        setIcuPatients(
+          (icuRows || []).map((p) => ({
+            ...p,
+            id: p.ipdId,
+            wardName: p.icuWardName,
+          }))
+        );
 
-      // 3. Fetch ICU cleaning tasks
-      const cleaningRes = await hospitalService.getIcuCleaningTasks();
-      setCleaningTasks(cleaningRes || []);
-    } catch (err) {
-      console.error('Error fetching ICU data:', err);
-      toastError('Failed to load ICU dashboard data');
-    } finally {
-      setLoading(false);
-    }
-  }, [toastError]);
+        // 3. Fetch ICU cleaning tasks
+        const cleaningRes = await hospitalService.getIcuCleaningTasks();
+        setCleaningTasks(cleaningRes || []);
+      } catch (err) {
+        console.error('Error fetching ICU data:', err);
+        if (!silent) toastError('Failed to load ICU dashboard data');
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [toastError]
+  );
 
   useEffect(() => {
     fetchIcuData();
   }, [fetchIcuData]);
+
+  // Admissions, transfers and cleaning on the ICU show without a refresh.
+  useLiveRefresh(() => fetchIcuData(true));
 
   // Handle Create Cleaning Task
   const handleCreateTask = async (e) => {
