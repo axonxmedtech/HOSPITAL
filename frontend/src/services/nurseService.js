@@ -229,6 +229,46 @@ const nurseService = {
     return response.data;
   },
 
+  /** Whether the signed-in user may record doses, and which roles the hospital allows. */
+  getMedicationAccess: async () => {
+    const response = await apiClient.get('/hospital/nurse/medication/access');
+    return response.data;
+  },
+
+  /** Admin: choose which roles may record doses. */
+  setMedicationAccess: async (roles) => {
+    const response = await apiClient.put('/hospital/nurse/medication/access', { roles });
+    return response.data;
+  },
+
+  /** Undo an entry made by mistake: stock back, charge off the bill. */
+  undoMedication: async (publicId, reason) => {
+    const response = await apiClient.post(`/hospital/nurse/medication/${publicId}/undo`, {
+      reason,
+    });
+    return response.data;
+  },
+
+  /** Give something that was not ordered (an extra saline bottle, a dressing). */
+  giveExtraItem: async (payload) => {
+    const response = await apiClient.post('/hospital/nurse/medication/extra', payload);
+    return response.data;
+  },
+
+  /** Medicines and hospital items with stock and low-stock flags. */
+  searchStock: async (q = '') => {
+    const response = await apiClient.get('/hospital/nurse/medication/stock/search', {
+      params: { q },
+    });
+    return response.data;
+  },
+
+  /** Everything at or below its reorder level, in both inventories. */
+  getLowStock: async () => {
+    const response = await apiClient.get('/hospital/nurse/medication/stock/low');
+    return response.data;
+  },
+
   // --- Manual Tasks (M7) ---
 
   /** Get assigned tasks for the logged-in nurse. */

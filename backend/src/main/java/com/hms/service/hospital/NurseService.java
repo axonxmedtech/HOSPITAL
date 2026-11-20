@@ -35,6 +35,19 @@ import org.springframework.security.core.context.SecurityContextHolder;
 @Service
 public class NurseService {
 
+    // Setter-injected so every existing construction of this service keeps working; absent in
+    // plain unit tests, where no plan limit applies.
+    private com.hms.service.subscription.PlanLimitService planLimits;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setPlanLimits(com.hms.service.subscription.PlanLimitService planLimits) {
+        this.planLimits = planLimits;
+    }
+
+    private void requireRoom(Long hospitalId, com.hms.entitlement.PlanLimit key, long adding) {
+        if (planLimits != null) planLimits.requireRoom(hospitalId, key, adding);
+    }
+
     private static final Logger logger = LoggerFactory.getLogger(NurseService.class);
 
     @Autowired
@@ -78,6 +91,7 @@ public class NurseService {
             throw new IllegalArgumentException("Email already exists");
         }
         validateWard(wardId, hospitalId);
+        requireRoom(hospitalId, com.hms.entitlement.PlanLimit.STAFF_LOGINS, 1);
 
         User nurse = new User();
         nurse.setName(name);

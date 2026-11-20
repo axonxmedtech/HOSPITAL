@@ -250,6 +250,9 @@ CREATE TABLE `hospitals` (
   `plan` varchar(20) DEFAULT NULL,
   `public_id` varchar(255) NOT NULL,
   `subscription_status` varchar(20) NOT NULL DEFAULT 'ACTIVE',
+  `is_demo` bit(1) NOT NULL DEFAULT b'0',
+  `demo_started_at` datetime(6) DEFAULT NULL,
+  `demo_ends_at` datetime(6) DEFAULT NULL,
   `type` varchar(20) NOT NULL DEFAULT 'HOSPITAL',
   `is_single_doctor` tinyint(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
@@ -706,6 +709,9 @@ CREATE TABLE `prescriptions` (
   `start_date` date DEFAULT NULL,
   `status` varchar(255) NOT NULL,
   `type` varchar(255) NOT NULL,
+  `stock_source` varchar(20) default null,
+  `hospital_item_name` varchar(150) default null,
+  `quantity_per_dose` int default null,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -1040,6 +1046,24 @@ CREATE TABLE `plans` (
   UNIQUE KEY `UK_plans_public_id` (`public_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+DROP TABLE IF EXISTS `plan_limits`;
+CREATE TABLE `plan_limits` (
+  `plan_id` bigint NOT NULL,
+  `limit_key` varchar(40) NOT NULL,
+  `max_value` int DEFAULT NULL,
+  PRIMARY KEY (`plan_id`,`limit_key`),
+  CONSTRAINT `fk_plan_limits_plan` FOREIGN KEY (`plan_id`) REFERENCES `plans` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+DROP TABLE IF EXISTS `hospital_limit_overrides`;
+CREATE TABLE `hospital_limit_overrides` (
+  `hospital_id` bigint NOT NULL,
+  `limit_key` varchar(40) NOT NULL,
+  `max_value` int DEFAULT NULL,
+  PRIMARY KEY (`hospital_id`,`limit_key`),
+  CONSTRAINT `fk_hospital_limit_overrides_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 --
 -- Table structure for table `plan_modules`
 -- (Element collection for Plan.modules)
@@ -1111,6 +1135,7 @@ CREATE TABLE `hospital_settings` (
   -- FIRST = charge consultation + case-paper at OPD entry; LAST = current flow.
   `bill_payment_timing` varchar(10) NOT NULL DEFAULT 'LAST',
   `default_consultation_language` varchar(10) NOT NULL DEFAULT 'EN',
+  `med_record_roles` varchar(200) default null,
   PRIMARY KEY (`id`),
   UNIQUE KEY `UK_hospital_settings_hospital_id` (`hospital_id`),
   CONSTRAINT `FK_hospital_settings_hospital_id` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`)
@@ -1515,6 +1540,16 @@ CREATE TABLE `medication_administrations` (
   `remarks` varchar(500) DEFAULT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT '1',
   `created_at` datetime(6) NOT NULL,
+  `quantity` int default null,
+  `own_supply` bit(1) DEFAULT NULL,
+  `stock_source` varchar(20) default null,
+  `charge_amount` decimal(10,2) default null,
+  `billing_item_id` bigint default null,
+  `billing_medicine_id` bigint default null,
+  `stock_detail` varchar(1000) default null,
+  `undone_at` datetime(6) default null,
+  `undone_by` varchar(150) default null,
+  `undo_reason` varchar(255) default null,
   PRIMARY KEY (`id`),
   UNIQUE KEY `UK_mar_public_id` (`public_id`),
   KEY `idx_mar_admission_time` (`ipd_admission_id`,`administered_time`),
@@ -2330,3 +2365,34 @@ CREATE TABLE `medicine_purchase` (
   PRIMARY KEY (`id`),
   KEY `idx_medicine_purchase_hospital` (`hospital_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- In-app help progress per user (V33)
+CREATE TABLE IF NOT EXISTS help_progress (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    hospital_id BIGINT NULL,
+    scope_key VARCHAR(160) NOT NULL,
+    data TEXT NOT NULL,
+    updated_at DATETIME(6) NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY UK_help_progress_scope (scope_key),
+    KEY idx_help_progress_hospital (hospital_id)
+);
+
+-- In-app help feedback (V34)
+CREATE TABLE IF NOT EXISTS help_feedback (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    hospital_id BIGINT NULL,
+    scope_key VARCHAR(160) NOT NULL,
+    role VARCHAR(40) NOT NULL,
+    kind VARCHAR(20) NOT NULL,
+    entry_id VARCHAR(60) NULL,
+    question VARCHAR(200) NULL,
+    normalized VARCHAR(200) NULL,
+    screen VARCHAR(60) NULL,
+    resolved BIT(1) NOT NULL DEFAULT 0,
+    created_at DATETIME(6) NULL,
+    PRIMARY KEY (id),
+    KEY idx_help_feedback_scope (scope_key, created_at),
+    KEY idx_help_feedback_kind (kind, resolved, created_at),
+    KEY idx_help_feedback_hospital (hospital_id)
+);

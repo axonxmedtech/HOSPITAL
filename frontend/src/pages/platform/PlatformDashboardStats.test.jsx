@@ -16,6 +16,9 @@ vi.mock('../../services/platformService', () => ({
     getPlatformFaqs: vi.fn(),
     updateHospitalStatus: vi.fn(),
     getPlans: vi.fn(),
+    getSubscriptionOverview: vi.fn(() =>
+      Promise.resolve({ counts: {}, demos: [], renewals: [], nearLimit: [] })
+    ),
   },
 }));
 

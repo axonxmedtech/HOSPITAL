@@ -37,6 +37,19 @@ import java.util.Optional;
 @Service
 public class DoctorService {
 
+    // Setter-injected so every existing construction of this service keeps working; absent in
+    // plain unit tests, where no plan limit applies.
+    private com.hms.service.subscription.PlanLimitService planLimits;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setPlanLimits(com.hms.service.subscription.PlanLimitService planLimits) {
+        this.planLimits = planLimits;
+    }
+
+    private void requireRoom(Long hospitalId, com.hms.entitlement.PlanLimit key, long adding) {
+        if (planLimits != null) planLimits.requireRoom(hospitalId, key, adding);
+    }
+
     private static final Logger logger = LoggerFactory.getLogger(DoctorService.class);
 
     @Autowired
@@ -95,6 +108,9 @@ public class DoctorService {
 
         // Set hospital_id to ensure multi-tenant isolation
         doctor.setHospitalId(hospitalId);
+
+        requireRoom(hospitalId, com.hms.entitlement.PlanLimit.DOCTORS, 1);
+        requireRoom(hospitalId, com.hms.entitlement.PlanLimit.STAFF_LOGINS, 1);
 
         // Save doctor record
         doctor = doctorRepository.save(doctor);
@@ -408,6 +424,11 @@ public class DoctorService {
         }
 
         // Set Doctor.isActive = true
+        // Coming back counts against the plan like a new doctor would.
+        if (!Boolean.TRUE.equals(doctor.getIsActive())) {
+            requireRoom(hospitalId, com.hms.entitlement.PlanLimit.DOCTORS, 1);
+            requireRoom(hospitalId, com.hms.entitlement.PlanLimit.STAFF_LOGINS, 1);
+        }
         doctor.setIsActive(true);
         Doctor savedDoctor = doctorRepository.save(doctor);
 

@@ -64,13 +64,23 @@ describe('SetupChecklist', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('can be hidden, and stays hidden for that hospital', async () => {
+  it('Hide folds it into a bar that can always be opened again', async () => {
     hospitalService.getSetupStatus.mockResolvedValue(status(false));
     const { unmount } = render(<SetupChecklist onGo={vi.fn()} />);
     await userEvent.click(await screen.findByRole('button', { name: 'Hide' }));
     expect(screen.queryByText('Get your hospital ready')).not.toBeInTheDocument();
+    expect(screen.getByText('Setup guide')).toBeInTheDocument();
     unmount();
+
+    // Stays folded for that hospital on the next visit, but is still there to open.
     render(<SetupChecklist onGo={vi.fn()} />);
-    expect(hospitalService.getSetupStatus).toHaveBeenCalledTimes(1);
+    await userEvent.click(await screen.findByRole('button', { name: 'Show' }));
+    expect(screen.getByText('Get your hospital ready')).toBeInTheDocument();
+  });
+
+  it('in Help it is always open and says when setup is finished', async () => {
+    hospitalService.getSetupStatus.mockResolvedValue(status(true));
+    render(<SetupChecklist alwaysShown onGo={vi.fn()} />);
+    expect(await screen.findByText('All set')).toBeInTheDocument();
   });
 });

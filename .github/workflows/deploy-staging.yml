@@ -186,7 +186,7 @@ jobs:
             -Dsonar.javascript.lcov.reportPaths=frontend/coverage/lcov.info
             -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/target/surefire-reports/**,**/*.min.js,**/*.backup,**/frontend/src/pages/**,**/frontend/src/utils/printHtml.js
             -Dsonar.coverage.exclusions=**/*
-            -Dsonar.cpd.exclusions=**/dto/**,**/entity/**,**/config/**,**/*Application.java
+            -Dsonar.cpd.exclusions=**/dto/**,**/entity/**,**/config/**,**/*Application.java,**/frontend/src/help/content/**,**/frontend/src/help/guideData.js,**/frontend/src/help/shots.js,**/frontend/src/help/tourData.js
             -Dsonar.sourceEncoding=UTF-8
             -Dsonar.qualitygate.wait=${{ vars.SONAR_QUALITY_GATE_WAIT || 'true' }}
             -Dsonar.jasmin.internal.disabled=true

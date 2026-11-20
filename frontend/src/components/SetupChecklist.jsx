@@ -5,12 +5,14 @@ import hospitalService from '../services/hospitalService';
 /**
  * "Get your hospital ready": what a new hospital still has to set up, with a button to each
  * screen. A fresh hospital used to open on an empty dashboard, and its first receptionist met an
- * empty doctor list with no hint why. Hidden once every step is done, or when dismissed.
+ * empty doctor list with no hint why. Hidden once every step is done. "Hide" only folds it into a
+ * one-line bar that can be opened again; it is also always available under Help → Setup guide
+ * (alwaysShown), where a finished setup reads "All set".
  */
 const dismissKey = () =>
   `hms.setupChecklist.dismissed.${authService.getCurrentUser()?.hospitalId ?? 'default'}`;
 
-const readDismissed = () => {
+const readCollapsed = () => {
   try {
     return window.localStorage.getItem(dismissKey()) === '1';
   } catch {
@@ -18,12 +20,20 @@ const readDismissed = () => {
   }
 };
 
-export default function SetupChecklist({ onGo }) {
+const writeCollapsed = (value) => {
+  try {
+    if (value) window.localStorage.setItem(dismissKey(), '1');
+    else window.localStorage.removeItem(dismissKey());
+  } catch {
+    /* private window: remember for this visit only */
+  }
+};
+
+export default function SetupChecklist({ onGo, alwaysShown = false }) {
   const [status, setStatus] = useState(null);
-  const [dismissed, setDismissed] = useState(readDismissed);
+  const [collapsed, setCollapsed] = useState(() => !alwaysShown && readCollapsed());
 
   useEffect(() => {
-    if (dismissed) return undefined;
     let live = true;
     hospitalService
       .getSetupStatus()
@@ -33,18 +43,49 @@ export default function SetupChecklist({ onGo }) {
     return () => {
       live = false;
     };
-  }, [dismissed]);
+  }, []);
 
-  if (dismissed || !status || status.complete || !Array.isArray(status.steps)) return null;
+  if (!status || !Array.isArray(status.steps)) return null;
+  if (status.complete) {
+    if (!alwaysShown) return null;
+    return (
+      <section className="bg-white border border-emerald-200 rounded-xl p-5 text-sm">
+        <h2 className="text-base font-semibold text-gray-900">All set</h2>
+        <p className="text-gray-600 mt-0.5">
+          Every setup step is done. You can change any of it later from the menu.
+        </p>
+      </section>
+    );
+  }
 
-  const dismiss = () => {
-    try {
-      window.localStorage.setItem(dismissKey(), '1');
-    } catch {
-      /* private window: hide for this visit only */
-    }
-    setDismissed(true);
+  const setFolded = (value) => {
+    writeCollapsed(value);
+    setCollapsed(value);
   };
+
+  if (collapsed) {
+    return (
+      <section
+        aria-label="Setup guide"
+        className="bg-white border border-sky-200 rounded-xl px-4 py-2.5 shadow-sm flex items-center justify-between gap-4"
+      >
+        <p className="text-sm text-gray-700">
+          <span className="font-semibold text-gray-900">Setup guide</span>
+          <span>
+            {' '}
+            · {status.done} of {status.total} done
+          </span>
+        </p>
+        <button
+          type="button"
+          onClick={() => setFolded(false)}
+          className="px-3 py-1 rounded-md text-xs font-semibold bg-sky-50 text-sky-700 hover:bg-sky-100"
+        >
+          Show
+        </button>
+      </section>
+    );
+  }
 
   return (
     <section
@@ -60,13 +101,15 @@ export default function SetupChecklist({ onGo }) {
             {status.done} of {status.total} done. Finish these so your staff can start working.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={dismiss}
-          className="text-xs text-gray-500 hover:text-gray-800 whitespace-nowrap"
-        >
-          Hide
-        </button>
+        {!alwaysShown && (
+          <button
+            type="button"
+            onClick={() => setFolded(true)}
+            className="text-xs text-gray-500 hover:text-gray-800 whitespace-nowrap"
+          >
+            Hide
+          </button>
+        )}
       </div>
       <ol className="mt-4 divide-y divide-gray-100">
         {status.steps.map((step) => (

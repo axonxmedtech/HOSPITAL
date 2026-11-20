@@ -1225,7 +1225,8 @@ const DoctorDashboard = () => {
                   </div>
                 )}
               </div>
-              {user?.hospitalType === 'CLINIC' && modules.includes('HOSPITAL_INVENTORY') && (
+              {/* Low stock warns the doctor early, so it is reordered before a dose is due. */}
+              {(modules.includes('IPD') || modules.includes('HOSPITAL_INVENTORY')) && (
                 <LowStockBanner />
               )}
               <div className="grid grid-cols-1 md:grid-cols-5 gap-6">

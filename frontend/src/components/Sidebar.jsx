@@ -1,7 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
+import { helpStore } from '../help/helpStore';
 import { mobileNav, useMobileNavOpen } from '../hooks/useMobileNav';
 import { titleCase } from '../utils/text';
+import AccessLabel from './plan/AccessLabel';
 
 // Icon mapping for sidebar menu items
 const menuIcons = {
@@ -967,6 +969,29 @@ const SidebarContent = ({
           </div>
         );
       })}
+      <button
+        type="button"
+        onClick={() => helpStore.openPanel('assistant')}
+        className={`w-full flex items-center ${isCollapsed ? 'justify-center px-2' : 'px-3'} py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900`}
+        title={isCollapsed ? 'Help & Support' : ''}
+        aria-label={isCollapsed ? 'Help & Support' : undefined}
+      >
+        <svg
+          className={`w-5 h-5 ${isCollapsed ? '' : 'mr-3'}`}
+          aria-hidden="true"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
+        </svg>
+        {!isCollapsed && <span className="flex-1 text-left">Help &amp; Support</span>}
+      </button>
     </nav>
 
     {/* Footer Section */}
@@ -985,6 +1010,7 @@ const SidebarContent = ({
               >
                 {titleCase(footerData)}
               </p>
+              <AccessLabel className="mt-1" />
             </div>
           </div>
         </div>
@@ -1097,6 +1123,11 @@ const Sidebar = ({
   const drawerOpen = useMobileNavOpen();
   // Never leave the drawer flagged open for the next dashboard that mounts.
   useEffect(() => mobileNav.close, []);
+  // Lets help answers and the command bar (Ctrl/⌘+K) open this dashboard's screens.
+  useEffect(() => {
+    helpStore.registerNav({ tabs, activeTab, onTabChange });
+  }, [tabs, activeTab, onTabChange]);
+  useEffect(() => () => helpStore.clearNav(onTabChange), [onTabChange]);
   const theme = variants[variant] || variants.plain;
   const contentProps = {
     tabs,

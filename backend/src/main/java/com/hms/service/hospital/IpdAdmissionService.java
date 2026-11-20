@@ -1008,7 +1008,8 @@ public class IpdAdmissionService {
         String medicineName = req.getMedicineName() != null && !req.getMedicineName().trim().isEmpty()
                 ? req.getMedicineName().trim()
                 : null;
-        if ((req.getMedicineName() == null || req.getMedicineName().trim().isEmpty()) && req.getMedicineId() == null) {
+        if ((req.getMedicineName() == null || req.getMedicineName().trim().isEmpty()) && req.getMedicineId() == null
+                && (req.getHospitalItemName() == null || req.getHospitalItemName().isBlank())) {
             throw new IllegalArgumentException("Either Medicine Name or Medicine ID is required");
         }
         if (req.getDose() == null || req.getDose().trim().isEmpty()) {
@@ -1040,14 +1041,21 @@ public class IpdAdmissionService {
         //
         // No medicineId means the doctor typed a name. That is a valid order and is stored as
         // typed; nothing here goes looking for an inventory row that might match the text.
+        // Saline, IV fluids and consumables come from the hospital inventory, by item name.
+        String hospitalItem = req.getHospitalItemName() == null || req.getHospitalItemName().isBlank()
+                ? null : req.getHospitalItemName().trim();
+        if (hospitalItem != null && hospitalInventoryRepository
+                .findByNameAndHospitalIdAndIsActiveTrue(hospitalItem, hospitalId).isEmpty()) {
+            throw new ResourceNotFoundException("Item not found in this hospital's inventory: " + hospitalItem);
+        }
         com.hms.entity.Medicine linkedMedicine = null;
-        if (req.getMedicineId() != null) {
+        if (hospitalItem == null && req.getMedicineId() != null) {
             linkedMedicine = medicineRepository.findByIdAndHospitalId(req.getMedicineId(), hospitalId)
                     .orElseThrow(() -> new ResourceNotFoundException(
                             "Medicine not found in this facility's inventory: ID " + req.getMedicineId()));
         }
         if (medicineName == null) {
-            medicineName = linkedMedicine.getName();
+            medicineName = hospitalItem != null ? hospitalItem : linkedMedicine.getName();
         }
 
         com.hms.entity.Prescription p = new com.hms.entity.Prescription();
@@ -1055,6 +1063,13 @@ public class IpdAdmissionService {
         p.setMedicalRecordId(latest.getId());
         p.setMedicineName(medicineName);
         p.setMedicineId(linkedMedicine == null ? null : linkedMedicine.getId());
+        if (hospitalItem != null) {
+            p.setStockSource(MedicationStockService.SOURCE_HOSPITAL_ITEM);
+            p.setHospitalItemName(hospitalItem);
+        } else if (linkedMedicine != null) {
+            p.setStockSource(MedicationStockService.SOURCE_MEDICINE);
+        }
+        p.setQuantityPerDose(req.getQuantityPerDose() == null || req.getQuantityPerDose() < 1 ? 1 : req.getQuantityPerDose());
         p.setType(req.getType() != null ? req.getType() : "TABLET");
         p.setRoute(req.getRoute() != null ? req.getRoute() : "ORAL");
         p.setFoodTiming(com.hms.entity.FoodTiming.normalize(req.getFoodTiming()));

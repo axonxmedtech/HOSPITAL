@@ -30,4 +30,10 @@ public interface OtRoomRepository extends JpaRepository<OtRoom, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT r FROM OtRoom r WHERE r.id = :id")
     Optional<OtRoom> findByIdForUpdate(@Param("id") Long id);
+
+    // ── plan limits (PlanLimitService) ──
+    long countByHospitalIdAndIsActiveTrue(Long hospitalId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT r.hospitalId, COUNT(r) FROM OtRoom r WHERE r.isActive = true GROUP BY r.hospitalId")
+    java.util.List<Object[]> countActivePerHospital();
 }

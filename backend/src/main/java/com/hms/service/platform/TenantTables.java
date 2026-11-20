@@ -211,6 +211,10 @@ public final class TenantTables {
         purge(23, "icu_ventilator_parameter", BY_HOSPITAL);
         purge(24, "icu_score_type_setting", BY_HOSPITAL);
         purge(25, "icu_alert_threshold", BY_HOSPITAL);
+        // Each user's in-app help progress (guide ticks, tours seen) -- preferences only.
+        purge(26, "help_progress", BY_HOSPITAL);
+        // Ratings of help answers and questions help could not answer -- usage feedback only.
+        purge(27, "help_feedback", BY_HOSPITAL);
 
         // An ICU episode and everything charted during it is clinical record. The stay itself carries
         // the admission and discharge times a later review depends on; the rest is what was
@@ -280,6 +284,8 @@ public final class TenantTables {
         // Facility configuration the existing delete already removes.
         retain("hospital_settings", Ownership.DIRECT);
         retain("hospital_modules", Ownership.DIRECT);
+        // Commercial terms agreed with the facility (extra beds, doctors ...): kept like its modules.
+        retain("hospital_limit_overrides", Ownership.DIRECT);
         retain("wards", Ownership.DIRECT);
         retain("icu_wards", Ownership.DIRECT);
         // Bed cleaning history has direct tenant ownership and an infection-control audit role.
@@ -296,6 +302,7 @@ public final class TenantTables {
         global("plans");
         global("plan_features");
         global("plan_modules");
+        global("plan_limits");
     }
 
     /** Every declared table. */

@@ -28,6 +28,19 @@ import java.util.List;
 @Service
 public class OtRoomService {
 
+    // Setter-injected so every existing construction of this service keeps working; absent in
+    // plain unit tests, where no plan limit applies.
+    private com.hms.service.subscription.PlanLimitService planLimits;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setPlanLimits(com.hms.service.subscription.PlanLimitService planLimits) {
+        this.planLimits = planLimits;
+    }
+
+    private void requireRoom(Long hospitalId, com.hms.entitlement.PlanLimit key, long adding) {
+        if (planLimits != null) planLimits.requireRoom(hospitalId, key, adding);
+    }
+
     private static final Logger logger = LoggerFactory.getLogger(OtRoomService.class);
 
     @Autowired private OtRoomRepository roomRepository;
@@ -66,6 +79,7 @@ public class OtRoomService {
         if (roomRepository.existsByHospitalIdAndName(hospitalId, clean)) {
             throw new IllegalArgumentException("A theatre with that name already exists");
         }
+        requireRoom(hospitalId, com.hms.entitlement.PlanLimit.OT_THEATRES, 1);
         OtRoom room = new OtRoom();
         room.setHospitalId(hospitalId);
         room.setName(clean);

@@ -31,12 +31,20 @@ public class DatabaseMigrationRunner {
     // Table names and column types repeated across the add-column-if-missing steps.
     private static final String BILLING_TABLE = "billing";
     private static final String NOTE_PRESETS_TABLE = "consultation_note_presets";
+    private static final String HOSPITALS_TABLE = "hospitals";
+    private static final String PRESCRIPTIONS_TABLE = "prescriptions";
+    private static final String MAR_TABLE = "medication_administrations";
+    private static final String HOSPITAL_SETTINGS_TABLE = "hospital_settings";
+    private static final String INT_NULL = "INT NULL";
+    private static final String BIGINT_NULL = "BIGINT NULL";
     private static final String BILLING_PAYMENTS_TABLE = "billing_payments";
     private static final String VARCHAR_20_NULL = "VARCHAR(20) NULL";
     private static final String VARCHAR_150_NULL = "VARCHAR(150) NULL";
     private static final String VARCHAR_255_NULL = "VARCHAR(255) NULL";
     private static final String VARCHAR_500_NULL = "VARCHAR(500) NULL";
     private static final String DATETIME_6_NULL = "DATETIME(6) NULL";
+    private static final String TINYINT_TRUE = "TINYINT(1) NOT NULL DEFAULT 1";
+    private static final String SURGERY_FORMS_TABLE = "surgery_forms";
 
     private static final Logger log = LoggerFactory.getLogger(DatabaseMigrationRunner.class);
 
@@ -178,6 +186,8 @@ public class DatabaseMigrationRunner {
         ensureShiftTemplatesTable(); // NEW — Nursing Mgmt Phase B1
         ensureAppointmentSlotsTable(); // NEW — Nursing Mgmt Phase B1
         ensureNurseShiftSchedulesTable(); // NEW — Nursing Mgmt Phase B2
+        ensureHelpProgressTable();
+        ensureHelpFeedbackTable();
         ensureNurseAttendanceTable(); // NEW — Nursing Mgmt Phase D
         ensureNurseWardAssignmentsTable(); // NEW — Nursing Mgmt Phase F
         ensureNurseSubstitutionsTable(); // NEW — Nursing Mgmt Phase F
@@ -208,6 +218,25 @@ public class DatabaseMigrationRunner {
         addColumnIfMissing("opd", "cancel_reason", VARCHAR_255_NULL);
         addColumnIfMissing("opd", "cancelled_by", VARCHAR_150_NULL);
         addColumnIfMissing("opd", "cancelled_at", "DATETIME NULL");
+        // Demo accounts (V31). plan_limits / hospital_limit_overrides are created by Hibernate here.
+        addColumnIfMissing(HOSPITALS_TABLE, "is_demo", "BIT(1) NOT NULL DEFAULT b'0'");
+        addColumnIfMissing(HOSPITALS_TABLE, "demo_started_at", DATETIME_6_NULL);
+        addColumnIfMissing(HOSPITALS_TABLE, "demo_ends_at", DATETIME_6_NULL);
+        // IPD medicines given from stock (V32).
+        addColumnIfMissing(PRESCRIPTIONS_TABLE, "stock_source", VARCHAR_20_NULL);
+        addColumnIfMissing(PRESCRIPTIONS_TABLE, "hospital_item_name", VARCHAR_150_NULL);
+        addColumnIfMissing(PRESCRIPTIONS_TABLE, "quantity_per_dose", INT_NULL);
+        addColumnIfMissing(MAR_TABLE, "quantity", INT_NULL);
+        addColumnIfMissing(MAR_TABLE, "own_supply", "BIT(1) NULL");
+        addColumnIfMissing(MAR_TABLE, "stock_source", VARCHAR_20_NULL);
+        addColumnIfMissing(MAR_TABLE, "charge_amount", "DECIMAL(10,2) NULL");
+        addColumnIfMissing(MAR_TABLE, "billing_item_id", BIGINT_NULL);
+        addColumnIfMissing(MAR_TABLE, "billing_medicine_id", BIGINT_NULL);
+        addColumnIfMissing(MAR_TABLE, "stock_detail", "VARCHAR(1000) NULL");
+        addColumnIfMissing(MAR_TABLE, "undone_at", DATETIME_6_NULL);
+        addColumnIfMissing(MAR_TABLE, "undone_by", VARCHAR_150_NULL);
+        addColumnIfMissing(MAR_TABLE, "undo_reason", VARCHAR_255_NULL);
+        addColumnIfMissing(HOSPITAL_SETTINGS_TABLE, "med_record_roles", "VARCHAR(200) NULL");
         ensureBedStatusAuditsTable(); // NEW — Nursing Mgmt Phase C1
         makeInventoryItemHospitalIdNullable();
 
@@ -216,26 +245,26 @@ public class DatabaseMigrationRunner {
         // The items carry a stock link + quantity so applying a preset still deducts stock.
         addColumnIfMissing("prescription_presets", "preset_type",
                 "VARCHAR(20) NOT NULL DEFAULT 'PRESCRIPTION'");
-        addColumnIfMissing("prescription_preset_items", "medicine_id", "BIGINT NULL");
-        addColumnIfMissing("prescription_preset_items", "quantity", "INT NULL");
+        addColumnIfMissing("prescription_preset_items", "medicine_id", BIGINT_NULL);
+        addColumnIfMissing("prescription_preset_items", "quantity", INT_NULL);
         backfillPrescriptionPresetType();
 
         // Print Settings (pages in the consultation-complete print) + bill payment timing.
-        addColumnIfMissing("hospital_settings", "print_case_paper", "TINYINT(1) NOT NULL DEFAULT 1");
-        addColumnIfMissing("hospital_settings", "print_bill", "TINYINT(1) NOT NULL DEFAULT 1");
-        addColumnIfMissing("hospital_settings", "print_prescription", "TINYINT(1) NOT NULL DEFAULT 1");
-        addColumnIfMissing("hospital_settings", "print_in_clinic", "TINYINT(1) NOT NULL DEFAULT 1");
-        addColumnIfMissing("hospital_settings", "bill_payment_timing", "VARCHAR(10) NOT NULL DEFAULT 'LAST'");
+        addColumnIfMissing(HOSPITAL_SETTINGS_TABLE, "print_case_paper", TINYINT_TRUE);
+        addColumnIfMissing(HOSPITAL_SETTINGS_TABLE, "print_bill", TINYINT_TRUE);
+        addColumnIfMissing(HOSPITAL_SETTINGS_TABLE, "print_prescription", TINYINT_TRUE);
+        addColumnIfMissing(HOSPITAL_SETTINGS_TABLE, "print_in_clinic", TINYINT_TRUE);
+        addColumnIfMissing(HOSPITAL_SETTINGS_TABLE, "bill_payment_timing", "VARCHAR(10) NOT NULL DEFAULT 'LAST'");
         backfillPrintPaymentDefaults();
         widenVitalsDecimalColumns();
         backfillStrandedOpdStatuses();
         reconcileOtPermissionOrphanDefaults(); // OT-P0A — v2 defaults for already-configured hospitals
         ensureRecoveryBaysTable(); // OT-P0B — recovery admission needs a tenant-owned location
-        addColumnIfMissing("ot_recovery_episodes", "recovery_bay_id", "BIGINT NULL");
+        addColumnIfMissing("ot_recovery_episodes", "recovery_bay_id", BIGINT_NULL);
         ensureMedicineStockTables(); // INV-2/3 — batch-aware medicine stock + append-only ledger
-        addColumnIfMissing("prescriptions", "medicine_id", "BIGINT NULL");
+        addColumnIfMissing(PRESCRIPTIONS_TABLE, "medicine_id", BIGINT_NULL);
         addColumnIfMissing("medicine_purchases", "batch_number", "VARCHAR(100) NULL");
-        addColumnIfMissing("prescriptions", "food_timing", VARCHAR_20_NULL); // V15
+        addColumnIfMissing(PRESCRIPTIONS_TABLE, "food_timing", VARCHAR_20_NULL); // V15
         ensureOpdIdempotencyTable(); // V16 — one OPD registration per logical submission
 
         // V17 — follow-up lifecycle. A NULL status reads as OPEN, so historical consultations
@@ -247,8 +276,8 @@ public class DatabaseMigrationRunner {
 
         // V18 — the arrival link. The unique index is the invariant that stops one follow-up
         // becoming two visits; NULLs do not collide, so unactioned follow-ups are unaffected.
-        addColumnIfMissing("medical_records", "actioned_opd_id", "BIGINT NULL");
-        addColumnIfMissing("medical_records", "actioned_by_user_id", "BIGINT NULL");
+        addColumnIfMissing("medical_records", "actioned_opd_id", BIGINT_NULL);
+        addColumnIfMissing("medical_records", "actioned_by_user_id", BIGINT_NULL);
         addColumnIfMissing("medical_records", "actioned_at", DATETIME_6_NULL);
         addUniqueIndexIfMissing("medical_records", "uk_medical_records_actioned_opd",
                 "`actioned_opd_id`");
@@ -271,7 +300,7 @@ public class DatabaseMigrationRunner {
         ensurePatientDuplicatePhoneAckColumns(); // Patient duplicate prevention (Phase A)
         
         // Bilingual consultation instructions & statements
-        addColumnIfMissing("hospital_settings", "default_consultation_language", "VARCHAR(10) NOT NULL DEFAULT 'EN'");
+        addColumnIfMissing(HOSPITAL_SETTINGS_TABLE, "default_consultation_language", "VARCHAR(10) NOT NULL DEFAULT 'EN'");
         addColumnIfMissing("medical_records", "consultation_language", "VARCHAR(10) NOT NULL DEFAULT 'EN'");
         addColumnIfMissing(NOTE_PRESETS_TABLE, "marathi_text", VARCHAR_500_NULL);
         addColumnIfMissing(NOTE_PRESETS_TABLE, "hindi_text", VARCHAR_500_NULL);
@@ -546,6 +575,30 @@ public class DatabaseMigrationRunner {
                 log.info("DB migration applied: nurse_shift_schedules table created");
             }
         } catch (Exception e) { log.warn("DB migration skipped (nurse_shift_schedules): {}", e.getMessage()); }
+    }
+
+    /** In-app help progress per user (V33). Idempotent; mirrors setup/schema-full.sql. */
+    private void ensureHelpProgressTable() {
+        try {
+            jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS help_progress (" +
+                "id BIGINT NOT NULL AUTO_INCREMENT, hospital_id BIGINT NULL, scope_key VARCHAR(160) NOT NULL," +
+                "data TEXT NOT NULL, updated_at DATETIME(6) NULL, PRIMARY KEY (id)," +
+                "UNIQUE KEY UK_help_progress_scope (scope_key), KEY idx_help_progress_hospital (hospital_id))");
+        } catch (Exception e) { log.warn("DB migration skipped (help_progress): {}", e.getMessage()); }
+    }
+
+    /** In-app help feedback (V34). Idempotent; mirrors setup/schema-full.sql. */
+    private void ensureHelpFeedbackTable() {
+        try {
+            jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS help_feedback (" +
+                "id BIGINT NOT NULL AUTO_INCREMENT, hospital_id BIGINT NULL, scope_key VARCHAR(160) NOT NULL," +
+                "role VARCHAR(40) NOT NULL, kind VARCHAR(20) NOT NULL, entry_id VARCHAR(60) NULL," +
+                "question VARCHAR(200) NULL, normalized VARCHAR(200) NULL, screen VARCHAR(60) NULL," +
+                "resolved BIT(1) NOT NULL DEFAULT 0, created_at DATETIME(6) NULL, PRIMARY KEY (id)," +
+                "KEY idx_help_feedback_scope (scope_key, created_at)," +
+                "KEY idx_help_feedback_kind (kind, resolved, created_at)," +
+                "KEY idx_help_feedback_hospital (hospital_id))");
+        } catch (Exception e) { log.warn("DB migration skipped (help_feedback): {}", e.getMessage()); }
     }
 
     private void ensureNurseWardAssignmentsTable() {
@@ -1417,7 +1470,7 @@ public class DatabaseMigrationRunner {
      */
     private void preserveAndRelaxLegacyNotNullColumns() {
         String[][] orphanColumns = {
-            {"hospital_settings", "shift_mode"},
+            {HOSPITAL_SETTINGS_TABLE, "shift_mode"},
             {"users", "is_trainer"},
             {"doctors", "is_anaesthetist"},
         };
@@ -2081,20 +2134,20 @@ public class DatabaseMigrationRunner {
     }
 
     private void ensureWardInchargeColumn() {
-        addColumnIfMissing("wards", "incharge_nurse_id", "BIGINT NULL");
+        addColumnIfMissing("wards", "incharge_nurse_id", BIGINT_NULL);
     }
 
     private void ensureSeparateNurseLoginColumn() {
-        addColumnIfMissing("hospital_settings", "separate_nurse_login", "TINYINT(1) NOT NULL DEFAULT 0");
+        addColumnIfMissing(HOSPITAL_SETTINGS_TABLE, "separate_nurse_login", "TINYINT(1) NOT NULL DEFAULT 0");
     }
 
     private void ensureOtInchargeEnabledColumn() {
-        addColumnIfMissing("hospital_settings", "ot_incharge_enabled", "TINYINT(1) NOT NULL DEFAULT 0");
+        addColumnIfMissing(HOSPITAL_SETTINGS_TABLE, "ot_incharge_enabled", "TINYINT(1) NOT NULL DEFAULT 0");
     }
 
     private void ensurePerformedByNurseIdColumns() {
-        for (String t : new String[]{"vitals_records","nursing_notes","medication_administrations","sugar_chart_entries","surgery_forms"}) {
-            addColumnIfMissing(t, "performed_by_nurse_id", "BIGINT NULL");
+        for (String t : new String[]{"vitals_records","nursing_notes",MAR_TABLE,"sugar_chart_entries",SURGERY_FORMS_TABLE}) {
+            addColumnIfMissing(t, "performed_by_nurse_id", BIGINT_NULL);
         }
     }
 
@@ -2270,7 +2323,7 @@ public class DatabaseMigrationRunner {
             log.warn("DB migration skipped (surgery execution tables): {}", e.getMessage());
         }
         addColumnIfMissing("surgeries", "operative_note", "TEXT NULL");
-        addColumnIfMissing("surgeries", "operative_note_by_user_id", "BIGINT NULL");
+        addColumnIfMissing("surgeries", "operative_note_by_user_id", BIGINT_NULL);
         addColumnIfMissing("surgeries", "operative_note_at", DATETIME_6_NULL);
     }
 
@@ -2395,8 +2448,8 @@ public class DatabaseMigrationRunner {
 
     /** OT Phase 4 — the theatre link and the duration that makes interval booking possible. */
     private void ensureSurgeryRoomColumns() {
-        addColumnIfMissing("surgeries", "ot_room_id", "BIGINT NULL");
-        addColumnIfMissing("surgeries", "estimated_duration_minutes", "INT NULL");
+        addColumnIfMissing("surgeries", "ot_room_id", BIGINT_NULL);
+        addColumnIfMissing("surgeries", "estimated_duration_minutes", INT_NULL);
         try {
             jdbcTemplate.execute("CREATE INDEX idx_surgery_room_scheduled ON surgeries(ot_room_id, scheduled_at)");
             log.info("DB migration applied: index surgeries(ot_room_id, scheduled_at)");
@@ -2530,11 +2583,11 @@ public class DatabaseMigrationRunner {
      * treats NULLs in a unique key as distinct and would silently admit duplicates.
      */
     private void ensureSurgeryFormProcedureScope() {
-        addColumnIfMissing("surgery_forms", "version", "INT NOT NULL DEFAULT 1");
-        addColumnIfMissing("surgery_forms", "is_current", "TINYINT(1) DEFAULT 1");
-        addColumnIfMissing("surgery_forms", "signed_at", DATETIME_6_NULL);
-        addColumnIfMissing("surgery_forms", "signed_by_user_id", "BIGINT NULL");
-        addColumnIfMissing("surgery_forms", "recorded_by_user_id", "BIGINT NULL");
+        addColumnIfMissing(SURGERY_FORMS_TABLE, "version", "INT NOT NULL DEFAULT 1");
+        addColumnIfMissing(SURGERY_FORMS_TABLE, "is_current", "TINYINT(1) DEFAULT 1");
+        addColumnIfMissing(SURGERY_FORMS_TABLE, "signed_at", DATETIME_6_NULL);
+        addColumnIfMissing(SURGERY_FORMS_TABLE, "signed_by_user_id", BIGINT_NULL);
+        addColumnIfMissing(SURGERY_FORMS_TABLE, "recorded_by_user_id", BIGINT_NULL);
 
         // A day-care form has no admission.
         try {
@@ -2569,8 +2622,8 @@ public class DatabaseMigrationRunner {
         }
 
         // 2. Swap the unique key. Old key first, so the new one is never fighting it.
-        dropIndexIfExists("surgery_forms", "UK_surgery_form_admission_type");
-        if (!indexExists("surgery_forms", "UK_surgery_form_surgery_type")) {
+        dropIndexIfExists(SURGERY_FORMS_TABLE, "UK_surgery_form_admission_type");
+        if (!indexExists(SURGERY_FORMS_TABLE, "UK_surgery_form_surgery_type")) {
             try {
                 jdbcTemplate.execute("ALTER TABLE surgery_forms ADD CONSTRAINT UK_surgery_form_surgery_type " +
                         "UNIQUE (surgery_id, form_type, is_current)");
@@ -3065,14 +3118,14 @@ public class DatabaseMigrationRunner {
      * runner, with no DB default — none of these take that path.)
      */
     private void ensureVitalsIcuColumns() {
-        addColumnIfMissing("vitals_records", "map_mmhg", "INT NULL");
-        addColumnIfMissing("vitals_records", "cvp_cmh2o", "INT NULL");
-        addColumnIfMissing("vitals_records", "urine_output_ml", "INT NULL");
-        addColumnIfMissing("vitals_records", "gcs_eye", "INT NULL");
-        addColumnIfMissing("vitals_records", "gcs_verbal", "INT NULL");
-        addColumnIfMissing("vitals_records", "gcs_motor", "INT NULL");
-        addColumnIfMissing("vitals_records", "gcs_total", "INT NULL");
-        addColumnIfMissing("vitals_records", "supersedes_vitals_id", "BIGINT NULL");
+        addColumnIfMissing("vitals_records", "map_mmhg", INT_NULL);
+        addColumnIfMissing("vitals_records", "cvp_cmh2o", INT_NULL);
+        addColumnIfMissing("vitals_records", "urine_output_ml", INT_NULL);
+        addColumnIfMissing("vitals_records", "gcs_eye", INT_NULL);
+        addColumnIfMissing("vitals_records", "gcs_verbal", INT_NULL);
+        addColumnIfMissing("vitals_records", "gcs_motor", INT_NULL);
+        addColumnIfMissing("vitals_records", "gcs_total", INT_NULL);
+        addColumnIfMissing("vitals_records", "supersedes_vitals_id", BIGINT_NULL);
     }
 
     /** ICU Phase 3 — the ICU stay record. See IcuStay for why active_marker exists. */

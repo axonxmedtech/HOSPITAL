@@ -21,6 +21,14 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class HospitalSetting {
 
+    /**
+     * Roles allowed to record a medicine as given / not given, comma-separated (NURSE,
+     * NURSE_INCHARGE, DOCTOR, HOSPITAL_ADMIN, RECEPTIONIST). Null = all of them.
+     */
+    @Column(name = "med_record_roles", length = 200)
+    private String medRecordRoles;
+
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

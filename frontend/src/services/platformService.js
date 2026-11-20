@@ -194,6 +194,46 @@ const platformService = {
     return response.data;
   },
 
+  // ─── Subscriptions, demos and limits ─────────────────────────────────────
+
+  /** Counts and lists for the overview: demos, renewals, hospitals near a limit. */
+  getSubscriptionOverview: async () => {
+    const response = await apiClient.get('/platform/subscriptions/overview');
+    return response.data;
+  },
+
+  /** action: START | EXTEND | END | CONVERT; days for START and EXTEND. */
+  hospitalDemoAction: async (hospitalPublicId, action, days) => {
+    const response = await apiClient.post(`/platform/hospitals/${hospitalPublicId}/demo`, {
+      action,
+      days,
+    });
+    return response.data;
+  },
+
+  extendSubscription: async (hospitalPublicId, days) => {
+    const response = await apiClient.post(
+      `/platform/hospitals/${hospitalPublicId}/subscription/extend`,
+      {
+        days,
+      }
+    );
+    return response.data;
+  },
+
+  getHospitalLimits: async (hospitalPublicId) => {
+    const response = await apiClient.get(`/platform/hospitals/${hospitalPublicId}/limits`);
+    return response.data;
+  },
+
+  /** overrides: { BEDS: 15, DOCTORS: null } — null means "use the plan's limit". */
+  setHospitalLimits: async (hospitalPublicId, overrides) => {
+    const response = await apiClient.put(`/platform/hospitals/${hospitalPublicId}/limits`, {
+      overrides,
+    });
+    return response.data;
+  },
+
   // ─── Plan Management ─────────────────────────────────────────────────────
 
   getPlans: async (type = '') => {

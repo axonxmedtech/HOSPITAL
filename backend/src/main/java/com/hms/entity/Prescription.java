@@ -54,6 +54,21 @@ public class Prescription {
     @Column(name = "medicine_id")
     private Long medicineId;
 
+    /**
+     * Where a given dose is taken from: MEDICINE (medicine inventory, by {@link #medicineId}),
+     * HOSPITAL_ITEM (hospital inventory, by {@link #hospitalItemName} — saline, IV fluids,
+     * consumables), or null when the item is not stocked and the patient brings it.
+     */
+    @Column(name = "stock_source", length = 20)
+    private String stockSource;
+
+    @Column(name = "hospital_item_name", length = 150)
+    private String hospitalItemName;
+
+    /** Units taken from stock per dose (1 tablet, 1 bottle). */
+    @Column(name = "quantity_per_dose")
+    private Integer quantityPerDose;
+
     @Column(length = 50)
     private String dosage; // e.g., "500mg"
 

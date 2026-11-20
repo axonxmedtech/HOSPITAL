@@ -1,6 +1,9 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { helpStore } from '../help/helpStore';
 import { isPhoneViewport, mobileNav, useMobileNavOpen } from '../hooks/useMobileNav';
+import AccessBanner from './plan/AccessBanner';
+import AccessLabel from './plan/AccessLabel';
 import UserMenu from './UserMenu';
 
 const Navbar = ({ title, user, onLogout, onProfile, onSupport, actions, onToggleSidebar }) => {
@@ -55,6 +58,7 @@ const Navbar = ({ title, user, onLogout, onProfile, onSupport, actions, onToggle
             />
           </svg>
         </button>
+        <AccessLabel className="mr-auto ml-1" />
 
         {/* Right side - User menu and single doctor toggle */}
         <div className="flex items-center gap-2 sm:gap-4 min-w-0">
@@ -177,10 +181,35 @@ const Navbar = ({ title, user, onLogout, onProfile, onSupport, actions, onToggle
             </div>
           )}
 
+          {/* Help for the screen the user is on (also F1) */}
+          <button
+            type="button"
+            onClick={() => helpStore.togglePanel()}
+            aria-label="Help for this screen"
+            title="Help (F1)"
+            className="p-2 flex-shrink-0 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"
+          >
+            <svg
+              className="w-5 h-5"
+              aria-hidden="true"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          </button>
+
           {/* User menu */}
           <UserMenu user={user} onLogout={onLogout} onProfile={onProfile} onSupport={onSupport} />
         </div>
       </div>
+      <AccessBanner />
     </header>
   );
 };

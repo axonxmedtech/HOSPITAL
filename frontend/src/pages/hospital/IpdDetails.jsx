@@ -19,12 +19,14 @@ import PageHeader from '../../components/PageHeader';
 import ProfileModal from '../../components/ProfileModal';
 import Sidebar from '../../components/Sidebar';
 import { SkeletonDetailCard, SkeletonFormCard } from '../../components/Skeleton';
+import { StockBadge } from '../../components/stock/StockPicker';
 import { useToast } from '../../context/ToastContext';
 import useWebSocket from '../../hooks/useWebSocket';
 import authService from '../../services/authService';
 import formAccessService from '../../services/formAccessService';
 import hospitalService from '../../services/hospitalService';
 import icuService from '../../services/icuService';
+import nurseService from '../../services/nurseService';
 import otService from '../../services/otService';
 import wardService from '../../services/wardService';
 import { extractApiError } from '../../utils/apiError';
@@ -244,6 +246,9 @@ const IpdDetails = () => {
     isOpen: false,
     medicineId: null,
     medicineName: '',
+    hospitalItemName: null,
+    quantityPerDose: 1,
+    stock: null, // the picked stock row: available, low, out of stock
     type: 'TABLET',
     route: 'ORAL',
     dose: '',
@@ -255,80 +260,21 @@ const IpdDetails = () => {
   });
   const [medSearchResults, setMedSearchResults] = useState([]);
 
-  const [inventory, setInventory] = useState([]);
-  const [administeredList, setAdministeredList] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showSuggestions, setShowSuggestions] = useState(false);
-
-  const [medicineTab, setMedicineTab] = useState('prescribe'); // 'prescribe', 'administer', or 'hospital-item'
-
-  const [hospitalInventory, setHospitalInventory] = useState([]);
-  const [hospitalInventoryCatalog, setHospitalInventoryCatalog] = useState([]);
-  const [hospitalInvItems, setHospitalInvItems] = useState([]); // Selected items: [{stockId, name, qty, maxStock, linkedFeeId, feeName, feeAmount}]
-  const [hospitalInvSearch, setHospitalInvSearch] = useState('');
-  const [hospitalInvDropdown, setHospitalInvDropdown] = useState(false);
-  const [availableCustomFees, setAvailableCustomFees] = useState([]);
-
-  useEffect(() => {
-    if (medicineModal.isOpen) {
-      if (medicineTab === 'administer' && user?.inClinic !== false) {
-        const fetchInventory = async () => {
-          try {
-            const res = await hospitalService.getInventoryMedicines();
-            const filtered = (res || []).filter((item) => {
-              if (!item) return false;
-              // Handle both active and isActive serialization key variations
-              const activeVal = item.isActive !== undefined ? item.isActive : item.active;
-              const isNotInactive = activeVal !== false && activeVal !== 0 && activeVal !== '0';
-              // Safety checks for stock quantity
-              const stock = item.stockQuantity !== undefined ? item.stockQuantity : 0;
-              return isNotInactive && stock > 0;
-            });
-            setInventory(filtered);
-          } catch (err) {
-            console.error('Failed to load clinical stock inventory', err);
-          }
-        };
-        fetchInventory();
-      } else if (medicineTab === 'hospital-item') {
-        const fetchHospitalInventory = async () => {
-          try {
-            const [invRes, catRes, feesRes] = await Promise.all([
-              hospitalService.getHospitalInventory(),
-              hospitalService.getHospitalInventoryCatalog(),
-              hospitalService.getCustomFees(),
-            ]);
-            setHospitalInventory(
-              (invRes || []).filter((x) => x.isActive !== false && x.stockQuantity > 0)
-            );
-            setHospitalInventoryCatalog(catRes || []);
-            setAvailableCustomFees(feesRes || []);
-          } catch (err) {
-            console.error('Failed to load hospital inventory or fees', err);
-          }
-        };
-        fetchHospitalInventory();
-      }
-    }
-    if (!medicineModal.isOpen) {
-      setAdministeredList([]);
-      setSearchQuery('');
-      setShowSuggestions(false);
-      setHospitalInvItems([]);
-      setHospitalInvSearch('');
-      setHospitalInvDropdown(false);
-      setMedicineTab('prescribe');
-    }
-  }, [medicineModal.isOpen, medicineTab]);
+  // Stock levels for the search box: medicines by id, and hospital items (saline, IV fluids).
+  const [stockResults, setStockResults] = useState([]);
 
   useEffect(() => {
     const q = medicineModal.medicineName || '';
     // Only search if query string is non-null and length >= 3, AND we don't currently have an active locked medicineId (meaning doctor is typing new)
-    if (q.length >= 3 && !medicineModal.medicineId) {
+    if (q.length >= 3 && !medicineModal.medicineId && !medicineModal.hospitalItemName) {
       const delay = setTimeout(async () => {
         try {
-          const resp = await hospitalService.searchMedicines(q);
+          const [resp, stock] = await Promise.all([
+            hospitalService.searchMedicines(q),
+            nurseService.searchStock(q).catch(() => []),
+          ]);
           setMedSearchResults(resp || []);
+          setStockResults(Array.isArray(stock) ? stock : []);
         } catch (e) {
           console.error(e);
         }
@@ -336,8 +282,13 @@ const IpdDetails = () => {
       return () => clearTimeout(delay);
     } else {
       setMedSearchResults([]);
+      setStockResults([]);
     }
-  }, [medicineModal.medicineName, medicineModal.medicineId]);
+  }, [medicineModal.medicineName, medicineModal.medicineId, medicineModal.hospitalItemName]);
+  const medicineStockById = Object.fromEntries(
+    stockResults.filter((o) => o.source === 'MEDICINE').map((o) => [o.medicineId, o])
+  );
+  const hospitalItemResults = stockResults.filter((o) => o.source === 'HOSPITAL_ITEM');
   const [billModal, setBillModal] = useState({ isOpen: false, loading: false, bill: null });
   const [printingBill, setPrintingBill] = useState(false);
   const [payment, setPayment] = useState({ amount: '', mode: 'CASH', saving: false });
@@ -463,7 +414,11 @@ const IpdDetails = () => {
   const onAddMedicine = () => {
     setMedicineModal({
       isOpen: true,
+      medicineId: null,
       medicineName: '',
+      hospitalItemName: null,
+      quantityPerDose: 1,
+      stock: null,
       type: 'TABLET',
       route: 'ORAL',
       dose: '',
@@ -1045,47 +1000,14 @@ const IpdDetails = () => {
                   {medicineModal.isOpen && (
                     <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
                       <div className="bg-white rounded-lg w-full max-w-lg p-6">
-                        <h3 className="text-lg font-semibold mb-3">Add Medicine / Stock Item</h3>
+                        <h3 className="text-lg font-semibold mb-3">Prescribe Medicine</h3>
+                        <p className="text-xs text-gray-500 -mt-2 mb-3">
+                          Pick from stock (medicines, saline, IV fluids) so each dose given comes
+                          off the inventory and onto the bill, or type a name the patient will
+                          bring.
+                        </p>
 
-                        <div className="flex border-b mb-4">
-                          <button
-                            type="button"
-                            onClick={() => setMedicineTab('prescribe')}
-                            className={`flex-1 py-2 text-sm font-semibold border-b-2 transition-all ${
-                              medicineTab === 'prescribe'
-                                ? 'border-blue-600 text-blue-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700'
-                            }`}
-                          >
-                            Prescribe Medicine
-                          </button>
-                          {user?.inClinic !== false && (
-                            <button
-                              type="button"
-                              onClick={() => setMedicineTab('administer')}
-                              className={`flex-1 py-2 text-sm font-semibold border-b-2 transition-all ${
-                                medicineTab === 'administer'
-                                  ? 'border-blue-600 text-blue-600'
-                                  : 'border-transparent text-gray-500 hover:text-gray-700'
-                              }`}
-                            >
-                              Administer Stock Item
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => setMedicineTab('hospital-item')}
-                            className={`flex-1 py-2 text-sm font-semibold border-b-2 transition-all ${
-                              medicineTab === 'hospital-item'
-                                ? 'border-blue-600 text-blue-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700'
-                            }`}
-                          >
-                            Hospital Items
-                          </button>
-                        </div>
-
-                        {medicineTab === 'prescribe' && (
+                        {
                           <>
                             <div className="grid grid-cols-2 gap-3">
                               <div className="relative">
@@ -1100,13 +1022,56 @@ const IpdDetails = () => {
                                       ...prev,
                                       medicineName: e.target.value,
                                       medicineId: null,
+                                      hospitalItemName: null,
+                                      stock: null,
                                     }))
                                   }
                                   className="w-full border p-2 rounded text-sm outline-none bg-white"
                                   placeholder="Type min 3 letters..."
                                 />
-                                {medSearchResults.length > 0 && (
-                                  <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded shadow-lg max-h-48 overflow-y-auto">
+                                {(medSearchResults.length > 0 ||
+                                  hospitalItemResults.length > 0) && (
+                                  <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded shadow-lg max-h-64 overflow-y-auto">
+                                    {hospitalItemResults.length > 0 && (
+                                      <>
+                                        <p className="px-2 pt-2 text-[11px] font-semibold text-gray-500 uppercase">
+                                          Hospital inventory
+                                        </p>
+                                        {hospitalItemResults.map((o) => (
+                                          <button
+                                            type="button"
+                                            key={o.itemName}
+                                            onClick={() => {
+                                              const fluid = /fluid|saline|ringer|dextrose|iv/i.test(
+                                                `${o.type} ${o.name}`
+                                              );
+                                              setMedicineModal((prev) => ({
+                                                ...prev,
+                                                medicineId: null,
+                                                hospitalItemName: o.itemName,
+                                                medicineName: o.name,
+                                                stock: o,
+                                                type: fluid ? 'IV_FLUID' : prev.type,
+                                                route: fluid ? 'IV' : prev.route,
+                                                foodTiming: fluid ? '' : prev.foodTiming,
+                                              }));
+                                              setStockResults([]);
+                                            }}
+                                            className="w-full text-left p-2 hover:bg-blue-50 border-b text-sm flex justify-between items-center"
+                                          >
+                                            <span className="font-medium text-gray-800">
+                                              {o.name}
+                                            </span>
+                                            <StockBadge option={o} />
+                                          </button>
+                                        ))}
+                                      </>
+                                    )}
+                                    {medSearchResults.length > 0 && (
+                                      <p className="px-2 pt-2 text-[11px] font-semibold text-gray-500 uppercase">
+                                        Medicines
+                                      </p>
+                                    )}
                                     {medSearchResults.map((m) => (
                                       <div
                                         key={m.id}
@@ -1130,6 +1095,8 @@ const IpdDetails = () => {
                                             ...prev,
                                             medicineId: m.id,
                                             medicineName: m.name,
+                                            hospitalItemName: null,
+                                            stock: medicineStockById[m.id] || null,
                                             type: pickedType,
                                             dose: m.defaultDosage || '',
                                             frequency: m.defaultFrequency || '',
@@ -1150,11 +1117,33 @@ const IpdDetails = () => {
                                         className="p-2 hover:bg-blue-50 cursor-pointer border-b text-sm flex justify-between items-center"
                                       >
                                         <span className="font-medium text-gray-800">{m.name}</span>
-                                        <span className="text-xs text-gray-500">{m.type}</span>
+                                        <span className="text-xs text-gray-500 flex items-center gap-2">
+                                          {m.type}
+                                          <StockBadge option={medicineStockById[m.id]} />
+                                        </span>
                                       </div>
                                     ))}
                                   </div>
                                 )}
+                                {medicineModal.stock?.outOfStock && (
+                                  <p className="mt-1 text-xs text-red-700">
+                                    Out of stock — ask the patient to bring it, and get it
+                                    reordered.
+                                  </p>
+                                )}
+                                {medicineModal.stock?.low && !medicineModal.stock?.outOfStock && (
+                                  <p className="mt-1 text-xs text-amber-800">
+                                    Low stock: {medicineModal.stock.available} left — ask for it to
+                                    be reordered soon.
+                                  </p>
+                                )}
+                                {!medicineModal.medicineId &&
+                                  !medicineModal.hospitalItemName &&
+                                  medicineModal.medicineName.length >= 3 && (
+                                    <p className="mt-1 text-xs text-gray-500">
+                                      Not picked from stock — the patient brings it.
+                                    </p>
+                                  )}
                               </div>
                               <div>
                                 <label htmlFor="fld-128" className="block text-sm font-medium mb-1">
@@ -1177,8 +1166,13 @@ const IpdDetails = () => {
                                   className="w-full border p-2 rounded text-sm"
                                 >
                                   <option>TABLET</option>
+                                  <option>CAPSULE</option>
                                   <option>SYRUP</option>
                                   <option>INJECTION</option>
+                                  <option value="IV_FLUID">IV FLUID</option>
+                                  <option>OINTMENT</option>
+                                  <option>DROPS</option>
+                                  <option>INHALER</option>
                                 </select>
                               </div>
                               <div>
@@ -1219,6 +1213,29 @@ const IpdDetails = () => {
                                   className="w-full border p-2 rounded text-sm"
                                 />
                               </div>
+                              {(medicineModal.medicineId || medicineModal.hospitalItemName) && (
+                                <div>
+                                  <label
+                                    htmlFor="fld-qty-per-dose"
+                                    className="block text-sm font-medium mb-1"
+                                  >
+                                    Units per dose (from stock)
+                                  </label>
+                                  <input
+                                    id="fld-qty-per-dose"
+                                    type="number"
+                                    min="1"
+                                    value={medicineModal.quantityPerDose}
+                                    onChange={(e) =>
+                                      setMedicineModal((prev) => ({
+                                        ...prev,
+                                        quantityPerDose: e.target.value,
+                                      }))
+                                    }
+                                    className="w-full border p-2 rounded text-sm"
+                                  />
+                                </div>
+                              )}
                               <div>
                                 <span className="block text-sm font-medium mb-1">Frequency</span>
                                 <div className="w-full border p-2 rounded">
@@ -1344,6 +1361,8 @@ const IpdDetails = () => {
                                   try {
                                     const payload = {
                                       medicineId: medicineModal.medicineId,
+                                      hospitalItemName: medicineModal.hospitalItemName,
+                                      quantityPerDose: Number(medicineModal.quantityPerDose) || 1,
                                       medicineName: medicineModal.medicineName,
                                       type: medicineModal.type,
                                       route: medicineModal.route,
@@ -1381,496 +1400,7 @@ const IpdDetails = () => {
                               </button>
                             </div>
                           </>
-                        )}
-
-                        {medicineTab === 'administer' && (
-                          <>
-                            <div className="bg-slate-50 p-3 rounded-lg border border-gray-200 mb-3 space-y-3">
-                              <div>
-                                <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wide">
-                                  Administered Clinical Stock Items
-                                </h4>
-                                <p className="text-[10px] text-gray-500 mt-0.5">
-                                  Deducted from physical stock and billed to patient.
-                                </p>
-                              </div>
-
-                              <div className="relative">
-                                <input
-                                  type="text"
-                                  placeholder="Search active inventory stock..."
-                                  value={searchQuery}
-                                  onChange={(e) => {
-                                    setSearchQuery(e.target.value);
-                                    setShowSuggestions(true);
-                                  }}
-                                  onFocus={() => setShowSuggestions(true)}
-                                  className="w-full border border-gray-300 p-2 text-xs rounded outline-none bg-white"
-                                />
-
-                                {showSuggestions && searchQuery.trim().length >= 1 && (
-                                  <div className="absolute left-0 right-0 mt-1 max-h-40 overflow-auto bg-white rounded border border-gray-200 shadow-lg z-50 divide-y divide-gray-100">
-                                    {inventory
-                                      .filter(
-                                        (item) =>
-                                          item &&
-                                          item.name &&
-                                          item.name
-                                            .toLowerCase()
-                                            .includes(searchQuery.toLowerCase().trim())
-                                      )
-                                      .map((item) => (
-                                        <button
-                                          key={item.id}
-                                          type="button"
-                                          onClick={() => {
-                                            const existing = administeredList.find(
-                                              (x) => x.medicineId === item.id
-                                            );
-                                            if (existing) {
-                                              if (existing.quantity < item.stockQuantity) {
-                                                setAdministeredList((prev) =>
-                                                  prev.map((x) =>
-                                                    x.medicineId === item.id
-                                                      ? { ...x, quantity: x.quantity + 1 }
-                                                      : x
-                                                  )
-                                                );
-                                              } else {
-                                                toastError(
-                                                  `Cannot add more. Only ${item.stockQuantity} units available.`
-                                                );
-                                              }
-                                            } else {
-                                              setAdministeredList((prev) => [
-                                                ...prev,
-                                                {
-                                                  medicineId: item.id,
-                                                  medicineName: item.name,
-                                                  quantity: 1,
-                                                  maxStock: item.stockQuantity,
-                                                },
-                                              ]);
-                                            }
-                                            setSearchQuery('');
-                                            setShowSuggestions(false);
-                                          }}
-                                          className="w-full text-left px-3 py-2 hover:bg-slate-50 flex justify-between items-center text-xs"
-                                        >
-                                          <div>
-                                            <span className="font-semibold text-gray-800">
-                                              {item.name}
-                                            </span>
-                                          </div>
-                                          <span className="text-[10px] text-gray-500 font-bold">
-                                            Stock: {item.stockQuantity}
-                                          </span>
-                                        </button>
-                                      ))}
-                                    {inventory.filter(
-                                      (item) =>
-                                        item &&
-                                        item.name &&
-                                        item.name
-                                          .toLowerCase()
-                                          .includes(searchQuery.toLowerCase().trim())
-                                    ).length === 0 && (
-                                      <div className="p-2 text-center text-xs text-gray-400">
-                                        No matching stock found.
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-
-                              {administeredList.length > 0 && (
-                                <div className="border border-gray-200 rounded overflow-hidden bg-white max-h-48 overflow-y-auto">
-                                  <table className="min-w-full text-xs">
-                                    <thead className="bg-slate-50 text-gray-500 font-medium border-b border-gray-200">
-                                      <tr>
-                                        <th className="px-3 py-1.5 text-left">Item</th>
-                                        <th className="px-3 py-1.5 text-center">Qty</th>
-                                        <th className="px-3 py-1.5 text-right">Action</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                      {administeredList.map((item) => (
-                                        <tr key={item.medicineId} className="hover:bg-slate-50/50">
-                                          <td className="px-3 py-2 font-semibold text-gray-800">
-                                            {item.medicineName}
-                                          </td>
-                                          <td className="px-3 py-2 text-center">
-                                            <div className="inline-flex items-center gap-1.5">
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  if (item.quantity > 1) {
-                                                    setAdministeredList((prev) =>
-                                                      prev.map((x) =>
-                                                        x.medicineId === item.medicineId
-                                                          ? { ...x, quantity: x.quantity - 1 }
-                                                          : x
-                                                      )
-                                                    );
-                                                  }
-                                                }}
-                                                disabled={item.quantity <= 1}
-                                                className="w-5 h-5 flex items-center justify-center border border-gray-300 rounded text-gray-500 hover:bg-slate-100 disabled:opacity-50"
-                                              >
-                                                -
-                                              </button>
-                                              <span className="font-bold text-xs w-4 text-center">
-                                                {item.quantity}
-                                              </span>
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  if (item.quantity < item.maxStock) {
-                                                    setAdministeredList((prev) =>
-                                                      prev.map((x) =>
-                                                        x.medicineId === item.medicineId
-                                                          ? { ...x, quantity: x.quantity + 1 }
-                                                          : x
-                                                      )
-                                                    );
-                                                  } else {
-                                                    toastError(`Only ${item.maxStock} available.`);
-                                                  }
-                                                }}
-                                                className="w-5 h-5 flex items-center justify-center border border-gray-300 rounded text-gray-500 hover:bg-slate-100"
-                                              >
-                                                +
-                                              </button>
-                                            </div>
-                                          </td>
-                                          <td className="px-3 py-2 text-right">
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                setAdministeredList((prev) =>
-                                                  prev.filter(
-                                                    (x) => x.medicineId !== item.medicineId
-                                                  )
-                                                );
-                                              }}
-                                              className="text-red-500 hover:text-red-700 font-semibold"
-                                            >
-                                              Remove
-                                            </button>
-                                          </td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex justify-end gap-3 mt-4">
-                              <button
-                                onClick={() =>
-                                  setMedicineModal((prev) => ({ ...prev, isOpen: false }))
-                                }
-                                className="px-3 py-1 bg-gray-100 rounded text-sm"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                onClick={async () => {
-                                  if (administeredList.length === 0)
-                                    return toastError('No stock items selected');
-                                  setMedicineModal((prev) => ({ ...prev, saving: true }));
-                                  try {
-                                    const itemsPayload = administeredList.map((item) => ({
-                                      medicineId: item.medicineId,
-                                      medicineName: item.medicineName,
-                                      quantity: item.quantity,
-                                    }));
-                                    await hospitalService.administerIpdItems(id, itemsPayload);
-                                    success('Stock items administered successfully');
-                                    setMedicineModal((prev) => ({ ...prev, isOpen: false }));
-                                    setLoading(true);
-                                    const resp = await hospitalService.getIpdDetails(id);
-                                    setData(resp);
-                                  } catch (err) {
-                                    console.error('Failed to administer items', err);
-                                    toastError(parseError(err, 'Failed to administer items'));
-                                  } finally {
-                                    setMedicineModal((prev) => ({ ...prev, saving: false }));
-                                    setLoading(false);
-                                  }
-                                }}
-                                disabled={medicineModal.saving}
-                                className="px-3 py-1 bg-blue-600 text-white rounded text-sm"
-                              >
-                                {medicineModal.saving ? 'Administering...' : 'Administer Stock'}
-                              </button>
-                            </div>
-                          </>
-                        )}
-
-                        {medicineTab === 'hospital-item' && (
-                          <>
-                            <div className="bg-slate-50 p-3 rounded-lg border border-gray-200 mb-3 space-y-3">
-                              <div>
-                                <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wide">
-                                  Administered Hospital Stock Items
-                                </h4>
-                                <p className="text-[10px] text-gray-500 mt-0.5">
-                                  Deducted from physical stock and added to IPD bill.
-                                </p>
-                              </div>
-
-                              <div className="relative">
-                                <input
-                                  type="text"
-                                  placeholder="Search hospital inventory stock (saline, injections, gloves...)..."
-                                  value={hospitalInvSearch}
-                                  onChange={(e) => {
-                                    setHospitalInvSearch(e.target.value);
-                                    setHospitalInvDropdown(true);
-                                  }}
-                                  onFocus={() => setHospitalInvDropdown(true)}
-                                  onBlur={() =>
-                                    setTimeout(() => setHospitalInvDropdown(false), 200)
-                                  }
-                                  className="w-full border border-gray-300 p-2 text-xs rounded outline-none bg-white"
-                                />
-
-                                {hospitalInvDropdown && hospitalInvSearch.trim().length >= 1 && (
-                                  <div className="absolute left-0 right-0 mt-1 max-h-40 overflow-auto bg-white rounded border border-gray-200 shadow-lg z-50 divide-y divide-gray-100">
-                                    {hospitalInventory
-                                      .filter(
-                                        (item) =>
-                                          item &&
-                                          item.name &&
-                                          item.name
-                                            .toLowerCase()
-                                            .includes(hospitalInvSearch.toLowerCase().trim())
-                                      )
-                                      .map((item) => {
-                                        const catItem = hospitalInventoryCatalog.find(
-                                          (c) => c.name?.toLowerCase() === item.name?.toLowerCase()
-                                        );
-                                        const linkedFeeId = catItem?.linkedFeeId || null;
-                                        return (
-                                          <button
-                                            key={item.id}
-                                            type="button"
-                                            onMouseDown={() => {
-                                              const existing = hospitalInvItems.find(
-                                                (x) => x.stockId === item.id
-                                              );
-                                              if (existing) {
-                                                if (existing.qty < item.stockQuantity) {
-                                                  setHospitalInvItems((prev) =>
-                                                    prev.map((x) =>
-                                                      x.stockId === item.id
-                                                        ? { ...x, qty: x.qty + 1 }
-                                                        : x
-                                                    )
-                                                  );
-                                                } else {
-                                                  toastError(
-                                                    `Cannot add more. Only ${item.stockQuantity} units available.`
-                                                  );
-                                                }
-                                              } else {
-                                                let feeName = null,
-                                                  feeAmount = 0;
-                                                if (linkedFeeId) {
-                                                  const fee = availableCustomFees.find(
-                                                    (f) => String(f.id) === String(linkedFeeId)
-                                                  );
-                                                  if (fee) {
-                                                    feeName = fee.name;
-                                                    feeAmount = Number(fee.defaultAmount);
-                                                  }
-                                                }
-                                                setHospitalInvItems((prev) => [
-                                                  ...prev,
-                                                  {
-                                                    stockId: item.id,
-                                                    name: item.name,
-                                                    qty: 1,
-                                                    maxStock: item.stockQuantity,
-                                                    linkedFeeId,
-                                                    feeName: feeName || item.name,
-                                                    feeAmount,
-                                                  },
-                                                ]);
-                                              }
-                                              setHospitalInvSearch('');
-                                              setHospitalInvDropdown(false);
-                                            }}
-                                            className="w-full text-left px-3 py-2 hover:bg-slate-50 flex justify-between items-center text-xs"
-                                          >
-                                            <div>
-                                              <span className="font-semibold text-gray-800">
-                                                {item.name}
-                                              </span>
-                                              {catItem?.linkedFeeId && (
-                                                <span className="ml-2 text-[10px] text-teal-600 font-bold border border-teal-200 bg-teal-50 px-1 rounded">
-                                                  +fee
-                                                </span>
-                                              )}
-                                            </div>
-                                            <span className="text-[10px] text-gray-500 font-bold">
-                                              Stock: {item.stockQuantity}
-                                            </span>
-                                          </button>
-                                        );
-                                      })}
-                                    {hospitalInventory.filter(
-                                      (item) =>
-                                        item &&
-                                        item.name &&
-                                        item.name
-                                          .toLowerCase()
-                                          .includes(hospitalInvSearch.toLowerCase().trim())
-                                    ).length === 0 && (
-                                      <div className="p-2 text-center text-xs text-gray-400">
-                                        No matching hospital stock found.
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-
-                              {hospitalInvItems.length > 0 && (
-                                <div className="border border-gray-200 rounded overflow-hidden bg-white max-h-48 overflow-y-auto">
-                                  <table className="min-w-full text-xs">
-                                    <thead className="bg-slate-50 text-gray-500 font-medium border-b border-gray-200">
-                                      <tr>
-                                        <th className="px-3 py-1.5 text-left">Item</th>
-                                        <th className="px-3 py-1.5 text-center">Qty</th>
-                                        <th className="px-3 py-1.5 text-right">Fee Charge</th>
-                                        <th className="px-3 py-1.5 text-right">Action</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                      {hospitalInvItems.map((item) => (
-                                        <tr key={item.stockId} className="hover:bg-slate-50/50">
-                                          <td className="px-3 py-2 font-semibold text-gray-800">
-                                            {item.name}
-                                          </td>
-                                          <td className="px-3 py-2 text-center">
-                                            <div className="inline-flex items-center gap-1.5">
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  if (item.qty > 1) {
-                                                    setHospitalInvItems((prev) =>
-                                                      prev.map((x) =>
-                                                        x.stockId === item.stockId
-                                                          ? { ...x, qty: x.qty - 1 }
-                                                          : x
-                                                      )
-                                                    );
-                                                  }
-                                                }}
-                                                disabled={item.qty <= 1}
-                                                className="w-5 h-5 flex items-center justify-center border border-gray-300 rounded text-gray-500 hover:bg-slate-100 disabled:opacity-50"
-                                              >
-                                                -
-                                              </button>
-                                              <span className="font-bold text-xs w-4 text-center">
-                                                {item.qty}
-                                              </span>
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  if (item.qty < item.maxStock) {
-                                                    setHospitalInvItems((prev) =>
-                                                      prev.map((x) =>
-                                                        x.stockId === item.stockId
-                                                          ? { ...x, qty: x.qty + 1 }
-                                                          : x
-                                                      )
-                                                    );
-                                                  } else {
-                                                    toastError(`Only ${item.maxStock} available.`);
-                                                  }
-                                                }}
-                                                className="w-5 h-5 flex items-center justify-center border border-gray-300 rounded text-gray-500 hover:bg-slate-100"
-                                              >
-                                                +
-                                              </button>
-                                            </div>
-                                          </td>
-                                          <td className="px-3 py-2 text-right text-teal-700 font-bold">
-                                            {item.feeAmount
-                                              ? `₹${item.feeAmount * item.qty}`
-                                              : 'No Charge'}
-                                          </td>
-                                          <td className="px-3 py-2 text-right">
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                setHospitalInvItems((prev) =>
-                                                  prev.filter((x) => x.stockId !== item.stockId)
-                                                );
-                                              }}
-                                              className="text-red-500 hover:text-red-700 font-semibold"
-                                            >
-                                              Remove
-                                            </button>
-                                          </td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex justify-end gap-3 mt-4">
-                              <button
-                                onClick={() =>
-                                  setMedicineModal((prev) => ({ ...prev, isOpen: false }))
-                                }
-                                className="px-3 py-1 bg-gray-100 rounded text-sm"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                onClick={async () => {
-                                  if (hospitalInvItems.length === 0)
-                                    return toastError('No hospital items selected');
-                                  setMedicineModal((prev) => ({ ...prev, saving: true }));
-                                  try {
-                                    const itemsPayload = hospitalInvItems.map((item) => ({
-                                      stockId: item.stockId,
-                                      name: item.name,
-                                      quantity: item.qty,
-                                      feeName: item.feeName,
-                                      feeAmount: item.feeAmount,
-                                    }));
-                                    await hospitalService.administerIpdHospitalItems(
-                                      id,
-                                      itemsPayload
-                                    );
-                                    success('Hospital items administered successfully');
-                                    setMedicineModal((prev) => ({ ...prev, isOpen: false }));
-                                    setLoading(true);
-                                    const resp = await hospitalService.getIpdDetails(id);
-                                    setData(resp);
-                                  } catch (err) {
-                                    console.error('Failed to administer hospital items', err);
-                                    toastError(
-                                      parseError(err, 'Failed to administer hospital items')
-                                    );
-                                  } finally {
-                                    setMedicineModal((prev) => ({ ...prev, saving: false }));
-                                    setLoading(false);
-                                  }
-                                }}
-                                disabled={medicineModal.saving}
-                                className="px-3 py-1 bg-blue-600 text-white rounded text-sm"
-                              >
-                                {medicineModal.saving ? 'Administering...' : 'Administer Items'}
-                              </button>
-                            </div>
-                          </>
-                        )}
+                        }
                       </div>
                     </div>
                   )}
@@ -1988,12 +1518,13 @@ const IpdDetails = () => {
                         </div>
                       )}
 
-                      {/* Medication Administration Record — read-only here; nurses record it. */}
+                      {/* Medication Administration Record — recorded here by whoever the hospital allows
+                          (Settings → who may record medicines). */}
                       <hr className="my-4" />
                       <h3 className="font-semibold mb-2">
                         Medication Administration History (MAR)
                       </h3>
-                      <MedicationPanel key={medChartVersion} admissionId={admissionId} readOnly />
+                      <MedicationPanel key={medChartVersion} admissionId={admissionId} />
 
                       {/* Continuous infusions sit with the MAR. Unlike the MAR above — which is
                           read-only here because nurses record administration — infusions follow

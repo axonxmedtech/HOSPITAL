@@ -50,6 +50,14 @@ import java.util.Map;
 @Service
 public class PlatformHospitalService {
 
+    private PlatformSubscriptionService subscriptionAdmin;
+
+    /** Setter-injected and lazy: the subscription service in turn reaches back into hospitals. */
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setSubscriptionAdmin(@org.springframework.context.annotation.Lazy PlatformSubscriptionService subscriptionAdmin) {
+        this.subscriptionAdmin = subscriptionAdmin;
+    }
+
     private static final Logger logger = LoggerFactory.getLogger(PlatformHospitalService.class);
 
     /**
@@ -199,6 +207,9 @@ public class PlatformHospitalService {
         // Apply 7-day free trial to all newly created entities
         trialSub.setExpiresAt(trialSub.getExpiresAt().plusDays(7));
         subscriptionRepository.save(trialSub);
+        if (Boolean.TRUE.equals(request.getIsDemo())) {
+            subscriptionAdmin.startDemo(hospital, request.getDemoDays());
+        }
 
         // In-Clinic must start OFF at creation for every tenant type. The plan grants
         // the In-Clinic *capability* (module), but assignPlan() may have enabled the
