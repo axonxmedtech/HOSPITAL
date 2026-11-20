@@ -163,8 +163,9 @@ export const IDRenderer = (params) => {
 
   const handleCopy = (e) => {
     e.stopPropagation();
-    navigator.clipboard.writeText(value);
-    // Could add toast notification here
+    // The browser may refuse (no permission, insecure page): copying is a convenience, so a
+    // refusal is not an error worth surfacing.
+    navigator.clipboard?.writeText(value)?.catch(() => {});
   };
 
   return (

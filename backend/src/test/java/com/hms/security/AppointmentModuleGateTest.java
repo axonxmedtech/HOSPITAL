@@ -202,7 +202,7 @@ class AppointmentModuleGateTest {
         SecurityContextHolder.getContext().setAuthentication(auth);
 
         Method create = AppointmentController.class.getMethod("createAppointment",
-                com.hms.entity.Appointment.class, boolean.class);
+                com.hms.dto.AppointmentRequest.class, boolean.class);
         assertThatThrownBy(() -> aspect.checkModuleAccess(joinPointFor(create)))
                 .isInstanceOf(AccessDeniedException.class);
     }

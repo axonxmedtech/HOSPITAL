@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from '../context/ToastContext';
 import suppliersApi from '../services/pharmacy/suppliersApi';
-import { backdropProps } from '../utils/modalA11y';
 import { extractApiError } from '../utils/apiError';
+import { backdropProps } from '../utils/modalA11y';
 
 /**
  * SupplierForm – modal used for both adding and editing a supplier.
@@ -106,6 +106,7 @@ const SupplierForm = ({ isOpen = false, onClose, onSuccess, mode = 'create', sup
         await suppliersApi.create(formData);
         success('Supplier added successfully');
       } else {
+        if (!supplier?.id) throw new Error('No supplier selected to update.');
         await suppliersApi.update(supplier.id, formData);
         success('Supplier updated successfully');
       }

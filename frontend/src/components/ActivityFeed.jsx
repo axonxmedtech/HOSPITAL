@@ -9,7 +9,7 @@ const ActivityFeed = () => {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetchLogs();
+    void fetchLogs();
     // Auto-refresh every 30 seconds
     const interval = setInterval(fetchLogs, 30000);
     return () => clearInterval(interval);

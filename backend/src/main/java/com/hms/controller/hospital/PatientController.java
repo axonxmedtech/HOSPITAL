@@ -48,22 +48,22 @@ public class PatientController {
      */
     @PostMapping
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
-    public ResponseEntity<?> addPatient(@Valid @RequestBody Patient patient,
+    public ResponseEntity<?> addPatient(@Valid @RequestBody com.hms.dto.PatientRequest patient,
             @RequestParam(name = "acknowledgeDuplicatePhone", defaultValue = "false")
             boolean acknowledgeDuplicatePhone) {
         frontDeskAccessGuard.require();
-        Patient createdPatient = patientService.addPatient(patient, acknowledgeDuplicatePhone);
+        Patient createdPatient = patientService.addPatient(patient.toEntity(), acknowledgeDuplicatePhone);
         return ResponseEntity.ok(createdPatient);
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> updatePatient(@PathVariable Long id,
-            @Valid @RequestBody Patient patient,
+            @Valid @RequestBody com.hms.dto.PatientRequest patient,
             @RequestParam(name = "acknowledgeDuplicatePhone", defaultValue = "false")
             boolean acknowledgeDuplicatePhone) {
         frontDeskAccessGuard.require();
-        Patient updatedPatient = patientService.updatePatient(id, patient,
+        Patient updatedPatient = patientService.updatePatient(id, patient.toEntity(),
                 acknowledgeDuplicatePhone);
         return ResponseEntity.ok(updatedPatient);
     }
