@@ -52,7 +52,7 @@ class FrontDeskGuardWiringTest {
         PatientService service = mock(PatientService.class);
         doThrow(new AccessDeniedException("denied")).when(guard).require();
 
-        assertThatThrownBy(() -> patientController(service).addPatient(new Patient(), false))
+        assertThatThrownBy(() -> patientController(service).addPatient(new com.hms.dto.PatientRequest(), false))
                 .isInstanceOf(AccessDeniedException.class);
         verify(service, never()).addPatient(any(), anyBoolean());
     }
@@ -62,7 +62,7 @@ class FrontDeskGuardWiringTest {
         PatientService service = mock(PatientService.class);
         doThrow(new AccessDeniedException("denied")).when(guard).require();
 
-        assertThatThrownBy(() -> patientController(service).updatePatient(1L, new Patient(), false))
+        assertThatThrownBy(() -> patientController(service).updatePatient(1L, new com.hms.dto.PatientRequest(), false))
                 .isInstanceOf(AccessDeniedException.class);
         verify(service, never()).updatePatient(anyLong(), any(), anyBoolean());
     }
@@ -72,7 +72,7 @@ class FrontDeskGuardWiringTest {
         AppointmentService service = mock(AppointmentService.class);
         doThrow(new AccessDeniedException("denied")).when(guard).require();
 
-        assertThatThrownBy(() -> appointmentController(service).createAppointment(new Appointment(), false))
+        assertThatThrownBy(() -> appointmentController(service).createAppointment(new com.hms.dto.AppointmentRequest(), false))
                 .isInstanceOf(AccessDeniedException.class);
         verify(service, never()).createAppointment(any(), anyBoolean());
     }
@@ -82,9 +82,9 @@ class FrontDeskGuardWiringTest {
         PatientService patients = mock(PatientService.class);
         AppointmentService appointments = mock(AppointmentService.class);
 
-        assertThatCode(() -> patientController(patients).addPatient(new Patient(), false))
+        assertThatCode(() -> patientController(patients).addPatient(new com.hms.dto.PatientRequest(), false))
                 .doesNotThrowAnyException();
-        assertThatCode(() -> appointmentController(appointments).createAppointment(new Appointment(), false))
+        assertThatCode(() -> appointmentController(appointments).createAppointment(new com.hms.dto.AppointmentRequest(), false))
                 .doesNotThrowAnyException();
 
         verify(guard, times(2)).require();

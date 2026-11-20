@@ -48,7 +48,7 @@ const PdfViewerModal = ({ endpointPath, title = 'Document', onClose }) => {
   }, [endpointPath]);
 
   const handlePrint = () => {
-    if (blob) printBlob(blob);
+    if (blob) void printBlob(blob);
   };
 
   const handleDownload = () => {
