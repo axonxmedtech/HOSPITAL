@@ -29,6 +29,10 @@ import PatientModal from '../../components/PatientModal';
 import PatientSearchPicker from '../../components/PatientSearchPicker';
 import PrescriptionViewModal from '../../components/PrescriptionViewModal';
 import ProfileModal from '../../components/ProfileModal';
+import IpdHistoryView from '../../components/records/IpdHistoryView';
+import { patientFilePath } from '../../components/records/patientFile';
+import PatientNameLink from '../../components/records/PatientNameLink';
+import { DateRangeFilter, rangeFor, rangeParams } from '../../components/RecordsFilterBar';
 import Sidebar from '../../components/Sidebar';
 import { SkeletonStatsGrid, SkeletonOverviewDual, SkeletonTable } from '../../components/Skeleton';
 import StatusBadge from '../../components/StatusBadge';
@@ -185,6 +189,7 @@ const DoctorDashboard = () => {
   const [billing, setBilling] = useState([]);
   const [billingStatus, setBillingStatus] = useState('PENDING');
   const [billingCategory, setBillingCategory] = useState(''); // '' = all, 'OPD', 'IPD'
+  const [billingRange, setBillingRange] = useState(() => rangeFor('all')); // bill date window
 
   const [customFees, setCustomFees] = useState([]);
   const [standardFees, setStandardFees] = useState({ consultationFee: '0', casePaperFee: '0' });
@@ -205,7 +210,7 @@ const DoctorDashboard = () => {
   const [patientDetailsModal, setPatientDetailsModal] = useState({ isOpen: false, patient: null });
   const [isIpdAdmitOpen, setIsIpdAdmitOpen] = useState(false);
   const [ipdOpdForAdmit, setIpdOpdForAdmit] = useState(null);
-  const [ipdSubTab, setIpdSubTab] = useState('current'); // 'current' | 'requested'
+  const [ipdSubTab, setIpdSubTab] = useState('current'); // 'current' | 'requested' | 'history'
   // State for admit-to-IPD directly from appointment action
   const [ipdFromAppointment, setIpdFromAppointment] = useState({
     isOpen: false,
@@ -421,6 +426,7 @@ const DoctorDashboard = () => {
     viewFilter,
     billingStatus,
     billingCategory,
+    billingRange,
     opdDateFilter,
     opdTabView,
     patientTabView,
@@ -538,7 +544,8 @@ const DoctorDashboard = () => {
           page - 1,
           ITEMS_PER_PAGE,
           billingStatus,
-          billingCategory
+          billingCategory,
+          rangeParams(billingRange)
         );
         const billingArray = Array.isArray(data) ? data : data.content || [];
         setBilling(billingArray);
@@ -608,7 +615,10 @@ const DoctorDashboard = () => {
       }
 
       // IPD list for doctor (their own admissions or requested admissions if self-handler)
-      if (activeTab === 'ipd') {
+      if (activeTab === 'ipd' && ipdSubTab === 'history') {
+        // IpdHistoryView loads its own server-filtered, paged list.
+        setOpds([]);
+      } else if (activeTab === 'ipd') {
         try {
           if (canDoctorManageReception && ipdSubTab === 'requested') {
             const pending = await hospitalService.getPendingIpdRequests(page - 1, ITEMS_PER_PAGE);
@@ -1574,7 +1584,11 @@ const DoctorDashboard = () => {
                               : 'admitted patients'
                             : 'patients'
                 } here.`}
-                onSearch={(e) => setSearchInput(e.target.value)}
+                onSearch={
+                  activeTab === 'ipd' && ipdSubTab === 'history'
+                    ? null
+                    : (e) => setSearchInput(e.target.value)
+                }
                 searchValue={searchInput}
                 searchPlaceholder={`Search ${activeTab}...`}
                 onAdd={
@@ -1650,6 +1664,14 @@ const DoctorDashboard = () => {
                         <option value="OPD">OPD</option>
                         <option value="IPD">IPD</option>
                       </select>
+                      <DateRangeFilter
+                        range={billingRange}
+                        label="Bill date"
+                        onChange={(r) => {
+                          setBillingRange(r);
+                          setPage(1);
+                        }}
+                      />
                     </div>
                   ) : activeTab === 'patients' ? (
                     <div className="flex items-center gap-2">
@@ -1743,11 +1765,14 @@ const DoctorDashboard = () => {
                         ]}
                       />
                     </div>
-                  ) : activeTab === 'ipd' && canDoctorManageReception ? (
+                  ) : activeTab === 'ipd' ? (
                     <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
                       {[
                         { value: 'current', label: 'Current Patients' },
-                        { value: 'requested', label: 'Requested Patients' },
+                        ...(canDoctorManageReception
+                          ? [{ value: 'requested', label: 'Requested Patients' }]
+                          : []),
+                        { value: 'history', label: 'Discharged / History' },
                       ].map((sub) => (
                         <button
                           key={sub.value}
@@ -1857,7 +1882,9 @@ const DoctorDashboard = () => {
                   />
                 ))}
 
+              {activeTab === 'ipd' && ipdSubTab === 'history' && <IpdHistoryView />}
               {activeTab === 'ipd' &&
+                ipdSubTab !== 'history' &&
                 (canDoctorManageReception && ipdSubTab === 'requested' ? (
                   opds.length > 0 ? (
                     <div className="p-4 overflow-x-auto">
@@ -3214,6 +3241,7 @@ const DoctorPatientsTable = ({
   startIndex = 0,
   pagination,
 }) => {
+  const navigate = useNavigate();
   // ... existing table code ...
   const columnHelper = createColumnHelper();
 
@@ -3230,7 +3258,9 @@ const DoctorPatientsTable = ({
     }),
     columnHelper.accessor('name', {
       header: 'NAME',
-      cell: (info) => <span className="font-medium text-gray-900">{info.getValue()}</span>,
+      cell: (info) => (
+        <PatientNameLink publicId={info.row.original.publicId} name={info.getValue()} />
+      ),
     }),
     columnHelper.accessor('age', {
       header: 'AGE/GENDER',
@@ -3256,6 +3286,15 @@ const DoctorPatientsTable = ({
 
         // Secondary actions for three-dot menu
         const secondaryActions = [
+          {
+            label: 'Patient file',
+            onClick: () => navigate(patientFilePath(info.row.original.publicId)),
+            icon: (
+              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path d="M4 3a2 2 0 012-2h5.586A2 2 0 0113 1.586L16.414 5A2 2 0 0117 6.414V17a2 2 0 01-2 2H6a2 2 0 01-2-2V3zm3 7a1 1 0 000 2h6a1 1 0 100-2H7zm0 4a1 1 0 100 2h6a1 1 0 100-2H7z" />
+              </svg>
+            ),
+          },
           {
             label: 'View Details',
             icon: (

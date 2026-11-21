@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import IcuAdmitModal from '../../components/IcuAdmitModal';
 import { ConfirmDischargeModal } from '../../components/ipd/DischargeType';
+import IcuHistoryView from '../../components/records/IcuHistoryView';
+import SubTabs from '../../components/records/SubTabs';
 import { useConfirm } from '../../context/ConfirmContext';
 import { useToast } from '../../context/ToastContext';
 import useLiveRefresh from '../../hooks/useLiveRefresh';
@@ -12,7 +14,7 @@ import icuWardService from '../../services/icuWardService';
 import wardService from '../../services/wardService';
 import { extractApiError } from '../../utils/apiError';
 
-const IcuDashboardView = () => {
+const IcuLiveBoard = () => {
   const { success, error: toastError } = useToast();
   const confirm = useConfirm();
   const currentUser = authService.getCurrentUser();
@@ -857,6 +859,30 @@ const IcuDashboardView = () => {
         onConfirm={confirmModal.onConfirm}
         onCancel={() => setConfirmModal({ open: false, title: '', message: '', onConfirm: null })}
       />
+    </div>
+  );
+};
+
+/** ICU: the live board, or the history of every ICU stay (including patients who have left). */
+const IcuDashboardView = () => {
+  const [mode, setMode] = useState('live');
+  return (
+    <div className="space-y-4">
+      <SubTabs
+        options={[
+          { value: 'live', label: 'Live ICU board' },
+          { value: 'history', label: 'ICU history' },
+        ]}
+        value={mode}
+        onChange={setMode}
+      />
+      {mode === 'live' ? (
+        <IcuLiveBoard />
+      ) : (
+        <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+          <IcuHistoryView />
+        </div>
+      )}
     </div>
   );
 };

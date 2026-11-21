@@ -53,6 +53,11 @@ import PatientSearchPicker from '../../components/PatientSearchPicker';
 import PlanUsage from '../../components/plan/PlanUsage';
 import PrescriptionPresetsManager from '../../components/PrescriptionPresetsManager';
 import ProfileModal from '../../components/ProfileModal';
+import IpdHistoryView from '../../components/records/IpdHistoryView';
+import { patientFilePath } from '../../components/records/patientFile';
+import PatientNameLink from '../../components/records/PatientNameLink';
+import SubTabs from '../../components/records/SubTabs';
+import { DateRangeFilter, rangeFor, rangeParams } from '../../components/RecordsFilterBar';
 import SetupChecklist from '../../components/SetupChecklist';
 import Sidebar from '../../components/Sidebar';
 import {
@@ -189,6 +194,7 @@ const HospitalAdminDashboard = () => {
   const [createTaskModal, setCreateTaskModal] = useState(false);
   const [pharmacists, setPharmacists] = useState([]);
   const [doctorSubView, setDoctorSubView] = useState('Active');
+  const [adminIpdView, setAdminIpdView] = useState('current'); // 'current' | 'history'
   const [deletedDoctors, setDeletedDoctors] = useState([]);
   const [otIncharges, setOtIncharges] = useState([]);
   const [appointments, setAppointments] = useState([]);
@@ -198,6 +204,7 @@ const HospitalAdminDashboard = () => {
   const [opds, setOpds] = useState([]);
   const [billingStatus, setBillingStatus] = useState('PENDING');
   const [billingCategory, setBillingCategory] = useState(''); // '' = all, 'OPD', 'IPD'
+  const [billingRange, setBillingRange] = useState(() => rangeFor('all')); // bill date window
   const [auditLogs, setAuditLogs] = useState([]);
   const [stats, setStats] = useState({ today: 0, pending: 0, total: 0 });
   const [loading, setLoading] = useState(false);
@@ -666,6 +673,7 @@ const HospitalAdminDashboard = () => {
     page,
     billingStatus,
     billingCategory,
+    billingRange,
     auditLogRoleFilter,
     patientTabView,
     patientDateFilter,
@@ -674,6 +682,7 @@ const HospitalAdminDashboard = () => {
     appointmentsViewFilter,
     pharmacyRefreshKey,
     doctorSubView,
+    adminIpdView,
   ]);
 
   // Periodic background polling replaced with WebSocket real-time sync
@@ -1490,7 +1499,8 @@ const HospitalAdminDashboard = () => {
             page,
             pageSize,
             billingStatus,
-            billingCategory
+            billingCategory,
+            rangeParams(billingRange)
           );
           if (data && data.content) {
             setBilling(Array.isArray(data.content) ? data.content : []);
@@ -1505,6 +1515,9 @@ const HospitalAdminDashboard = () => {
             setTotalPages(1);
             setTotalElements(0);
           }
+        } else if (activeTab === 'ipd' && adminIpdView === 'history') {
+          // IpdHistoryView loads its own server-filtered, paged list.
+          setIpds([]);
         } else if (activeTab === 'ipd') {
           try {
             // Use admissions endpoint to show only currently admitted patients (same as receptionist)
@@ -3126,13 +3139,18 @@ const HospitalAdminDashboard = () => {
                     : activeTab === 'opd'
                       ? 'Active patients currently in queue or being consulted'
                       : activeTab === 'ipd'
-                        ? 'Manage currently admitted patients in general wards'
+                        ? adminIpdView === 'history'
+                          ? 'Every admission — discharged, current and cancelled — kept for good'
+                          : 'Manage currently admitted patients in general wards'
                         : activeTab === 'icu'
                           ? 'Manage critical-care patients currently admitted to ICU'
                           : `Manage ${isPharmacyTenant ? 'pharmacy' : user?.hospitalType === 'CLINIC' ? 'clinic' : 'hospital'} ${activeTab} records`
                 }
                 onSearch={
-                  activeTab === 'fees' || activeTab === 'settings'
+                  activeTab === 'fees' ||
+                  activeTab === 'settings' ||
+                  activeTab === 'icu' || // the ICU view has its own search (in ICU history)
+                  (activeTab === 'ipd' && adminIpdView === 'history')
                     ? null
                     : (e) => setSearchInput(e.target.value)
                 }
@@ -3178,7 +3196,19 @@ const HospitalAdminDashboard = () => {
                           : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'nurses' ? 'Nurse' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'ot-incharges' ? 'OT Incharge' : activeTab === 'appointments' && hasAppointments ? 'Appointment' : activeTab === 'wards' ? 'Ward' : ''}`
                 }
                 filter={
-                  activeTab === 'doctors' && user?.role === 'HOSPITAL_ADMIN' ? (
+                  activeTab === 'ipd' ? (
+                    <SubTabs
+                      options={[
+                        { value: 'current', label: 'Current Patients' },
+                        { value: 'history', label: 'Discharged / History' },
+                      ]}
+                      value={adminIpdView}
+                      onChange={(v) => {
+                        setAdminIpdView(v);
+                        setSearchInput('');
+                      }}
+                    />
+                  ) : activeTab === 'doctors' && user?.role === 'HOSPITAL_ADMIN' ? (
                     <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 h-[38px] items-center">
                       {['Active', 'Deleted'].map((subView) => (
                         <button
@@ -3337,6 +3367,14 @@ const HospitalAdminDashboard = () => {
                         <option value="OPD">OPD</option>
                         <option value="IPD">IPD</option>
                       </select>
+                      <DateRangeFilter
+                        range={billingRange}
+                        label="Bill date"
+                        onChange={(r) => {
+                          setBillingRange(r);
+                          setPage(0);
+                        }}
+                      />
                     </div>
                   ) : activeTab === 'audit-logs' ? (
                     <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 gap-1">
@@ -5655,7 +5693,9 @@ const HospitalAdminDashboard = () => {
                   )}
                 </div>
               )}
+              {activeTab === 'ipd' && adminIpdView === 'history' && <IpdHistoryView />}
               {activeTab === 'ipd' &&
+                adminIpdView !== 'history' &&
                 (loadError ? (
                   <LoadFailureNotice message={loadError} onRetry={() => loadData()} />
                 ) : ipds.length > 0 ? (
@@ -7419,6 +7459,7 @@ const PatientsTable = ({
   startIndex = 0,
   pagination,
 }) => {
+  const navigate = useNavigate();
   const columnHelper = createColumnHelper();
 
   const columns = [
@@ -7434,7 +7475,9 @@ const PatientsTable = ({
     }),
     columnHelper.accessor('name', {
       header: 'Name',
-      cell: (info) => <span className="font-medium text-gray-900">{info.getValue()}</span>,
+      cell: (info) => (
+        <PatientNameLink publicId={info.row.original.publicId} name={info.getValue()} />
+      ),
     }),
     columnHelper.accessor('age', {
       header: 'Age',
@@ -7457,6 +7500,20 @@ const PatientsTable = ({
               <div className="text-right">
                 <ActionMenu
                   actions={[
+                    {
+                      label: 'Patient file',
+                      onClick: () => navigate(patientFilePath(info.row.original.publicId)),
+                      icon: (
+                        <svg
+                          className="h-4 w-4"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                          aria-hidden="true"
+                        >
+                          <path d="M4 3a2 2 0 012-2h5.586A2 2 0 0113 1.586L16.414 5A2 2 0 0117 6.414V17a2 2 0 01-2 2H6a2 2 0 01-2-2V3zm3 7a1 1 0 000 2h6a1 1 0 100-2H7zm0 4a1 1 0 100 2h6a1 1 0 100-2H7z" />
+                        </svg>
+                      ),
+                    },
                     {
                       label: 'View Details',
                       onClick: () => onViewDetails(info.row.original),

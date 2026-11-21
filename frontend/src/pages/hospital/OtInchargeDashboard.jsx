@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import ProfileModal from '../../components/ProfileModal';
+import OtHistoryView from '../../components/records/OtHistoryView';
 import Sidebar from '../../components/Sidebar';
 import { useToast } from '../../context/ToastContext';
 import useOtPermissions from '../../hooks/useOtPermissions';
@@ -61,7 +62,7 @@ const OtInchargeDashboard = () => {
   const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
   const load = useCallback(async () => {
-    if (activeTab === 'day') return;
+    if (activeTab === 'day' || activeTab === 'history') return;
     setLoading(true);
     setLoadError(null);
     try {
@@ -104,6 +105,7 @@ const OtInchargeDashboard = () => {
     { id: 'board', label: 'OT Board' },
     { id: 'day', label: "Today's List" },
     ...(can('OT_SCHEDULE') ? [{ id: 'requests', label: 'Requests' }] : []),
+    { id: 'history', label: 'History' },
   ];
 
   return (
@@ -144,6 +146,8 @@ const OtInchargeDashboard = () => {
                 administrator to review the OT permission matrix.
               </p>
             </div>
+          ) : activeTab === 'history' ? (
+            <OtHistoryView />
           ) : activeTab === 'day' ? (
             <OtDayBoard date={todayString} onSelect={(c) => setExecTarget(c)} />
           ) : loadError ? (

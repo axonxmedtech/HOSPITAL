@@ -194,7 +194,9 @@ describe('DoctorDashboard — IPD requested admissions tab by reception mode', (
       expect(screen.getByRole('heading', { name: /IPD Admissions/i })).toBeInTheDocument();
     });
     expect(screen.queryByRole('button', { name: 'Requested Patients' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Current Patients' })).not.toBeInTheDocument();
+    // Every doctor can look back at their discharged patients; only admitting stays mode-gated.
+    expect(screen.getByRole('button', { name: 'Current Patients' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Discharged / History' })).toBeInTheDocument();
   });
 
   it('shows requested patients subtab and opens admit modal when receptionMode is SOLO', async () => {

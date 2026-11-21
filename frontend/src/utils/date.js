@@ -46,3 +46,27 @@ export const formatTime = (dateString) => {
     return '-';
   }
 };
+
+const parse = (v) => {
+  if (!v) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+/** "20 Nov 2026" — the easy-to-read day used on records screens. */
+export const formatDay = (v) => {
+  const d = parse(v);
+  return d
+    ? d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+    : '—';
+};
+
+/** "20 Nov 2026, 9:31 pm" — day and time without seconds, for records screens. */
+export const formatWhen = (v) => {
+  const d = parse(v);
+  if (!d) return '—';
+  return `${formatDay(d)}, ${d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}`;
+};
+
+/** "1 day" / "3 days". */
+export const formatDays = (n) => (n == null ? '—' : `${n} day${Number(n) === 1 ? '' : 's'}`);

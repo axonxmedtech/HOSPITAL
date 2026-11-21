@@ -226,6 +226,7 @@ function getOtInchargeConfig() {
       { id: 'board', label: 'OT Board' },
       { id: 'day', label: "Today's List" },
       { id: 'requests', label: 'Requests' },
+      { id: 'history', label: 'History' },
     ],
   };
 }

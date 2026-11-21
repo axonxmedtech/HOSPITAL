@@ -35,6 +35,10 @@ import PatientSearchPicker from '../../components/PatientSearchPicker';
 import PrescriptionModal from '../../components/PrescriptionModal';
 import PrescriptionViewModal from '../../components/PrescriptionViewModal';
 import ProfileModal from '../../components/ProfileModal';
+import IpdHistoryView from '../../components/records/IpdHistoryView';
+import { patientFilePath } from '../../components/records/patientFile';
+import PatientNameLink from '../../components/records/PatientNameLink';
+import { DateRangeFilter, rangeFor, rangeParams } from '../../components/RecordsFilterBar';
 import Sidebar from '../../components/Sidebar';
 import { SkeletonStatsGrid, SkeletonOverviewDual, SkeletonTable } from '../../components/Skeleton';
 import StatusBadge from '../../components/StatusBadge';
@@ -104,6 +108,7 @@ const ReceptionistDashboard = () => {
   const [billing, setBilling] = useState([]);
   const [billingStatus, setBillingStatus] = useState('PENDING');
   const [billingCategory, setBillingCategory] = useState(''); // '' = all, 'OPD', 'IPD'
+  const [billingRange, setBillingRange] = useState(() => rangeFor('all')); // bill date window
   const [recPrintingId, setRecPrintingId] = useState(null);
   const [loading, setLoading] = useState(false);
   // A failed load is its own state. Without it the screen falls back to whatever it already
@@ -138,7 +143,7 @@ const ReceptionistDashboard = () => {
   const opdInFlight = useRef(false);
   const [isIpdAdmitOpen, setIsIpdAdmitOpen] = useState(false);
   const [ipdOpdForAdmit, setIpdOpdForAdmit] = useState(null);
-  const [ipdSubTab, setIpdSubTab] = useState('current'); // 'current' | 'requested'
+  const [ipdSubTab, setIpdSubTab] = useState('current'); // 'current' | 'requested' | 'history'
   const [opdForm, setOpdForm] = useState({
     patientId: null,
     receptionistId: user?.id || null,
@@ -313,6 +318,7 @@ const ReceptionistDashboard = () => {
     selectedDoctorForQueue,
     billingStatus,
     billingCategory,
+    billingRange,
     opdDateFilter,
     opdTabView,
     patientTabView,
@@ -447,7 +453,10 @@ const ReceptionistDashboard = () => {
           setTotalPages(opdsData.totalPages || 1);
           setTotalElements(opdsData.totalElements || (opdsArray ? opdsArray.length : 0));
         } else if (activeTab === 'ipd') {
-          if (ipdSubTab === 'current') {
+          if (ipdSubTab === 'history') {
+            // IpdHistoryView loads its own server-filtered, paged list.
+            setOpds([]);
+          } else if (ipdSubTab === 'current') {
             // IPD tab: fetch role-based admitted IPD admissions
             const ipdList = await hospitalService.getAdmittedIpdAdmissions();
             if (requestId !== activeRequestRef.current) return;
@@ -562,7 +571,8 @@ const ReceptionistDashboard = () => {
           page,
           pageSize,
           billingStatus,
-          billingCategory
+          billingCategory,
+          rangeParams(billingRange)
         );
         if (requestId !== activeRequestRef.current) return;
         if (data.content) {
@@ -1629,7 +1639,10 @@ const ReceptionistDashboard = () => {
               }
               subtitle={`Manage ${tabs.find((t) => t.id === activeTab)?.label || activeTab} records`}
               onSearch={
-                activeTab === 'queue' || activeTab === 'hospital-inventory'
+                activeTab === 'queue' ||
+                activeTab === 'hospital-inventory' ||
+                activeTab === 'icu' || // the ICU view has its own search (in ICU history)
+                (activeTab === 'ipd' && ipdSubTab === 'history')
                   ? null
                   : (e) => setSearchInput(e.target.value)
               }
@@ -1714,6 +1727,14 @@ const ReceptionistDashboard = () => {
                       <option value="OPD">OPD</option>
                       <option value="IPD">IPD</option>
                     </select>
+                    <DateRangeFilter
+                      range={billingRange}
+                      label="Bill date"
+                      onChange={(r) => {
+                        setBillingRange(r);
+                        setPage(0);
+                      }}
+                    />
                   </div>
                 ) : activeTab === 'queue' ? (
                   doctors && doctors.length > 1 ? (
@@ -1832,6 +1853,7 @@ const ReceptionistDashboard = () => {
                     {[
                       { value: 'current', label: 'Current Patients' },
                       { value: 'requested', label: 'Requested Patients' },
+                      { value: 'history', label: 'Discharged / History' },
                     ].map((sub) => (
                       <button
                         key={sub.value}
@@ -1982,7 +2004,9 @@ const ReceptionistDashboard = () => {
                     onAction={opdTabView === 'Live' ? () => setIsOpdModalOpen(true) : null}
                   />
                 ))}
+              {activeTab === 'ipd' && ipdSubTab === 'history' && <IpdHistoryView />}
               {activeTab === 'ipd' &&
+                ipdSubTab !== 'history' &&
                 (ipdSubTab === 'current' ? (
                   opds.length > 0 ? (
                     <div className="p-4 overflow-x-auto">
@@ -3241,6 +3265,7 @@ const PatientsTable = ({
   startIndex = 0,
   pagination,
 }) => {
+  const navigate = useNavigate();
   const columnHelper = createColumnHelper();
 
   const columns = [
@@ -3256,7 +3281,9 @@ const PatientsTable = ({
     }),
     columnHelper.accessor('name', {
       header: 'NAME',
-      cell: (info) => <span className="font-medium text-gray-900">{info.getValue()}</span>,
+      cell: (info) => (
+        <PatientNameLink publicId={info.row.original.publicId} name={info.getValue()} />
+      ),
     }),
     columnHelper.accessor('age', {
       header: 'AGE',
@@ -3278,6 +3305,15 @@ const PatientsTable = ({
         const patient = info.row.original;
 
         const actions = [
+          {
+            label: 'Patient file',
+            onClick: () => navigate(patientFilePath(info.row.original.publicId)),
+            icon: (
+              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path d="M4 3a2 2 0 012-2h5.586A2 2 0 0113 1.586L16.414 5A2 2 0 0117 6.414V17a2 2 0 01-2 2H6a2 2 0 01-2-2V3zm3 7a1 1 0 000 2h6a1 1 0 100-2H7zm0 4a1 1 0 100 2h6a1 1 0 100-2H7z" />
+              </svg>
+            ),
+          },
           {
             label: 'View Details',
             icon: (
