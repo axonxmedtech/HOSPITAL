@@ -41,7 +41,8 @@ class NoHardDeleteOfPatientDataTest {
             "SurgeryStateTransitionRepository", "PatientDocumentRepository",
             "BillingRepository", "BillingPaymentRepository", "BillingItemRepository",
             "BillingMedicineRepository",
-            "PharmacySaleRepository", "PharmacySaleItemRepository");
+            "PharmacySaleRepository", "PharmacySaleItemRepository",
+            "PatientAccessLogRepository");
 
     /** The same records by table name, for raw SQL. */
     private static final Set<String> PROTECTED_TABLES = Set.of(
@@ -50,7 +51,7 @@ class NoHardDeleteOfPatientDataTest {
             "medication_administrations", "initial_assessments", "vulnerability_assessments",
             "icu_stay", "surgeries", "surgery_forms", "surgery_state_transitions", "patient_documents",
             "billing", "billing_payments", "billing_items", "billing_medicines",
-            "pharmacy_sales", "pharmacy_sale_items");
+            "pharmacy_sales", "pharmacy_sale_items", "patient_access_logs");
 
     /**
      * Deliberate exceptions, as "File.java:variableName.method". Each removes a draft line of an

@@ -1,5 +1,6 @@
 package com.hms.controller.hospital;
 
+import com.hms.audit.PatientRecordAccess;
 import com.hms.exception.ResourceNotFoundException;
 
 import com.hms.entity.Patient;
@@ -22,6 +23,9 @@ public class PatientController {
 
     @Autowired
     private com.hms.service.hospital.PatientFileService patientFileService;
+
+    @Autowired
+    private com.hms.service.hospital.PatientAccessLogService patientAccessLogService;
 
     @Autowired
     private com.hms.security.SecurityContextHelper securityHelper;
@@ -85,6 +89,7 @@ public class PatientController {
         return ResponseEntity.ok(patientService.getAllPatients(null, view, date, pageable));
     }
 
+    @PatientRecordAccess(record = PatientRecordAccess.Kind.PATIENT, action = PatientRecordAccess.Action.VIEW, label = "PATIENT_DETAILS")
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> getPatientById(@PathVariable String id) {
@@ -98,6 +103,7 @@ public class PatientController {
      * Clinical detail (diagnoses, medications, nursing notes), so scoped to the clinical roles
      * rather than the wider set PatientController otherwise uses.
      */
+    @PatientRecordAccess(record = PatientRecordAccess.Kind.PATIENT, action = PatientRecordAccess.Action.VIEW, label = "CLINICAL_TIMELINE")
     @GetMapping("/{id}/timeline")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'NURSE', 'NURSE_INCHARGE')")
     public ResponseEntity<?> getPatientTimeline(@PathVariable String id) {
@@ -111,10 +117,24 @@ public class PatientController {
      * patient — current and finished — in one read. Read-only. Reception gets no clinical detail;
      * nurses only patients in their care; bills follow the Billing Handler setting.
      */
+    @PatientRecordAccess(record = PatientRecordAccess.Kind.PATIENT, action = PatientRecordAccess.Action.VIEW, label = "PATIENT_FILE")
     @GetMapping("/{id}/file")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST', 'NURSE', 'NURSE_INCHARGE')")
     public ResponseEntity<?> getPatientFile(@PathVariable String id) {
         return ResponseEntity.ok(patientFileService.fileFor(id));
+    }
+
+    /**
+     * Who opened, printed or downloaded this patient's records, newest first. Hospital admin
+     * only (also for a deleted patient). Reading the log is not itself logged.
+     */
+    @GetMapping("/{id}/access-log")
+    @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
+    public ResponseEntity<?> getPatientAccessLog(@PathVariable String id,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "25") int size) {
+        Patient patient = patientFileService.requireViewable(id);
+        return ResponseEntity.ok(patientAccessLogService.forPatient(patient.getId(), page, size));
     }
 
     @DeleteMapping("/{id}")
@@ -145,6 +165,7 @@ public class PatientController {
         return ResponseEntity.ok(updatedPatient);
     }
 
+    @PatientRecordAccess(record = PatientRecordAccess.Kind.PATIENT, action = PatientRecordAccess.Action.VIEW, label = "CONSULTATION_DETAILS")
     @GetMapping("/{publicId}/consultation-details")
     @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> getPatientConsultationDetails(@PathVariable String publicId) {
@@ -158,6 +179,7 @@ public class PatientController {
         return ResponseEntity.ok(patientService.getLatestPrescription(publicId));
     }
 
+    @PatientRecordAccess(record = PatientRecordAccess.Kind.OPD, action = PatientRecordAccess.Action.PRINT, label = "OPD_MEDICINES")
     @GetMapping("/opd/{opdId}/medicines/pdf")
     @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> getOpdMedicinesPdf(@PathVariable Long opdId) {
@@ -170,6 +192,7 @@ public class PatientController {
                 .body(new org.springframework.core.io.InputStreamResource(pdf));
     }
 
+    @PatientRecordAccess(record = PatientRecordAccess.Kind.ADMISSION, action = PatientRecordAccess.Action.PRINT, label = "IPD_MEDICINES")
     @GetMapping("/ipd/{ipdId}/medicines/pdf")
     @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> getIpdMedicinesPdf(@PathVariable Long ipdId) {
@@ -182,6 +205,7 @@ public class PatientController {
                 .body(new org.springframework.core.io.InputStreamResource(pdf));
     }
 
+    @PatientRecordAccess(record = PatientRecordAccess.Kind.ADMISSION, action = PatientRecordAccess.Action.PRINT, label = "IPD_PRESCRIPTION")
     @GetMapping("/ipd/{ipdId}/prescription/pdf")
     @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> getIpdPrescriptionPdf(@PathVariable Long ipdId) {

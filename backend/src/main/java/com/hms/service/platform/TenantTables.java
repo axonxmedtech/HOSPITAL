@@ -280,6 +280,7 @@ public final class TenantTables {
 
         // Audit trail.
         retain("audit_logs", Ownership.DIRECT);
+        retain("patient_access_logs", Ownership.DIRECT);
         retain("bed_status_audits", Ownership.DIRECT);
         retain("support_tickets", Ownership.DIRECT);
 

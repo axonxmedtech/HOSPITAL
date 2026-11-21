@@ -1,5 +1,6 @@
 package com.hms.controller.hospital;
 
+import com.hms.audit.PatientRecordAccess;
 import com.hms.exception.ResourceNotFoundException;
 
 import com.hms.entity.Billing;
@@ -273,6 +274,7 @@ public class BillingController {
     @Autowired
     private com.hms.security.SecurityContextHelper securityHelper;
 
+    @PatientRecordAccess(record = PatientRecordAccess.Kind.BILL, action = PatientRecordAccess.Action.PRINT, label = "RECEIPT")
     @GetMapping("/{id}/pdf")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> downloadReceipt(@PathVariable Long id) {
@@ -512,6 +514,7 @@ public class BillingController {
         return ResponseEntity.ok(billingService.dailyCollection(date != null ? date : java.time.LocalDate.now(java.time.ZoneId.systemDefault())));
     }
 
+    @PatientRecordAccess(record = PatientRecordAccess.Kind.PATIENT, action = PatientRecordAccess.Action.VIEW, label = "BILLS")
     @GetMapping("/patient/{patientPublicId}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> getPatientBills(@PathVariable String patientPublicId) {
