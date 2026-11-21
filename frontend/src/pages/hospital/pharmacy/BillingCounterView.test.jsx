@@ -17,7 +17,7 @@ vi.mock('../../../services/authService', () => ({
 const toast = { success: vi.fn(), error: vi.fn() };
 vi.mock('../../../context/ToastContext', () => ({ useToast: () => toast }));
 
-const STORAGE_KEY = 'hms.pharmacy.heldBills.42';
+const HELD_SLOT = 'hms.pharmacy.heldBills.42';
 const held = {
   id: 'h1',
   heldAt: new Date().toISOString(),
@@ -62,17 +62,17 @@ beforeEach(() => {
 
 describe('Billing counter', () => {
   it('resumes a held bill with its items and total', async () => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify([held]));
+    window.localStorage.setItem(HELD_SLOT, JSON.stringify([held]));
     render(<BillingCounterView />);
     fireEvent.click(screen.getByRole('button', { name: 'Held bills (1)' }));
     fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
     expect(await screen.findByText('Dolo 650')).toBeInTheDocument();
     expect(screen.getAllByText('₹200.00').length).toBeGreaterThan(0);
-    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY))).toHaveLength(0);
+    expect(JSON.parse(window.localStorage.getItem(HELD_SLOT))).toHaveLength(0);
   });
 
   it('holds the current bill with F4 and clears the counter', async () => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify([held]));
+    window.localStorage.setItem(HELD_SLOT, JSON.stringify([held]));
     render(<BillingCounterView />);
     fireEvent.click(screen.getByRole('button', { name: 'Held bills (1)' }));
     fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
@@ -80,12 +80,12 @@ describe('Billing counter', () => {
 
     fireEvent.keyDown(window, { key: 'F4' });
     await waitFor(() => expect(screen.queryByText('Dolo 650')).not.toBeInTheDocument());
-    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY))).toHaveLength(1);
+    expect(JSON.parse(window.localStorage.getItem(HELD_SLOT))).toHaveLength(1);
     expect(screen.getByRole('button', { name: 'Held bills (1)' })).toBeInTheDocument();
   });
 
   it('asks before clearing a bill that has items', async () => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify([held]));
+    window.localStorage.setItem(HELD_SLOT, JSON.stringify([held]));
     render(<BillingCounterView />);
     fireEvent.click(screen.getByRole('button', { name: 'Held bills (1)' }));
     fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
@@ -98,7 +98,7 @@ describe('Billing counter', () => {
 
   it('completes the sale with Ctrl+Enter', async () => {
     salesApi.create.mockResolvedValue({ id: 9, billNumber: 'PH/26-27/00009', netAmount: 200 });
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify([held]));
+    window.localStorage.setItem(HELD_SLOT, JSON.stringify([held]));
     render(<BillingCounterView />);
     fireEvent.click(screen.getByRole('button', { name: 'Held bills (1)' }));
     fireEvent.click(screen.getByRole('button', { name: 'Resume' }));

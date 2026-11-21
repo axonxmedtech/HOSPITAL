@@ -12,6 +12,8 @@
 -- 6. Purchases: paid amount and cancellation (reason / when / who) on purchase_invoices, a
 --    purchase_payments ledger, and numbered supplier return notes (SR/26-27/00001) with lines.
 --
+-- flyway:safety-ack: the only DROP is of the global UNIQUE index on pharmacy_sales.invoice_number; it is replaced in the same migration by UNIQUE (hospital_id, invoice_number), which every existing row already satisfies (a globally unique column is unique per facility). No column or row is dropped.
+--
 -- Guarded like V17: a database bootstrapped from setup/schema-full.sql may already have these.
 
 SET @sql := (SELECT IF(
