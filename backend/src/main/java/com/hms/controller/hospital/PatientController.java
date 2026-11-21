@@ -21,6 +21,9 @@ public class PatientController {
     private PatientService patientService;
 
     @Autowired
+    private com.hms.service.hospital.PatientFileService patientFileService;
+
+    @Autowired
     private com.hms.security.SecurityContextHelper securityHelper;
 
     @Autowired
@@ -96,10 +99,22 @@ public class PatientController {
      * rather than the wider set PatientController otherwise uses.
      */
     @GetMapping("/{id}/timeline")
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR')")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'NURSE', 'NURSE_INCHARGE')")
     public ResponseEntity<?> getPatientTimeline(@PathVariable String id) {
-        Patient patient = patientService.getPatientByPublicId(id);
+        // Nurses only for a patient currently in their care; admin also for a deleted patient.
+        Patient patient = patientFileService.requireViewable(id);
         return ResponseEntity.ok(patientTimelineService.forPatient(patient.getId()));
+    }
+
+    /**
+     * The Patient File: every OPD visit, IPD stay, ICU stay, surgery, bill and document of one
+     * patient — current and finished — in one read. Read-only. Reception gets no clinical detail;
+     * nurses only patients in their care; bills follow the Billing Handler setting.
+     */
+    @GetMapping("/{id}/file")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST', 'NURSE', 'NURSE_INCHARGE')")
+    public ResponseEntity<?> getPatientFile(@PathVariable String id) {
+        return ResponseEntity.ok(patientFileService.fileFor(id));
     }
 
     @DeleteMapping("/{id}")

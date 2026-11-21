@@ -179,15 +179,33 @@ public class BillingService {
 
     /** The bills list, optionally narrowed to one category (OPD / IPD). */
     public Page<Billing> getAllBills(String search, String status, String category, Pageable pageable) {
+        return getAllBills(search, status, category, null, null, pageable);
+    }
+
+    /**
+     * The bills list with all its filters: category (OPD / IPD), payment status, search and a
+     * bill-date window (inclusive dates). Read-only.
+     */
+    public Page<Billing> getAllBills(String search, String status, String category,
+                                     java.time.LocalDate from, java.time.LocalDate to, Pageable pageable) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         java.util.List<String> statuses = statusesForFilter(status);
+        if (from != null && to != null && to.isBefore(from)) {
+            throw new IllegalArgumentException("The 'to' date is before the 'from' date");
+        }
+        String c = null;
         if (category != null && !category.isBlank()) {
-            String c = category.trim().toUpperCase(java.util.Locale.ROOT);
+            c = category.trim().toUpperCase(java.util.Locale.ROOT);
             if (!CATEGORIES.contains(c)) {
                 throw new IllegalArgumentException("Unknown bill category: " + category);
             }
-            return billingRepository.findByCategory(hospitalId, c, search == null ? "" : search.trim(),
-                    statuses == null, statuses == null ? java.util.List.of("") : statuses, pageable);
+        }
+        if (c != null || from != null || to != null) {
+            return billingRepository.findFiltered(hospitalId, c == null, c == null ? "" : c,
+                    statuses == null, statuses == null ? java.util.List.of("") : statuses,
+                    search == null ? "" : search.trim(),
+                    from == null ? null : from.atStartOfDay(),
+                    to == null ? null : to.plusDays(1).atStartOfDay(), pageable);
         }
         if (search != null && !search.isEmpty()) {
             // The status filter belongs in the query. Filtering one fetched page in memory

@@ -59,43 +59,12 @@ public class BillingController {
     @Autowired
     private com.hms.repository.HospitalSettingRepository hospitalSettingRepository;
 
+    @Autowired
+    private com.hms.security.BillingAccessPolicy billingAccessPolicy;
+
+    /** Admin always; doctor / reception as the hospital's Billing Handler setting allows. */
     private void validateBillingAccess() {
-        String role = securityHelper.getCurrentUserRole();
-        Long hospitalId = securityHelper.getCurrentHospitalId();
-        if (hospitalId == null) {
-            throw new org.springframework.security.access.AccessDeniedException("Invalid hospital context");
-        }
-
-        // HOSPITAL_ADMIN always has full access to billing
-        if ("HOSPITAL_ADMIN".equalsIgnoreCase(role) || "ROLE_HOSPITAL_ADMIN".equalsIgnoreCase(role)
-                || "ADMIN".equalsIgnoreCase(role) || "ROLE_ADMIN".equalsIgnoreCase(role)) {
-            return;
-        }
-
-        // Read the hospital's settings, falling back to an unsaved defaults object.
-        com.hms.entity.HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(hospitalId)
-                .orElseGet(com.hms.entity.HospitalSetting::new);
-
-        String handler = (settings != null && settings.getBillingHandler() != null && !settings.getBillingHandler().isBlank())
-                ? settings.getBillingHandler()
-                : "BOTH";
-
-        // Enforce settings
-        if ("ROLE_DOCTOR".equalsIgnoreCase(role) || DOCTOR_ROLE.equalsIgnoreCase(role)) {
-            if (!DOCTOR_ROLE.equalsIgnoreCase(handler) && 
-                !"BOTH".equalsIgnoreCase(handler) &&
-                !(settings != null && "SOLO".equalsIgnoreCase(settings.getReceptionMode()))) {
-                throw new org.springframework.security.access.AccessDeniedException("Billing management is restricted to receptionists.");
-            }
-        } else if ("ROLE_RECEPTIONIST".equalsIgnoreCase(role) || "RECEPTIONIST".equalsIgnoreCase(role)) {
-            if (!"RECEPTIONIST".equalsIgnoreCase(handler) && 
-                !"BOTH".equalsIgnoreCase(handler)) {
-                throw new org.springframework.security.access.AccessDeniedException("Billing management is restricted to doctors.");
-            }
-            if (settings != null && "SOLO".equalsIgnoreCase(settings.getReceptionMode())) {
-                throw new org.springframework.security.access.AccessDeniedException("Receptionist access is restricted under Solo Doctor mode.");
-            }
-        }
+        billingAccessPolicy.check();
     }
 
     @GetMapping
@@ -104,13 +73,15 @@ public class BillingController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String category,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate from,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate to,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         validateBillingAccess();
         Pageable pageable = PageRequest.of(page, size, org.springframework.data.domain.Sort.by("createdAt").descending());
         // Fetch page of Billing
         org.springframework.data.domain.Page<com.hms.entity.Billing> billsPage =
-                billingService.getAllBills(search, status, category, pageable);
+                billingService.getAllBills(search, status, category, from, to, pageable);
 
         java.util.List<com.hms.entity.Billing> content = billsPage.getContent();
         java.util.List<Long> billIds = content.stream()

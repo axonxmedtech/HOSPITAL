@@ -40,6 +40,18 @@ public class IcuStayController {
         return ResponseEntity.ok(icuStayService.getAdmittedIcuPatientsForCurrentUser());
     }
 
+    /** ICU history: CURRENT / CLOSED / ALL stays with a from–to date window and a search. */
+    @GetMapping("/history")
+    public ResponseEntity<?> icuHistory(
+            @org.springframework.web.bind.annotation.RequestParam(required = false, defaultValue = "CLOSED") String view,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate from,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate to,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String search,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "0") int page,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(icuStayService.history(view, from, to, search, page, size));
+    }
+
     @GetMapping("/stays/{publicId}")
     public ResponseEntity<IcuStayDTO> getStay(@PathVariable String publicId) {
         return ResponseEntity.ok(icuStayService.viewByPublicId(publicId));

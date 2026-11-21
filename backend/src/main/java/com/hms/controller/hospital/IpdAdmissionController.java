@@ -75,12 +75,19 @@ public class IpdAdmissionController {
         return false;
     }
 
+    /**
+     * The IPD list with history: {@code view} = CURRENT / DISCHARGED / CANCELLED / ALL, an
+     * optional from–to date window and a search. Doctors see their own admissions.
+     */
     @GetMapping
-    @PreAuthorize("hasAnyRole('RECEPTIONIST','HOSPITAL_ADMIN')")
+    @PreAuthorize("hasAnyRole('RECEPTIONIST','HOSPITAL_ADMIN','DOCTOR')")
     public ResponseEntity<?> listIpdAdmissions(@RequestParam(defaultValue = "0") int page,
                                                @RequestParam(defaultValue = "10") int size,
-                                               @RequestParam(required = false) String search) {
-        return ResponseEntity.ok(ipdAdmissionService.listIpdAdmissions(page, size, search));
+                                               @RequestParam(required = false) String search,
+                                               @RequestParam(required = false, defaultValue = "ALL") String view,
+                                               @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate from,
+                                               @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate to) {
+        return ResponseEntity.ok(ipdAdmissionService.listIpdAdmissions(page, size, search, view, from, to));
     }
 
     @PreAuthorize("hasAnyRole('RECEPTIONIST','DOCTOR','HOSPITAL_ADMIN')")

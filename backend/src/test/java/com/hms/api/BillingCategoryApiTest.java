@@ -46,6 +46,7 @@ class BillingCategoryApiTest {
     @Autowired PatientRepository patientRepository;
     @Autowired IpdAdmissionRepository ipdAdmissionRepository;
     @Autowired BillingRepository billingRepository;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     private static final List<String> MODULES = List.of("OPD", "IPD", "BILLING");
     private final ObjectMapper json = new ObjectMapper();
@@ -169,5 +170,23 @@ class BillingCategoryApiTest {
         JsonNode stay = get("/hospital/billing/ipd/" + a.getId() + "/related-bills");
         assertThat(stay.path("bills")).hasSize(2);
         assertThat(stay.path("totalAmount").decimalValue()).isEqualByComparingTo("550");
+    }
+
+    @Test
+    void theBillsListFiltersByBillDateAndRejectsABackwardsRange() throws Exception {
+        Billing old = bill("OPD", 9301L, null, "200", "PAID");
+        jdbc.update("UPDATE billing SET created_at = ? WHERE id = ?",
+                java.sql.Timestamp.valueOf(LocalDateTime.now().minusDays(40)), old.getId());
+        Billing recent = bill("OPD", 9302L, null, "300", "PENDING");
+
+        String from = LocalDate.now().minusDays(7).toString();
+        assertThat(ids(get("/hospital/billing?from=" + from))).contains(recent.getId()).doesNotContain(old.getId());
+        String d = LocalDate.now().minusDays(40).toString();
+        assertThat(ids(get("/hospital/billing?from=" + d + "&to=" + d))).containsExactly(old.getId());
+        assertThat(ids(get("/hospital/billing?category=OPD&status=PENDING&from=" + from))).containsExactly(recent.getId());
+
+        ResponseEntity<String> bad = rest.exchange("/hospital/billing?from=2026-05-10&to=2026-05-01",
+                HttpMethod.GET, new HttpEntity<>(auth), String.class);
+        assertThat(bad.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 }

@@ -113,7 +113,9 @@ public class PatientTimelineService {
         Long hospitalId = requireHospitalId();
         // Tenant + patient scope proven once, up front; every subsequent read is keyed off ids
         // already known to belong to this patient at this hospital.
-        patientRepository.findByIdAndHospitalIdAndIsActiveTrue(patientId, hospitalId)
+        // Deleted (inactive) patients keep their history; who may open it is decided by the caller
+        // (PatientFileService.requireViewable) — this only proves the tenant.
+        patientRepository.findByIdAndHospitalId(patientId, hospitalId)
                 .orElseThrow(() -> new IllegalArgumentException("Patient not found"));
 
         List<TimelineEventDTO> events = new ArrayList<>();

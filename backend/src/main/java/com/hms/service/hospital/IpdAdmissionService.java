@@ -396,25 +396,79 @@ public class IpdAdmissionService {
         }
     }
 
+    /** IPD list views: who is in now, who has left, cancelled admissions, or everything. */
+    public static final java.util.Map<String, java.util.List<String>> IPD_VIEWS = java.util.Map.of(
+            "CURRENT", IN_HOSPITAL,
+            "DISCHARGED", java.util.List.of(STATUS_DISCHARGED),
+            "CANCELLED", java.util.List.of(STATUS_CANCELLED),
+            "ALL", java.util.List.of(STATUS_ADMITTED, STATUS_DISCHARGE_PLANNED, STATUS_DISCHARGED, STATUS_CANCELLED));
+
     @Transactional(readOnly = true)
     public org.springframework.data.domain.Page<java.util.Map<String, Object>> listIpdAdmissions(int page, int size, String search) {
+        return listIpdAdmissions(page, size, search, "ALL", null, null);
+    }
+
+    /**
+     * The IPD list with its history. {@code view} is CURRENT / DISCHARGED / CANCELLED / ALL; the
+     * date window (inclusive dates) applies to the discharge date in the Discharged view and to
+     * the admission date otherwise. A doctor sees the admissions they are the doctor for; admin
+     * and reception see the whole hospital. Read-only.
+     */
+    @Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<java.util.Map<String, Object>> listIpdAdmissions(
+            int page, int size, String search, String view, java.time.LocalDate from, java.time.LocalDate to) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found in context");
 
-        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size, org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "admissionDatetime"));
-        org.springframework.data.domain.Page<IpdAdmission> p = ipdAdmissionRepository.findByHospitalId(hospitalId, pageable);
+        String v = view == null || view.isBlank() ? "ALL" : view.trim().toUpperCase(java.util.Locale.ROOT);
+        java.util.List<String> statuses = IPD_VIEWS.get(v);
+        if (statuses == null) throw new IllegalArgumentException("Unknown view: " + view + " (use CURRENT, DISCHARGED, CANCELLED or ALL)");
+        if (from != null && to != null && to.isBefore(from)) throw new IllegalArgumentException("The 'to' date is before the 'from' date");
 
-        java.util.List<java.util.Map<String,Object>> rows = new java.util.ArrayList<>();
-        for (IpdAdmission ipd : p.getContent()) {
-            java.util.Map<String,Object> m = new java.util.HashMap<>();
-            m.put("ipd", ipd);
-            patientRepository.findById(ipd.getPatientId()).ifPresent(patient -> m.put("patient", patient));
-            doctorRepository.findById(ipd.getDoctorId()).ifPresent(doc -> m.put("doctor", doc));
-            wardRepository.findById(ipd.getWardId()).ifPresent(ward -> m.put("ward", ward));
-            bedRepository.findById(ipd.getBedId()).ifPresent(bed -> m.put("bed", bed));
-            rows.add(m);
+        Long doctorId = null;
+        if ("DOCTOR".equals(securityHelper.getCurrentUserRole())) {
+            doctorId = doctorRepository.findByEmailAndHospitalId(securityHelper.getCurrentUserEmail(), hospitalId)
+                    .map(com.hms.entity.Doctor::getId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Doctor profile not found for current user"));
+        }
+        boolean byDischarge = "DISCHARGED".equals(v);
+        String q = search == null || search.isBlank() ? null : "%" + search.trim().toLowerCase(java.util.Locale.ROOT) + "%";
+        int safeSize = Math.max(1, Math.min(size, 100));
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(Math.max(0, page), safeSize,
+                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC,
+                        byDischarge ? "dischargeDatetime" : "admissionDatetime").and(
+                        org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "id")));
+        org.springframework.data.domain.Page<IpdAdmission> p = ipdAdmissionRepository.searchHistory(hospitalId, statuses, doctorId,
+                byDischarge,
+                from == null ? null : from.atStartOfDay(),
+                to == null ? null : to.plusDays(1).atStartOfDay(),
+                q, pageable);
+
+        java.util.List<IpdAdmission> list = p.getContent();
+        java.util.Map<Long, com.hms.entity.Patient> patients = new java.util.HashMap<>();
+        patientRepository.findByHospitalIdAndIdIn(hospitalId, list.stream().map(IpdAdmission::getPatientId).collect(java.util.stream.Collectors.toSet()))
+                .forEach(x -> patients.put(x.getId(), x));
+        java.util.Map<Long, com.hms.entity.Doctor> doctors = new java.util.HashMap<>();
+        doctorRepository.findByHospitalIdAndIdIn(hospitalId, list.stream().map(IpdAdmission::getDoctorId).filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet()))
+                .forEach(x -> doctors.put(x.getId(), x));
+        java.util.Map<Long, com.hms.entity.Ward> wards = new java.util.HashMap<>();
+        java.util.Map<Long, com.hms.entity.Bed> beds = new java.util.HashMap<>();
+        java.util.Set<Long> wardIds = list.stream().map(IpdAdmission::getWardId).filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+        if (!wardIds.isEmpty()) {
+            wardRepository.findByHospitalId(hospitalId).stream().filter(w -> wardIds.contains(w.getWardId())).forEach(w -> wards.put(w.getWardId(), w));
+            bedRepository.findByHospitalIdAndWardIdIn(hospitalId, wardIds).forEach(b -> beds.put(b.getBedId(), b));
         }
 
+        java.util.List<java.util.Map<String,Object>> rows = new java.util.ArrayList<>();
+        for (IpdAdmission ipd : list) {
+            java.util.Map<String,Object> m = new java.util.HashMap<>();
+            m.put("ipd", ipd);
+            if (patients.containsKey(ipd.getPatientId())) m.put("patient", patients.get(ipd.getPatientId()));
+            if (ipd.getDoctorId() != null && doctors.containsKey(ipd.getDoctorId())) m.put("doctor", doctors.get(ipd.getDoctorId()));
+            if (ipd.getWardId() != null && wards.containsKey(ipd.getWardId())) m.put("ward", wards.get(ipd.getWardId()));
+            if (ipd.getBedId() != null && beds.containsKey(ipd.getBedId())) m.put("bed", beds.get(ipd.getBedId()));
+            rows.add(m);
+        }
         return new org.springframework.data.domain.PageImpl<>(rows, pageable, p.getTotalElements());
     }
 
