@@ -136,7 +136,15 @@ const PharmacyDashboard = () => {
         tabs={sidebarTabs}
         activeTab={activeTab}
         onTabChange={handleTabChange}
-        footerTitle={selectedBranchId ? 'Branch Outlet' : 'Hospital'}
+        footerTitle={
+          selectedBranchId
+            ? 'Branch Outlet'
+            : user?.hospitalType === 'PHARMACY'
+              ? 'Pharmacy'
+              : user?.hospitalType === 'CLINIC'
+                ? 'Clinic'
+                : 'Hospital'
+        }
         footerData={
           selectedBranchId ? selectedBranchName : user?.hospitalName || 'HMS Medical Center'
         }

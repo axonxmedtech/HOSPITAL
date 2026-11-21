@@ -247,6 +247,8 @@ CREATE TABLE `hospitals` (
   `opd_timings` varchar(100) DEFAULT NULL,
   `parent_organization` varchar(200) DEFAULT NULL,
   `phone` varchar(20) DEFAULT NULL,
+  `gstin` varchar(15) DEFAULT NULL,
+  `drug_license_number` varchar(120) DEFAULT NULL,
   `plan` varchar(20) DEFAULT NULL,
   `public_id` varchar(255) NOT NULL,
   `subscription_status` varchar(20) NOT NULL DEFAULT 'ACTIVE',
@@ -473,6 +475,7 @@ CREATE TABLE `medicine_master` (
   `schedule_type` varchar(20) DEFAULT NULL,
   `dosage_form` varchar(100) DEFAULT NULL,
   `strength` varchar(100) DEFAULT NULL,
+  `hsn_code` varchar(10) DEFAULT NULL,
   `unit_of_measure` varchar(50) DEFAULT NULL,
   `reorder_level` int DEFAULT '0',
   `min_stock_level` int DEFAULT '0',
@@ -670,7 +673,7 @@ CREATE TABLE `pharmacy_sales` (
   `posting_status` varchar(50) DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `invoice_number` (`invoice_number`)
+  UNIQUE KEY `uk_pharmacy_sales_hospital_invoice` (`hospital_id`,`invoice_number`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -763,6 +766,10 @@ CREATE TABLE `purchase_invoices` (
   `total_amount` decimal(38,2) DEFAULT NULL,
   `payment_status` varchar(50) DEFAULT NULL,
   `posting_status` varchar(50) DEFAULT NULL,
+  `paid_amount` decimal(12,2) DEFAULT 0,
+  `cancel_reason` varchar(255) DEFAULT NULL,
+  `cancelled_at` datetime(6) DEFAULT NULL,
+  `cancelled_by` bigint DEFAULT NULL,
   `created_by` bigint DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -2410,3 +2417,73 @@ CREATE TABLE IF NOT EXISTS `hospital_sidebar_settings` (
   UNIQUE KEY `uk_hospital_sidebar_role` (`hospital_id`,`role`),
   CONSTRAINT `fk_hospital_sidebar_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- V38: pharmacy legal invoice — GSTIN / drug licence on the facility, HSN per medicine, and a
+-- consecutive invoice series per facility (or branch) per financial year.
+CREATE TABLE IF NOT EXISTS `pharmacy_invoice_sequences` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `series` varchar(20) NOT NULL,
+  `last_number` bigint NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_pharmacy_invoice_series` (`hospital_id`,`series`)
+);
+-- V38: customer refunds — money returned and the GST in it (append-only).
+CREATE TABLE IF NOT EXISTS `pharmacy_sale_returns` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `branch_id` bigint DEFAULT NULL,
+  `sale_id` bigint NOT NULL,
+  `sale_item_id` bigint NOT NULL,
+  `medicine_batch_id` bigint NOT NULL,
+  `quantity` decimal(12,2) NOT NULL,
+  `refund_amount` decimal(12,2) NOT NULL,
+  `gst_amount` decimal(12,2) NOT NULL,
+  `created_by` bigint DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_psr_hospital_date` (`hospital_id`,`created_at`),
+  KEY `idx_psr_sale` (`sale_id`)
+);
+-- V38: supplier payments and numbered supplier return notes.
+CREATE TABLE IF NOT EXISTS `purchase_payments` (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    hospital_id BIGINT NOT NULL,
+    branch_id BIGINT NULL,
+    purchase_invoice_id BIGINT NOT NULL,
+    amount DECIMAL(12,2) NOT NULL,
+    method VARCHAR(20) NOT NULL,
+    reference VARCHAR(60) NULL,
+    paid_on DATE NOT NULL,
+    created_by BIGINT NULL,
+    created_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    KEY idx_pp_invoice (purchase_invoice_id)
+);
+
+CREATE TABLE IF NOT EXISTS `supplier_return_notes` (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    hospital_id BIGINT NOT NULL,
+    branch_id BIGINT NULL,
+    note_number VARCHAR(20) NOT NULL,
+    supplier_id BIGINT NOT NULL,
+    total_claimed DECIMAL(12,2) NOT NULL,
+    reason VARCHAR(255) NULL,
+    created_by BIGINT NULL,
+    created_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_supplier_return_note_number (hospital_id, note_number)
+);
+
+CREATE TABLE IF NOT EXISTS `supplier_return_note_items` (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    note_id BIGINT NOT NULL,
+    medicine_batch_id BIGINT NOT NULL,
+    batch_number VARCHAR(60) NULL,
+    medicine_name VARCHAR(200) NULL,
+    quantity DECIMAL(12,2) NOT NULL,
+    rate DECIMAL(12,2) NOT NULL,
+    amount DECIMAL(12,2) NOT NULL,
+    PRIMARY KEY (id),
+    KEY idx_srni_note (note_id)
+);

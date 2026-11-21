@@ -163,7 +163,29 @@ const ExpiryView = () => {
           fetchExpiryAlerts();
         } catch (err) {
           console.error('Block failed', err);
-          toastError('Failed to block batch.');
+          toastError(extractApiError(err, 'Failed to block batch.'));
+        } finally {
+          setBlockingId(null);
+        }
+      },
+    });
+  };
+
+  const handleUnblockBatch = (batch) => {
+    if (blockingId) return;
+    setConfirmState({
+      open: true,
+      title: 'Put batch back on sale',
+      message: `Unblock batch ${batch.batchNumber}? It can be sold again at the billing counter (if not expired).`,
+      showReasonInput: true,
+      onConfirm: async (reason) => {
+        setBlockingId(batch.id);
+        try {
+          await inventoryApi.unblockBatch(batch.id, reason);
+          success(`Batch ${batch.batchNumber} is back on sale.`);
+          fetchExpiryAlerts();
+        } catch (err) {
+          toastError(extractApiError(err, 'Failed to unblock batch.'));
         } finally {
           setBlockingId(null);
         }
@@ -207,10 +229,14 @@ const ExpiryView = () => {
     }
     setProcessingReturn(true);
     try {
-      await inventoryApi.processSupplierReturn(returnBatch.supplierId, [
+      const note = await inventoryApi.processSupplierReturn(returnBatch.supplierId, [
         { medicineBatchId: returnBatch.id, quantityToReturn: qty, returnRate: rate },
       ]);
-      success('Expired stock dispatched back to supplier.');
+      success(
+        note?.noteNumber
+          ? `Return note ${note.noteNumber} issued: stock sent back to the supplier.`
+          : 'Expired stock dispatched back to supplier.'
+      );
       setIsReturnModalOpen(false);
       setReturnBatch(null);
       fetchExpiryAlerts();
@@ -491,6 +517,16 @@ const ExpiryView = () => {
                               {blockingId === b.id ? 'Blocking...' : 'Block'}
                             </button>
                           )}
+                          {b.status === 'BLOCKED' && (
+                            <button
+                              onClick={() => handleUnblockBatch(b)}
+                              disabled={!!blockingId}
+                              className="px-2.5 py-1.5 border rounded font-bold text-[10px] uppercase tracking-wide active:scale-95 transition-all bg-green-50 text-green-700 hover:bg-green-100 border-green-200 disabled:opacity-50"
+                              title="Put this batch back on sale"
+                            >
+                              {blockingId === b.id ? 'Unblocking...' : 'Unblock'}
+                            </button>
+                          )}
                           {isStandalonePharmacy &&
                             b.status !== 'DISPOSED' &&
                             b.supplierId &&
@@ -543,6 +579,8 @@ const ExpiryView = () => {
         message={confirmState.message}
         onConfirm={confirmState.onConfirm}
         onCancel={() => setConfirmState({ open: false })}
+        showReasonInput={Boolean(confirmState.showReasonInput)}
+        inputPlaceholder="Reason (kept in the audit log)"
       />
 
       {/* Dispatch-back-to-supplier modal */}

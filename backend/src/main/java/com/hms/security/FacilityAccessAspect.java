@@ -26,6 +26,16 @@ public class FacilityAccessAspect {
     @Autowired
     private HospitalRepository hospitalRepository;
 
+    /**
+     * Core screens that belong to hospitals and clinics only. A standalone pharmacy has no
+     * doctors, receptionists or patient records of its own; through these endpoints its admin
+     * could create a doctor login that lands on a hospital page, or keep patient files.
+     */
+    static final java.util.Set<String> NOT_FOR_PHARMACY = java.util.Set.of(
+            "DoctorController", "ReceptionistController", "PatientController", "PatientImportController",
+            "PatientDocumentController", "ConsultationNotePresetController", "PrescriptionPresetController",
+            "ConsultationStatementController");
+
     @Before("execution(public * com.hms.controller..*(..))")
     public void checkFacilityAccess(JoinPoint joinPoint) {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -42,6 +52,9 @@ public class FacilityAccessAspect {
         }
 
         String controller = ((MethodSignature) joinPoint.getSignature()).getDeclaringType().getSimpleName();
+        if (type == HospitalType.PHARMACY && NOT_FOR_PHARMACY.contains(controller)) {
+            throw new AccessDeniedException("Access Denied: this feature is not available for your account type.");
+        }
         String module = ControllerModules.moduleOf(controller);
         if (module == null || EntitlementRegistry.CORE.equals(module)) {
             return;

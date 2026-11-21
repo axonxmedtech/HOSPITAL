@@ -53,6 +53,8 @@ class PatientReturnStockSafetyTest {
     @Mock com.hms.repository.PrescriptionRepository prescriptionRepository;
     @Mock com.hms.service.RealtimeNotifier notifier;
     @Mock com.hms.repository.pharmacy.PharmacySaleItemRepository saleItemRepository;
+    @Mock com.hms.repository.pharmacy.PharmacySaleReturnRepository saleReturnRepository;
+    @Mock PharmacyAuditTrail auditTrail;
 
     @InjectMocks PharmacySaleService saleService;
 
@@ -80,12 +82,14 @@ class PatientReturnStockSafetyTest {
         sold.setMedicineBatchId(BATCH);
         sold.setQuantity(new BigDecimal("10"));
         sold.setUnitPrice(new BigDecimal("25"));
+        sold.setTotalAmount(new BigDecimal("250"));
 
         sale = new PharmacySale();
         sale.setId(100L);
         sale.setBillNumber("BILL-1");
         sale.setHospitalId(HOSPITAL);
         sale.setItems(List.of(sold));
+        sale.setNetAmount(new BigDecimal("250"));
 
         when(saleRepository.findByIdScoped(100L, HOSPITAL, null)).thenReturn(Optional.of(sale));
         when(batchRepository.findByIdAndHospitalIdForUpdate(BATCH, HOSPITAL, null))
@@ -233,5 +237,22 @@ class PatientReturnStockSafetyTest {
         assertThatThrownBy(() -> saleService.processPatientReturn(100L, returnOf("1", false)))
                 .isInstanceOf(ResourceNotFoundException.class);
         verify(batchRepository, never()).save(any(MedicineBatch.class));
+    }
+
+    // ── the refund is recorded as money ──────────────────────────────────────
+
+    @Test
+    void eachRefundIsRecordedWithTheGstInIt() {
+        sale.getItems().get(0).setTaxPercentage(new BigDecimal("12"));
+        saleService.processPatientReturn(100L, returnOf("4", false));
+
+        org.mockito.ArgumentCaptor<com.hms.entity.pharmacy.PharmacySaleReturn> saved =
+                org.mockito.ArgumentCaptor.forClass(com.hms.entity.pharmacy.PharmacySaleReturn.class);
+        org.mockito.Mockito.verify(saleReturnRepository).save(saved.capture());
+        assertThat(saved.getValue().getRefundAmount()).isEqualByComparingTo("100.00");
+        assertThat(saved.getValue().getGstAmount()).isEqualByComparingTo("10.71");
+        assertThat(saved.getValue().getQuantity()).isEqualByComparingTo("4");
+        org.mockito.Mockito.verify(auditTrail).record(org.mockito.ArgumentMatchers.eq("PHARMACY_REFUND"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     }
 }
