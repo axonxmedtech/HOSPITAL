@@ -73,6 +73,14 @@ public class Hospital {
     @Column(length = 20)
     private String phone;
 
+    /** GSTIN printed on tax invoices (15 characters). Needed by every GST-registered pharmacy. */
+    @Column(name = "gstin", length = 15)
+    private String gstin;
+
+    /** Drug licence number(s), e.g. "20B/MH/123, 21B/MH/124". Printed on every pharmacy bill. */
+    @Column(name = "drug_license_number", length = 120)
+    private String drugLicenseNumber;
+
     @Column(name = "logo_url", length = 500)
     private String logoUrl;
 

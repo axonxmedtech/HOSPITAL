@@ -189,6 +189,7 @@ public class DatabaseMigrationRunner {
         ensureHelpProgressTable();
         ensureHelpFeedbackTable();
         ensureHospitalSidebarSettingsTable(); // V36
+        ensurePharmacyLegalInvoice(); // V38
         ensureNurseAttendanceTable(); // NEW — Nursing Mgmt Phase D
         ensureNurseWardAssignmentsTable(); // NEW — Nursing Mgmt Phase F
         ensureNurseSubstitutionsTable(); // NEW — Nursing Mgmt Phase F
@@ -610,6 +611,49 @@ public class DatabaseMigrationRunner {
     }
 
     /** In-app help feedback (V34). Idempotent; mirrors setup/schema-full.sql. */
+    /**
+     * Pharmacy invoices that meet GST and drug-licence rules (V38): GSTIN and drug licence on the
+     * facility, HSN per medicine, a consecutive invoice series per facility per financial year, and
+     * invoice numbers unique per facility instead of globally. Mirrors schema-full.sql.
+     */
+    private void ensurePharmacyLegalInvoice() {
+        addColumnIfMissing("hospitals", "gstin", "VARCHAR(15) NULL");
+        addColumnIfMissing("hospitals", "drug_license_number", "VARCHAR(120) NULL");
+        addColumnIfMissing("medicine_master", "hsn_code", "VARCHAR(10) NULL");
+        addColumnIfMissing("purchase_invoices", "paid_amount", "DECIMAL(12,2) NULL DEFAULT 0");
+        addColumnIfMissing("purchase_invoices", "cancel_reason", "VARCHAR(255) NULL");
+        addColumnIfMissing("purchase_invoices", "cancelled_at", "DATETIME(6) NULL");
+        addColumnIfMissing("purchase_invoices", "cancelled_by", "BIGINT NULL");
+        try {
+            jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS pharmacy_invoice_sequences (" +
+                "id BIGINT NOT NULL AUTO_INCREMENT, hospital_id BIGINT NOT NULL, series VARCHAR(20) NOT NULL," +
+                "last_number BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (id)," +
+                "UNIQUE KEY uk_pharmacy_invoice_series (hospital_id, series))");
+            jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS pharmacy_sale_returns (" +
+                "id BIGINT NOT NULL AUTO_INCREMENT, hospital_id BIGINT NOT NULL, branch_id BIGINT NULL," +
+                "sale_id BIGINT NOT NULL, sale_item_id BIGINT NOT NULL, medicine_batch_id BIGINT NOT NULL," +
+                "quantity DECIMAL(12,2) NOT NULL, refund_amount DECIMAL(12,2) NOT NULL, gst_amount DECIMAL(12,2) NOT NULL," +
+                "created_by BIGINT NULL, created_at DATETIME(6) NOT NULL, PRIMARY KEY (id)," +
+                "KEY idx_psr_hospital_date (hospital_id, created_at), KEY idx_psr_sale (sale_id))");
+            jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS purchase_payments ( id BIGINT NOT NULL AUTO_INCREMENT, hospital_id BIGINT NOT NULL, branch_id BIGINT NULL, purchase_invoice_id BIGINT NOT NULL, amount DECIMAL(12,2) NOT NULL, method VARCHAR(20) NOT NULL, reference VARCHAR(60) NULL, paid_on DATE NOT NULL, created_by BIGINT NULL, created_at DATETIME(6) NOT NULL, PRIMARY KEY (id), KEY idx_pp_invoice (purchase_invoice_id) )");
+            jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS supplier_return_notes ( id BIGINT NOT NULL AUTO_INCREMENT, hospital_id BIGINT NOT NULL, branch_id BIGINT NULL, note_number VARCHAR(20) NOT NULL, supplier_id BIGINT NOT NULL, total_claimed DECIMAL(12,2) NOT NULL, reason VARCHAR(255) NULL, created_by BIGINT NULL, created_at DATETIME(6) NOT NULL, PRIMARY KEY (id), UNIQUE KEY uk_supplier_return_note_number (hospital_id, note_number) )");
+            jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS supplier_return_note_items ( id BIGINT NOT NULL AUTO_INCREMENT, note_id BIGINT NOT NULL, medicine_batch_id BIGINT NOT NULL, batch_number VARCHAR(60) NULL, medicine_name VARCHAR(200) NULL, quantity DECIMAL(12,2) NOT NULL, rate DECIMAL(12,2) NOT NULL, amount DECIMAL(12,2) NOT NULL, PRIMARY KEY (id), KEY idx_srni_note (note_id) )");
+            java.util.List<String> globalUnique = jdbcTemplate.queryForList(
+                "SELECT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() " +
+                "AND TABLE_NAME = 'pharmacy_sales' AND NON_UNIQUE = 0 AND INDEX_NAME <> 'PRIMARY' " +
+                "GROUP BY INDEX_NAME HAVING GROUP_CONCAT(COLUMN_NAME) = 'invoice_number'", String.class);
+            for (String idx : globalUnique) {
+                jdbcTemplate.execute("ALTER TABLE pharmacy_sales DROP INDEX `" + idx.replace("`", "") + "`");
+            }
+            Integer perFacility = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() " +
+                "AND TABLE_NAME = 'pharmacy_sales' AND INDEX_NAME = 'uk_pharmacy_sales_hospital_invoice'", Integer.class);
+            if (perFacility == null || perFacility == 0) {
+                jdbcTemplate.execute("ALTER TABLE pharmacy_sales ADD UNIQUE KEY uk_pharmacy_sales_hospital_invoice (hospital_id, invoice_number)");
+            }
+        } catch (Exception e) { log.warn("DB migration skipped (pharmacy legal invoice): {}", e.getMessage()); }
+    }
+
     private void ensureHospitalSidebarSettingsTable() {
         try {
             jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS hospital_sidebar_settings (" +

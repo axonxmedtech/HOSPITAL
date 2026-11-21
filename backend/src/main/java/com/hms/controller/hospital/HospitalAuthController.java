@@ -43,6 +43,9 @@ public class HospitalAuthController {
     private PlatformPlanService planService;
 
     @Autowired
+    private com.hms.service.hospital.PharmacyInvoiceDetailsService invoiceDetailsService;
+
+    @Autowired
     private com.hms.security.SecurityContextHelper securityHelper;
 
     @PostMapping("/login")
@@ -137,6 +140,20 @@ public class HospitalAuthController {
     public ResponseEntity<?> updatePrintAndPaymentSettings(java.security.Principal principal, @RequestBody com.hms.dto.HospitalSettingDTO dto) {
         if (principal == null) throw new UnauthorizedException("Authentication required");
         return ResponseEntity.ok(authService.updatePrintAndPaymentSettings(principal.getName(), dto));
+    }
+
+    /** GSTIN and drug licence number printed on pharmacy tax invoices. */
+    @GetMapping({"/hospital/settings/invoice-details", "/clinic/settings/invoice-details", "/pharmacy/settings/invoice-details"})
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','PHARMACIST')")
+    public ResponseEntity<?> getInvoiceDetails() {
+        return ResponseEntity.ok(invoiceDetailsService.get());
+    }
+
+    /** Body: { "gstin": "27ABCDE1234F1Z5", "drugLicenseNumber": "20B/MH/123, 21B/MH/124" }. Admin only. */
+    @PutMapping({"/hospital/settings/invoice-details", "/clinic/settings/invoice-details", "/pharmacy/settings/invoice-details"})
+    @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
+    public ResponseEntity<?> updateInvoiceDetails(@RequestBody java.util.Map<String, String> body) {
+        return ResponseEntity.ok(invoiceDetailsService.update(body.get("gstin"), body.get("drugLicenseNumber")));
     }
 
     /** Toggle the pharmacy barcode workflow. Body: { "barcodeEnabled": true|false }. */

@@ -27,4 +27,17 @@ public interface SupplierRepository extends JpaRepository<Supplier, Long> {
     @Query("SELECT s FROM Supplier s WHERE s.id = :id AND s.hospitalId = :hid " +
            "AND (:branchId IS NULL OR s.branchId IS NULL OR s.branchId = :branchId)")
     Optional<Supplier> findByIdScoped(@Param("id") Long id, @Param("hid") Long hid, @Param("branchId") Long branchId);
+
+    /** Another supplier of this pharmacy (and branch) with the same name, ignoring case and spaces. */
+    @Query("SELECT COUNT(s) > 0 FROM Supplier s WHERE s.hospitalId = :hid "
+            + "AND ((:branchId IS NULL AND s.branchId IS NULL) OR s.branchId = :branchId) "
+            + "AND LOWER(TRIM(s.supplierName)) = LOWER(TRIM(:name)) AND (:exceptId IS NULL OR s.id <> :exceptId)")
+    boolean nameTaken(@Param("hid") Long hid, @Param("branchId") Long branchId, @Param("name") String name,
+            @Param("exceptId") Long exceptId);
+
+    @Query("SELECT COUNT(s) > 0 FROM Supplier s WHERE s.hospitalId = :hid "
+            + "AND ((:branchId IS NULL AND s.branchId IS NULL) OR s.branchId = :branchId) "
+            + "AND s.phone = :phone AND (:exceptId IS NULL OR s.id <> :exceptId)")
+    boolean phoneTaken(@Param("hid") Long hid, @Param("branchId") Long branchId, @Param("phone") String phone,
+            @Param("exceptId") Long exceptId);
 }

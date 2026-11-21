@@ -137,6 +137,15 @@ Each hospital picks which vitals are captured at OPD entry and can define its ow
 - **Patient File** — `GET /hospital/patients/{publicId}/file` (`PatientFileService`): every OPD visit, IPD stay, ICU stay, surgery, bill and document. Admin/doctor everything; receptionist no clinical detail; nurse / nurse in-charge only a patient currently in their care (`NurseAccessGuard`); bills follow `security/BillingAccessPolicy` (shared with `BillingController`). Admin can open a deleted patient's file. Frontend `pages/hospital/PatientFile.jsx` at `/patients/:publicId/file`; patient names link there via `components/records/PatientNameLink`.
 - **History lists** (server-filtered, paged, `view` + `from`/`to` ISO dates + `search`): `GET /hospital/ipd?view=CURRENT|DISCHARGED|CANCELLED|ALL` (doctor = own admissions), `GET /hospital/icu/history?view=CURRENT|CLOSED|ALL` (not for staff nurses), `GET /hospital/surgeries/history?view=ACTIVE|DONE|CANCELLED|ALL`. Frontend: `components/RecordsFilterBar` (view tabs, date quick-picks, search) + `components/records/{Ipd,Icu,Ot}HistoryView`.
 
+### Pharmacy money and stock rules
+
+- **Prices include GST (MRP style).** A batch's selling price (≤ MRP) is what the customer pays; GST is extracted from it. `service/pharmacy/PharmacyBillCalculator` is the only place a counter bill is priced — `PharmacySaleService.createSale` ignores every amount the browser sends and refuses expired / blocked / disposed batches, empty bills, discounts above the bill and unknown payment methods. `utils/pharmacyMoney.js` mirrors it for display only.
+- **Invoices:** consecutive serials per facility (or branch) per financial year from `PharmacyInvoiceNumberService` (`PH/26-27/00001`, `B3/…`, return notes `SR/…`); create the series row _before_ taking the lock (MySQL gap lock — see `PharmacyInvoiceNumberIT`). GSTIN / drug licence live on `hospitals` (Settings → Invoice details) and print on the tax invoice.
+- **Refunds** are recorded in `pharmacy_sale_returns` (amount + GST in it) and are based on what was paid per unit, never the shelf price. Reports read refunds from there; revenue and profit exclude GST.
+- **Purchases** are totalled on the server (rate excl. GST + GST − discount). Drafts can be edited / discarded; a posted purchase can only be cancelled (with a reason) while all its stock is still on the shelf. A re-used batch number must keep its expiry and cannot revive a blocked / disposed batch. Supplier payments go to `purchase_payments`.
+- **Branches:** every pharmacy query takes `securityHelper.getCurrentBranchId()` (null = whole pharmacy); new queries must too. Money / stock changes outside a sale go through `PharmacyAuditTrail` (shown in the pharmacy Audit Logs).
+- A `PHARMACY` facility cannot reach doctor / receptionist / patient endpoints (`FacilityAccessAspect.NOT_FOR_PHARMACY`).
+
 ### Design docs
 
 Specs and phase plans live under `docs/superpowers/specs/` and `docs/superpowers/plans/` (dated markdown). Consult the latest `nursing-mgmt-phase*` docs before extending the nurse module.

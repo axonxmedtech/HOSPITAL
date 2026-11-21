@@ -11,7 +11,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @Entity
-@Table(name = "pharmacy_sales")
+@Table(name = "pharmacy_sales", uniqueConstraints = @UniqueConstraint(
+        name = "uk_pharmacy_sales_hospital_invoice", columnNames = {"hospital_id", "invoice_number"}))
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -43,7 +44,8 @@ public class PharmacySale {
     @Column(name = "sale_type", length = 30)
     private String saleType; // WALK-IN, PRESCRIPTION, IPD
 
-    @Column(name = "invoice_number", unique = true)
+    /** The invoice serial, e.g. PH/26-27/00001. Unique within the facility, not across facilities. */
+    @Column(name = "invoice_number")
     private String billNumber; // Mapped to invoice_number column
 
     @Column(name = "subtotal", precision = 12, scale = 2)

@@ -24,6 +24,12 @@ public interface MedicineBatchRepository extends JpaRepository<MedicineBatch, Lo
     java.util.Optional<MedicineBatch> findByIdAndHospitalIdForUpdate(@Param("id") Long id,
             @Param("hospitalId") Long hospitalId, @Param("branchId") Long branchId);
 
+    /** Plain (non-locking) read of one batch of this pharmacy, and of this branch for a branch login. */
+    @Query("SELECT b FROM MedicineBatch b WHERE b.id = :id AND b.hospitalId = :hospitalId " +
+           "AND (:branchId IS NULL OR b.branchId = :branchId)")
+    java.util.Optional<MedicineBatch> findScoped(@Param("id") Long id,
+            @Param("hospitalId") Long hospitalId, @Param("branchId") Long branchId);
+
     @Query("SELECT b FROM MedicineBatch b WHERE b.hospitalId = :hospitalId " +
            "AND (:branchId IS NULL OR b.branchId = :branchId)")
     Page<MedicineBatch> findScopedInventory(@Param("hospitalId") Long hospitalId,
@@ -53,18 +59,25 @@ public interface MedicineBatchRepository extends JpaRepository<MedicineBatch, Lo
     Page<MedicineBatch> findExpiringSoon(@Param("hospitalId") Long hospitalId,
             @Param("branchId") Long branchId, @Param("dateThreshold") LocalDate dateThreshold, Pageable pageable);
 
+    /** Sellable stock of one medicine: active batches that have not expired. */
     @Query("SELECT SUM(b.currentQuantity) FROM MedicineBatch b WHERE b.hospitalId = :hospitalId AND b.medicineId = :medicineId " +
-           "AND (:branchId IS NULL OR b.branchId = :branchId)")
+           "AND (:branchId IS NULL OR b.branchId = :branchId) " +
+           "AND (b.status IS NULL OR b.status = 'ACTIVE') AND b.expiryDate > CURRENT_DATE")
     java.math.BigDecimal sumCurrentQuantityByMedicineId(@Param("hospitalId") Long hospitalId,
             @Param("branchId") Long branchId, @Param("medicineId") Long medicineId);
 
+    /**
+     * One row per medicine whose SELLABLE stock (active, not expired) is below its low-stock level.
+     * Expired or blocked units sitting on the shelf must not hide a shortage.
+     */
     @Query("SELECT b FROM MedicineBatch b JOIN b.medicine m WHERE b.hospitalId = :hospitalId " +
            "AND (:branchId IS NULL OR b.branchId = :branchId) AND b.id IN (" +
            "  SELECT MIN(sub.id) FROM MedicineBatch sub " +
            "  JOIN sub.medicine subm " +
            "  WHERE sub.hospitalId = :hospitalId AND (:branchId IS NULL OR sub.branchId = :branchId) AND subm.minStockLevel > 0 " +
            "  GROUP BY sub.medicineId, subm.minStockLevel " +
-           "  HAVING SUM(sub.currentQuantity) < subm.minStockLevel" +
+           "  HAVING SUM(CASE WHEN (sub.status IS NULL OR sub.status = 'ACTIVE') AND sub.expiryDate > CURRENT_DATE " +
+           "      THEN sub.currentQuantity ELSE 0 END) < subm.minStockLevel" +
            ")")
     Page<MedicineBatch> findLowStock(@Param("hospitalId") Long hospitalId,
             @Param("branchId") Long branchId, Pageable pageable);
