@@ -39,7 +39,9 @@ const tidy = (text) =>
     .replace(/\s+/g, ' ');
 
 const LEADING_NUMBER = /^\d+(?:\.\d+)?/;
-const NAME_STRENGTH = /(\d+(?:\.\d+)?) ?(mg|mcg|g|ml|iu|%)?$/i;
+// Anchored at both ends and applied to one or two whole words, so it runs in linear time.
+const STRENGTH_WORD = /^(\d+(?:\.\d+)?)(mg|mcg|g|ml|iu|%)?$/i;
+const UNIT_WORD = /^(mg|mcg|g|ml|iu|%)$/i;
 const LEADING_AMOUNT = /^(?:\d+ \d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?)/;
 const DURATION_TEXT = /^(\d+) ?(days?|d|weeks?|w|months?|m)?$/i;
 const SHORT_UNITS = { tab: 'tablet', cap: 'capsule' };
@@ -57,7 +59,11 @@ export function parseStrength(text) {
 
 /** A strength written in the medicine's name ("Amoxicillin 250", "Pantop 40mg") pre-fills the field. */
 export function strengthFromName(name) {
-  const m = NAME_STRENGTH.exec(tidy(name));
+  const words = tidy(name).split(' ');
+  let last = words.at(-1) || '';
+  // "Calpol 500 mg": the unit is its own word, so read it together with the number before it.
+  if (UNIT_WORD.test(last) && words.length > 1) last = words.at(-2) + last;
+  const m = STRENGTH_WORD.exec(last);
   if (!m) return '';
   const unit = (m[2] || 'mg').toLowerCase();
   return `${m[1]} ${unit === 'iu' ? 'IU' : unit}`;

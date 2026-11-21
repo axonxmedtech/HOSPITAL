@@ -41,3 +41,13 @@ describe('medicine strength, dose and duration', () => {
     expect(parseDuration('2 Weeks')).toEqual({ value: '2', unit: 'Weeks' });
   });
 });
+
+describe('strength from the medicine name', () => {
+  it('reads a trailing strength with or without a space before the unit', () => {
+    expect(strengthFromName('Amoxicillin 250')).toBe('250 mg');
+    expect(strengthFromName('Pantop 40mg')).toBe('40 mg');
+    expect(strengthFromName('Calpol 500 mg')).toBe('500 mg');
+    expect(strengthFromName('Insulin 100 IU')).toBe('100 IU');
+    expect(strengthFromName('Cough syrup')).toBe('');
+  });
+});
