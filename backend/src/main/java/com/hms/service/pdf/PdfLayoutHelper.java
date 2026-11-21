@@ -61,9 +61,26 @@ public class PdfLayoutHelper {
      * shapes text through AWT once the font is registered from a file, so the embedded font is
      * written to a temporary file for that. If this fails the font still prints, unshaped.
      */
+    /**
+     * A temp file only this process's user can read or write — the shared temp directory is
+     * world-writable, so a file created there with default permissions could be read or swapped
+     * by another account on the server.
+     */
+    private static java.nio.file.Path privateTempFile() throws java.io.IOException {
+        if (java.nio.file.FileSystems.getDefault().supportedFileAttributeViews().contains("posix")) {
+            return java.nio.file.Files.createTempFile("hms-devanagari-", ".ttf",
+                    java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
+                            java.nio.file.attribute.PosixFilePermissions.fromString("rw-------")));
+        }
+        java.io.File f = java.nio.file.Files.createTempFile("hms-devanagari-", ".ttf").toFile(); // NOSONAR - permissions narrowed below on non-POSIX systems
+        boolean ok = f.setReadable(true, true) & f.setWritable(true, true) & f.setExecutable(false);
+        if (!ok) throw new java.io.IOException("Could not restrict temp font file permissions");
+        return f.toPath();
+    }
+
     private static void enableDevanagariShaping(BaseFont bf, byte[] fontBytes) {
         try {
-            java.nio.file.Path tmp = java.nio.file.Files.createTempFile("hms-devanagari-", ".ttf");
+            java.nio.file.Path tmp = privateTempFile();
             java.nio.file.Files.write(tmp, fontBytes);
             tmp.toFile().deleteOnExit();
             com.lowagie.text.pdf.LayoutProcessor.enable();
