@@ -98,3 +98,15 @@ export const safeLoadMessage = (err, fallback) => {
     textBody(data);
   return fromServer || fallback;
 };
+
+/**
+ * The structured `details` a 409 / 4xx error carries (e.g. which IPD admission blocks a new OPD
+ * visit), or null. Read through here so no screen parses raw error bodies itself.
+ */
+export const extractApiDetails = (err) => {
+  const details = err?.response?.data?.details;
+  return details && typeof details === 'object' ? details : null;
+};
+
+/** The HTTP status of a failed request, or null for network / cancelled errors. */
+export const apiErrorStatus = (err) => err?.response?.status ?? null;

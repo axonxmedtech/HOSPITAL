@@ -153,6 +153,19 @@ public class SurgeryController {
         return ResponseEntity.ok(service.listForDate(date));
     }
 
+    /** OT history: ACTIVE / DONE / CANCELLED / ALL with a from–to date window and a search. */
+    @GetMapping("/history")
+    @PreAuthorize("hasAuthority('OT_VIEW')")
+    public ResponseEntity<?> history(
+            @RequestParam(required = false, defaultValue = "DONE") String view,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate from,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate to,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(service.history(view, from, to, search, page, size));
+    }
+
     /** The waiting list is derived: APPROVED cases with no slot. It is not a status. */
     @GetMapping("/waiting-list")
     @PreAuthorize("hasAuthority('OT_VIEW')")

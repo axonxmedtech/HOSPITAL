@@ -45,6 +45,7 @@ import static org.mockito.Mockito.when;
 class OpdVisitChangeTest {
 
     @Mock OpdRepository opdRepository;
+    @Mock com.hms.repository.IpdAdmissionRepository ipdAdmissionRepository;
     @Mock QueueEntryRepository queueEntryRepository;
     @Mock PatientRepository patientRepository;
     @Mock DoctorRepository doctorRepository;
@@ -76,7 +77,7 @@ class OpdVisitChangeTest {
     void setUp() {
         service = new OpdService(opdRepository, queueEntryRepository, patientRepository, doctorRepository,
                 userRepository, medicalRecordRepository, securityHelper, auditLogService, webSocketHandler,
-                vitalSettingsService, staffing);
+                vitalSettingsService, staffing, ipdAdmissionRepository);
         ReflectionTestUtils.setField(service, "billingService", billingService);
         asha = doctor(10L, "Dr Asha", "asha@h.test");
         ravi = doctor(11L, "Ravi", "ravi@h.test");

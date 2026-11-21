@@ -151,3 +151,19 @@ describe('safeLoadMessage with an HTML body', () => {
     );
   });
 });
+
+describe('structured error details', () => {
+  it('returns the details object and status of a server error, or null', async () => {
+    const { extractApiDetails, apiErrorStatus } = await import('./apiError');
+    const err = {
+      response: {
+        status: 409,
+        data: { error: 'x', details: { encounter: 'IPD', ipdAdmissionId: 7 } },
+      },
+    };
+    expect(extractApiDetails(err)).toEqual({ encounter: 'IPD', ipdAdmissionId: 7 });
+    expect(apiErrorStatus(err)).toBe(409);
+    expect(extractApiDetails({ message: 'Network Error' })).toBeNull();
+    expect(apiErrorStatus({ message: 'Network Error' })).toBeNull();
+  });
+});

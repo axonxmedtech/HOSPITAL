@@ -531,7 +531,47 @@ public class PlatformHospitalService {
     }
 
     /**
-     * Delete a facility (hospital, clinic or pharmacy) and all its related data.
+     * The only way the platform permanently deletes a facility, and every patient record with it.
+     * Because that cannot be undone, three locks must all hold:
+     * <ol>
+     *   <li>the facility is already blocked (inactive) — nobody can be working in it;</li>
+     *   <li>the super admin types the facility's exact name to confirm;</li>
+     *   <li>a reason is given, recorded in the platform audit log before anything is removed.</li>
+     * </ol>
+     */
+    @Transactional
+    public void deleteHospitalPermanently(String publicId, String confirmName, String reason) {
+        Hospital hospital = hospitalRepository.findByPublicId(publicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found: " + publicId));
+        if (!Boolean.FALSE.equals(hospital.getIsActive())) {
+            throw new IllegalArgumentException(
+                    "Block \"" + hospital.getName() + "\" first. Only a blocked facility can be deleted permanently.");
+        }
+        String expected = hospital.getName() == null ? "" : hospital.getName().trim();
+        if (confirmName == null || !confirmName.trim().equalsIgnoreCase(expected)) {
+            throw new IllegalArgumentException("Type the facility's name exactly (\"" + expected + "\") to confirm.");
+        }
+        if (reason == null || reason.trim().length() < 5) {
+            throw new IllegalArgumentException("Give a reason for deleting this facility permanently.");
+        }
+        // Mandatory, unlike the best-effort logAction: if this record can't be written, nothing is
+        // deleted. Kept with no hospital_id so the purge below does not remove it.
+        org.springframework.security.core.Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        AuditLog log = new AuditLog();
+        log.setAction("HOSPITAL_DELETED_PERMANENTLY");
+        log.setDetails("Permanently deleted facility " + hospital.getName() + " (" + hospital.getCustomId() + ") and all its data");
+        log.setPerformedBy(auth != null ? auth.getName() : "SYSTEM");
+        log.setPerformedByRole("SUPER_ADMIN");
+        log.setReason(reason.trim().length() > 500 ? reason.trim().substring(0, 500) : reason.trim());
+        log.setEntityType("HOSPITAL");
+        log.setEntityId(hospital.getPublicId());
+        auditLogRepository.saveAndFlush(log);
+        deleteHospital(publicId);
+    }
+
+    /**
+     * The purge itself: deletes a facility (hospital, clinic or pharmacy) and all its related data.
+     * Reached only through {@link #deleteHospitalPermanently} (tests call it directly).
      *
      * <p>Statements are ordered child-before-parent so every foreign key stays satisfied
      * while it runs. FOREIGN_KEY_CHECKS is deliberately NOT disabled: suppressing the
@@ -548,7 +588,7 @@ public class PlatformHospitalService {
      * otherwise survive and block them.
      */
     @Transactional
-    public void deleteHospital(String publicId) {
+    void deleteHospital(String publicId) {
         Hospital hospital = hospitalRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new ResourceNotFoundException("Hospital not found: " + publicId));
         Long id = hospital.getId();

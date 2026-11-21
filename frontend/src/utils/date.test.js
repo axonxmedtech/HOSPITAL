@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { formatDate, formatDateTime, formatTime, localIsoDate } from './date';
+import {
+  formatDate,
+  formatDateTime,
+  formatDay,
+  formatDays,
+  formatTime,
+  formatWhen,
+  localIsoDate,
+} from './date';
 
 describe('date formatters', () => {
   it('return a dash for empty/invalid input', () => {
@@ -28,5 +36,15 @@ describe('localIsoDate', () => {
 
   it('zero-pads month and day', () => {
     expect(localIsoDate(new Date(2026, 0, 5, 12, 0))).toBe('2026-01-05');
+  });
+});
+
+describe('records date formats', () => {
+  it('reads as day month year, without seconds', () => {
+    expect(formatDay('2026-11-20T21:31:31')).toBe('20 Nov 2026');
+    expect(formatWhen('2026-11-20T21:31:31')).toMatch(/^20 Nov 2026, 9:31\s?pm$/i);
+    expect(formatWhen(null)).toBe('—');
+    expect(formatDays(1)).toBe('1 day');
+    expect(formatDays(3)).toBe('3 days');
   });
 });

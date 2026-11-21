@@ -6,6 +6,7 @@ import hospitalService from '../services/hospitalService';
 import vitalsService from '../services/vitalsService';
 import { extractApiError } from '../utils/apiError';
 import { describeFoodTiming, FOOD_TIMING_OPTIONS } from '../utils/foodTiming';
+import { doseProblem, parseDose, strengthFromName } from '../utils/medicineDose';
 import CharCountInput from './CharCountInput';
 import DateSelect from './DateSelect';
 import FrequencyInput, { isFrequencyValid } from './FrequencyInput';
@@ -14,6 +15,7 @@ import ManageInClinicPresetsModal from './ManageInClinicPresetsModal';
 import ManageNotePresetsModal from './ManageNotePresetsModal';
 import ManagePrescriptionPresetsModal from './ManagePrescriptionPresetsModal';
 import MedicineAutocomplete from './MedicineAutocomplete';
+import MedicineDoseFields from './MedicineDoseFields';
 
 /** Built-in vital key -> the Opd field that stores it. */
 const BUILT_IN_OPD_FIELD = {
@@ -24,6 +26,24 @@ const BUILT_IN_OPD_FIELD = {
   WEIGHT: 'weight',
   SPO2: 'spo2',
 };
+
+/**
+ * Pre-fill from the catalogue. Its "default dosage" is sometimes a strength ("500mg") and
+ * sometimes a dose ("1 tab"): each goes to its own field. A strength in the name ("Amoxicillin
+ * 250") is used when nothing else gives one. What the doctor already typed is kept.
+ */
+function catalogueDefaults(med, prev) {
+  const raw = String(med.defaultDosage || '').trim();
+  const looksLikeStrength = /\d\s*(mg|mcg|g|ml|iu|%)\b/i.test(raw) && !/tab|cap/i.test(raw);
+  return {
+    strength:
+      prev.strength ||
+      (looksLikeStrength ? raw.replace(/(\d)\s*([a-z%])/i, '$1 $2') : '') ||
+      strengthFromName(med.name),
+    dosage: prev.dosage || (!looksLikeStrength && parseDose(raw).amount ? raw : ''),
+    duration: med.defaultDuration || prev.duration,
+  };
+}
 
 const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, opd }) => {
   // Only the vitals this hospital has switched on are shown at diagnosis.
@@ -420,6 +440,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
 
   const [newMedicine, setNewMedicine] = useState({
     medicineName: '',
+    strength: '',
     dosage: '',
     frequency: '',
     duration: '',
@@ -562,6 +583,11 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
   };
 
   const handleAddMedicine = () => {
+    const doseError = doseProblem(newMedicine);
+    if (doseError) {
+      toastError(doseError);
+      return;
+    }
     if (!isFrequencyValid(newMedicine.frequency)) {
       toastError(
         'Set a frequency: at least one of Morning / Afternoon / Night, or tick "As Per Required".'
@@ -578,6 +604,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
     });
     setNewMedicine({
       medicineName: '',
+      strength: '',
       dosage: '',
       frequency: '',
       duration: '',
@@ -596,6 +623,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
   const handleCancelEditMedicine = () => {
     setNewMedicine({
       medicineName: '',
+      strength: '',
       dosage: '',
       frequency: '',
       duration: '',
@@ -701,6 +729,10 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
       }
     }
     for (const med of formData.prescription || []) {
+      const doseError = doseProblem(med);
+      if (doseError) {
+        return `${med.medicineName}: ${doseError} (press Edit on it)`;
+      }
       if (!isFrequencyValid(med.frequency)) {
         return `Set a frequency for ${med.medicineName}: at least one dose time, or "As Per Required".`;
       }
@@ -1799,9 +1831,20 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                             className={`flex items-center justify-between p-3 rounded-lg border ${editingMedicineIndex === index ? 'bg-primary-50 border-primary-300' : 'bg-gray-50 border-gray-200'}`}
                           >
                             <div className="flex-1">
-                              <div className="font-semibold text-gray-800">{med.medicineName}</div>
+                              <div className="font-semibold text-gray-800">
+                                {med.medicineName}
+                                {med.strength ? (
+                                  <span className="font-normal text-gray-600"> {med.strength}</span>
+                                ) : (
+                                  <span className="ml-2 text-xs font-semibold text-amber-700">
+                                    strength missing
+                                  </span>
+                                )}
+                              </div>
                               <div className="text-xs text-gray-500 mt-1">
-                                {med.dosage} • {med.frequency} • {med.duration}
+                                {[med.dosage, med.frequency, med.duration || 'days missing']
+                                  .filter(Boolean)
+                                  .join(' • ')}
                                 {med.foodTiming &&
                                   med.foodTiming !== 'NOT_SPECIFIED' &&
                                   ` • ${describeFoodTiming(med.foodTiming)}`}
@@ -1857,9 +1900,8 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                             setNewMedicine((prev) => ({
                               ...prev,
                               medicineName: med.name,
-                              dosage: med.defaultDosage || prev.dosage,
+                              ...catalogueDefaults(med, prev),
                               frequency: med.defaultFrequency || prev.frequency,
-                              duration: med.defaultDuration || prev.duration,
                               // manufacturer: med.manufacturer // Optional if we want to show it
                             }));
                           }}
@@ -1870,12 +1912,9 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                           </p>
                         )}
                       </div>
-                      <input
-                        type="text"
-                        placeholder="Dosage (e.g., 500mg)"
-                        value={newMedicine.dosage}
-                        onChange={(e) => setNewMedicine({ ...newMedicine, dosage: e.target.value })}
-                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500"
+                      <MedicineDoseFields
+                        value={newMedicine}
+                        onChange={(patch) => setNewMedicine((prev) => ({ ...prev, ...patch }))}
                       />
                       <div className="flex items-center gap-2 border border-gray-300 rounded-lg px-3 py-2">
                         <span className="text-xs text-gray-500 shrink-0">Freq</span>
@@ -1884,15 +1923,7 @@ const ConsultationModal = ({ isOpen, onClose, onSuccess, appointment, patient, o
                           onChange={(val) => setNewMedicine({ ...newMedicine, frequency: val })}
                         />
                       </div>
-                      <input
-                        type="text"
-                        placeholder="Duration (e.g., 5 Days)"
-                        value={newMedicine.duration}
-                        onChange={(e) =>
-                          setNewMedicine({ ...newMedicine, duration: e.target.value })
-                        }
-                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500"
-                      />
+
                       <select
                         aria-label="Food Timing"
                         value={newMedicine.foodTiming || ''}

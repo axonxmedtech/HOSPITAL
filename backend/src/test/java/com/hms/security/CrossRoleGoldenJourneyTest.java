@@ -206,7 +206,7 @@ class CrossRoleGoldenJourneyTest {
                         // separate endpoint. This flag is what puts the case on reception's list.
                         + ",\"ipdAdmitRecommended\":true"
                         + ",\"followUpDate\":\"" + today.plusDays(7) + "\""
-                        + ",\"prescription\":[{\"medicineName\":\"Paracetamol\",\"dosage\":\"500mg\""
+                        + ",\"prescription\":[{\"strength\":\"500 mg\",\"medicineName\":\"Paracetamol\",\"dosage\":\"500mg\""
                         + ",\"frequency\":\"1-0-1\",\"duration\":\"5 Days\",\"instructions\":\"After food\"}]}");
         ok(consultation, "doctor records the consultation");
 

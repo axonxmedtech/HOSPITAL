@@ -60,7 +60,9 @@ const BedCard = ({ bed, onOpen }) => {
           {resp && <div className="text-xs text-gray-700 mt-1">{resp}</div>}
           <div className="text-[11px] text-gray-400">In unit {since(bed.admittedAt)}</div>
           {bed.admissionConfirmed === false && (
-            <div className="text-[11px] text-amber-700">Admission form pending</div>
+            <div className="text-[11px] text-amber-700">
+              Bed allocated · admission form to complete
+            </div>
           )}
         </div>
       )}

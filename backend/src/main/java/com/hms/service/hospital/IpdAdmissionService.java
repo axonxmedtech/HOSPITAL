@@ -25,6 +25,7 @@ import java.time.LocalDateTime;
 @Service
 public class IpdAdmissionService {
 
+    private static final String ROLE_DOCTOR = "DOCTOR";
     private static final String STATUS_ADMITTED = "ADMITTED";
     private static final String STATUS_DISCHARGE_PLANNED = "DISCHARGE_PLANNED";
     private static final String STATUS_DISCHARGED = "DISCHARGED";
@@ -396,26 +397,92 @@ public class IpdAdmissionService {
         }
     }
 
+    /** IPD list views: who is in now, who has left, cancelled admissions, or everything. */
+    public static final java.util.Map<String, java.util.List<String>> IPD_VIEWS = java.util.Map.of(
+            "CURRENT", IN_HOSPITAL,
+            STATUS_DISCHARGED, java.util.List.of(STATUS_DISCHARGED),
+            STATUS_CANCELLED, java.util.List.of(STATUS_CANCELLED),
+            "ALL", java.util.List.of(STATUS_ADMITTED, STATUS_DISCHARGE_PLANNED, STATUS_DISCHARGED, STATUS_CANCELLED));
+
     @Transactional(readOnly = true)
     public org.springframework.data.domain.Page<java.util.Map<String, Object>> listIpdAdmissions(int page, int size, String search) {
+        return listIpdAdmissions(page, size, search, "ALL", null, null);
+    }
+
+    /**
+     * The IPD list with its history. {@code view} is CURRENT / DISCHARGED / CANCELLED / ALL; the
+     * date window (inclusive dates) applies to the discharge date in the Discharged view and to
+     * the admission date otherwise. A doctor sees the admissions they are the doctor for; admin
+     * and reception see the whole hospital. Read-only.
+     */
+    @Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<java.util.Map<String, Object>> listIpdAdmissions(
+            int page, int size, String search, String view, java.time.LocalDate from, java.time.LocalDate to) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found in context");
 
-        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size, org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "admissionDatetime"));
-        org.springframework.data.domain.Page<IpdAdmission> p = ipdAdmissionRepository.findByHospitalId(hospitalId, pageable);
+        String v = view == null || view.isBlank() ? "ALL" : view.trim().toUpperCase(java.util.Locale.ROOT);
+        java.util.List<String> statuses = IPD_VIEWS.get(v);
+        if (statuses == null) throw new IllegalArgumentException("Unknown view: " + view + " (use CURRENT, DISCHARGED, CANCELLED or ALL)");
+        if (from != null && to != null && to.isBefore(from)) throw new IllegalArgumentException("The 'to' date is before the 'from' date");
 
-        java.util.List<java.util.Map<String,Object>> rows = new java.util.ArrayList<>();
-        for (IpdAdmission ipd : p.getContent()) {
-            java.util.Map<String,Object> m = new java.util.HashMap<>();
+        boolean byDischarge = STATUS_DISCHARGED.equals(v);
+        String q = search == null || search.isBlank() ? null : "%" + search.trim().toLowerCase(java.util.Locale.ROOT) + "%";
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(
+                Math.max(0, page), Math.max(1, Math.min(size, 100)),
+                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC,
+                        byDischarge ? "dischargeDatetime" : "admissionDatetime", "id"));
+        org.springframework.data.domain.Page<IpdAdmission> p = ipdAdmissionRepository.searchHistory(hospitalId, statuses,
+                currentDoctorScope(hospitalId), byDischarge,
+                from == null ? null : from.atStartOfDay(),
+                to == null ? null : to.plusDays(1).atStartOfDay(),
+                q, pageable);
+        return new org.springframework.data.domain.PageImpl<>(withNames(hospitalId, p.getContent()), pageable, p.getTotalElements());
+    }
+
+    /** A doctor sees the admissions they are the doctor for; everyone else the whole hospital (null). */
+    private Long currentDoctorScope(Long hospitalId) {
+        if (!ROLE_DOCTOR.equals(securityHelper.getCurrentUserRole())) return null;
+        return doctorRepository.findByEmailAndHospitalId(securityHelper.getCurrentUserEmail(), hospitalId)
+                .map(com.hms.entity.Doctor::getId)
+                .orElseThrow(() -> new ResourceNotFoundException("Doctor profile not found for current user"));
+    }
+
+    /** Each admission with its patient, doctor, ward and bed, loaded in batches and tenant-scoped. */
+    private java.util.List<java.util.Map<String, Object>> withNames(Long hospitalId, java.util.List<IpdAdmission> list) {
+        java.util.Map<Long, com.hms.entity.Patient> patients = new java.util.HashMap<>();
+        patientRepository.findByHospitalIdAndIdIn(hospitalId, idsOf(list, IpdAdmission::getPatientId))
+                .forEach(x -> patients.put(x.getId(), x));
+        java.util.Map<Long, com.hms.entity.Doctor> doctors = new java.util.HashMap<>();
+        doctorRepository.findByHospitalIdAndIdIn(hospitalId, idsOf(list, IpdAdmission::getDoctorId))
+                .forEach(x -> doctors.put(x.getId(), x));
+        java.util.Set<Long> wardIds = idsOf(list, IpdAdmission::getWardId);
+        java.util.Map<Long, com.hms.entity.Ward> wards = new java.util.HashMap<>();
+        java.util.Map<Long, com.hms.entity.Bed> beds = new java.util.HashMap<>();
+        if (!wardIds.isEmpty()) {
+            wardRepository.findByHospitalId(hospitalId).stream().filter(w -> wardIds.contains(w.getWardId()))
+                    .forEach(w -> wards.put(w.getWardId(), w));
+            bedRepository.findByHospitalIdAndWardIdIn(hospitalId, wardIds).forEach(b -> beds.put(b.getBedId(), b));
+        }
+        java.util.List<java.util.Map<String, Object>> rows = new java.util.ArrayList<>();
+        for (IpdAdmission ipd : list) {
+            java.util.Map<String, Object> m = new java.util.HashMap<>();
             m.put("ipd", ipd);
-            patientRepository.findById(ipd.getPatientId()).ifPresent(patient -> m.put("patient", patient));
-            doctorRepository.findById(ipd.getDoctorId()).ifPresent(doc -> m.put("doctor", doc));
-            wardRepository.findById(ipd.getWardId()).ifPresent(ward -> m.put("ward", ward));
-            bedRepository.findById(ipd.getBedId()).ifPresent(bed -> m.put("bed", bed));
+            putIfPresent(m, "patient", patients.get(ipd.getPatientId()));
+            putIfPresent(m, "doctor", doctors.get(ipd.getDoctorId()));
+            putIfPresent(m, "ward", wards.get(ipd.getWardId()));
+            putIfPresent(m, "bed", beds.get(ipd.getBedId()));
             rows.add(m);
         }
+        return rows;
+    }
 
-        return new org.springframework.data.domain.PageImpl<>(rows, pageable, p.getTotalElements());
+    private static java.util.Set<Long> idsOf(java.util.List<IpdAdmission> list, java.util.function.Function<IpdAdmission, Long> id) {
+        return list.stream().map(id).filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+    }
+
+    private static void putIfPresent(java.util.Map<String, Object> m, String key, Object value) {
+        if (value != null) m.put(key, value);
     }
 
     @Transactional(readOnly = true)
@@ -459,7 +526,7 @@ public class IpdAdmissionService {
         String role = securityHelper.getCurrentUserRole();
         java.util.List<IpdAdmission> admissions;
 
-        if ("DOCTOR".equalsIgnoreCase(role)) {
+        if (ROLE_DOCTOR.equalsIgnoreCase(role)) {
             String email = securityHelper.getCurrentUserEmail();
             com.hms.entity.Doctor doctor = doctorRepository.findByEmailAndHospitalId(email, hospitalId)
                     .orElseThrow(() -> new ResourceNotFoundException("Doctor profile not found for current user"));
@@ -681,7 +748,7 @@ public class IpdAdmissionService {
     @Transactional
     public com.hms.entity.MedicalRecord addIpdFollowup(Long ipdId, String diagnosis, String notes, java.util.List<com.hms.dto.ConsultationRequest.AdministeredItem> administeredItems) {
         String role = securityHelper.getCurrentUserRole();
-        if (!"DOCTOR".equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
+        if (!ROLE_DOCTOR.equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can add follow-ups");
         }
 
@@ -804,7 +871,7 @@ public class IpdAdmissionService {
     @Transactional
     public void administerItems(Long ipdId, java.util.List<com.hms.dto.ConsultationRequest.AdministeredItem> administeredItems) {
         String role = securityHelper.getCurrentUserRole();
-        if (!"DOCTOR".equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
+        if (!ROLE_DOCTOR.equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can administer items");
         }
 
@@ -898,7 +965,7 @@ public class IpdAdmissionService {
     @Transactional
     public void administerHospitalItems(Long ipdId, java.util.List<com.hms.dto.AdministerHospitalItemsRequest.HospitalItem> items) {
         String role = securityHelper.getCurrentUserRole();
-        if (!"DOCTOR".equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
+        if (!ROLE_DOCTOR.equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can administer items");
         }
 
@@ -965,7 +1032,7 @@ public class IpdAdmissionService {
     @Transactional
     public com.hms.entity.Prescription addIpdPrescription(Long ipdId, com.hms.dto.AddIpdPrescriptionRequest req) {
         String role = securityHelper.getCurrentUserRole();
-        if (!"DOCTOR".equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
+        if (!ROLE_DOCTOR.equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can add prescriptions");
         }
 
@@ -1106,7 +1173,7 @@ public class IpdAdmissionService {
     @Transactional
     public com.hms.entity.Prescription stopPrescription(Long prescriptionId) {
         String role = securityHelper.getCurrentUserRole();
-        if (!"DOCTOR".equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
+        if (!ROLE_DOCTOR.equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can stop prescriptions");
         }
 
@@ -1146,7 +1213,7 @@ public class IpdAdmissionService {
     @Transactional
     public com.hms.entity.DischargeSummary planDischarge(Long ipdId, com.hms.dto.PlanDischargeRequest req) {
         String role = securityHelper.getCurrentUserRole();
-        if (!"DOCTOR".equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
+        if (!ROLE_DOCTOR.equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can plan discharge");
         }
 
@@ -1204,7 +1271,7 @@ public class IpdAdmissionService {
     @Transactional
     public IpdAdmission cancelDischargePlan(Long ipdId, String reason) {
         String role = securityHelper.getCurrentUserRole();
-        if (!"DOCTOR".equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
+        if (!ROLE_DOCTOR.equalsIgnoreCase(role) && !"HOSPITAL_ADMIN".equalsIgnoreCase(role)) {
             throw new org.springframework.security.access.AccessDeniedException("Only doctors can cancel a planned discharge");
         }
         IpdAdmission ipd = requireOwnedAdmissionForUpdate(ipdId);
@@ -1316,7 +1383,7 @@ public class IpdAdmissionService {
     private boolean isFrontDesk(Long hospitalId) {
         String role = securityHelper.getCurrentUserRole();
         if ("RECEPTIONIST".equalsIgnoreCase(role) || "HOSPITAL_ADMIN".equalsIgnoreCase(role)) return true;
-        if (!"DOCTOR".equalsIgnoreCase(role)) return false;
+        if (!ROLE_DOCTOR.equalsIgnoreCase(role)) return false;
         com.hms.entity.HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(hospitalId).orElse(null);
         return settings != null && ("SOLO".equalsIgnoreCase(settings.getReceptionMode())
                 || "BOTH".equalsIgnoreCase(settings.getReceptionMode()));
@@ -1407,7 +1474,7 @@ public class IpdAdmissionService {
     }
 
     private boolean isAttendingDoctor(IpdAdmission ipd) {
-        if (!"DOCTOR".equalsIgnoreCase(securityHelper.getCurrentUserRole())) return false;
+        if (!ROLE_DOCTOR.equalsIgnoreCase(securityHelper.getCurrentUserRole())) return false;
         return doctorRepository.findByEmailAndHospitalId(securityHelper.getCurrentUserEmail(), ipd.getHospitalId())
                 .map(me -> me.getId().equals(ipd.getDoctorId())).orElse(false);
     }
@@ -1478,7 +1545,7 @@ public class IpdAdmissionService {
 
         if (!"RECEPTIONIST".equalsIgnoreCase(role) && 
             !"HOSPITAL_ADMIN".equalsIgnoreCase(role) && 
-            !("DOCTOR".equalsIgnoreCase(role) && isSoloOrBoth)) {
+            !(ROLE_DOCTOR.equalsIgnoreCase(role) && isSoloOrBoth)) {
             throw new org.springframework.security.access.AccessDeniedException("Only receptionists (or doctors under Solo / Both mode) can change beds");
         }
 

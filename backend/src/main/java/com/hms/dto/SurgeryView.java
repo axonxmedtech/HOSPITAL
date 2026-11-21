@@ -22,6 +22,8 @@ public class SurgeryView {
     private String encounterType;
     private Long patientId;
     private String patientName;
+    /** For the Patient File link. */
+    private String patientPublicId;
     private Integer patientAge;
     private String patientSex;
     private String procedureName;

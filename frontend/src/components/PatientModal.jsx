@@ -8,7 +8,7 @@ import Button from './Button';
 import DuplicatePhoneConflictModal from './DuplicatePhoneConflictModal';
 import PatientFormFields, { patientFormRules, stripPatientPayload } from './PatientFormFields';
 
-const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
+const PatientModal = ({ isOpen, onClose, onSuccess, initialData, prefill }) => {
   const [formData, setFormData] = useState({});
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -23,13 +23,14 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData }) => {
       if (initialData) {
         setFormData({ insurance: 'NO', ...initialData });
       } else {
-        setFormData({ insurance: 'NO' });
+        // A new patient started from a search: carry over what was typed (e.g. the name).
+        setFormData({ insurance: 'NO', ...prefill });
       }
       setErrors({});
       setIsSubmitting(false);
       setPhoneConflicts(null);
     }
-  }, [isOpen, initialData]);
+  }, [isOpen, initialData, prefill]);
 
   const handleChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));

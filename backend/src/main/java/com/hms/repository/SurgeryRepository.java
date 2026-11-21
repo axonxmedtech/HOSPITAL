@@ -106,4 +106,30 @@ public interface SurgeryRepository extends JpaRepository<Surgery, Long> {
             @org.springframework.data.repository.query.Param("newStart") java.time.LocalDateTime newStart,
             @org.springframework.data.repository.query.Param("newEnd") java.time.LocalDateTime newEnd,
             @org.springframework.data.repository.query.Param("excludeSurgeryId") Long excludeSurgeryId);
+
+    /**
+     * OT history: surgeries by status, optional surgeon/requesting doctor, a date window on the
+     * operation date (scheduled time, or request time when never scheduled) and a search over
+     * patient name / phone / id and procedure. Tenant-scoped.
+     */
+    @org.springframework.data.jpa.repository.Query(value = """
+        SELECT s FROM Surgery s
+        WHERE s.hospitalId = :hospitalId
+          AND s.status IN :statuses
+          AND (:doctorId IS NULL OR s.surgeonDoctorId = :doctorId OR s.requestedByDoctorId = :doctorId)
+          AND (:from IS NULL OR COALESCE(s.scheduledAt, s.requestedAt) >= :from)
+          AND (:to IS NULL OR COALESCE(s.scheduledAt, s.requestedAt) < :to)
+          AND (:q IS NULL
+               OR LOWER(s.procedureName) LIKE :q
+               OR s.patientId IN (SELECT p.id FROM Patient p WHERE p.hospitalId = :hospitalId
+                                  AND (LOWER(p.name) LIKE :q OR p.phone LIKE :q OR LOWER(p.customId) LIKE :q)))
+        """)
+    org.springframework.data.domain.Page<Surgery> searchHistory(
+            @org.springframework.data.repository.query.Param("hospitalId") Long hospitalId,
+            @org.springframework.data.repository.query.Param("statuses") Collection<String> statuses,
+            @org.springframework.data.repository.query.Param("doctorId") Long doctorId,
+            @org.springframework.data.repository.query.Param("from") java.time.LocalDateTime from,
+            @org.springframework.data.repository.query.Param("to") java.time.LocalDateTime to,
+            @org.springframework.data.repository.query.Param("q") String q,
+            org.springframework.data.domain.Pageable pageable);
 }

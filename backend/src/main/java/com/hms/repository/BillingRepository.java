@@ -58,6 +58,34 @@ public interface BillingRepository extends JpaRepository<Billing, Long> {
             """)
     Page<Billing> searchBillings(Long hospitalId, String search, Pageable pageable);
 
+    /**
+     * The bills list with every filter in one query — optional category (OPD / IPD), payment
+     * status, search (patient name / bill no.) and a bill-date window — so paging and totals
+     * stay correct however many bills a hospital has.
+     */
+    @Query("""
+                SELECT b FROM Billing b
+                LEFT JOIN Patient p ON b.patientId = p.id
+                WHERE b.hospitalId = :hospitalId
+                  AND (:anyCategory = true OR UPPER(b.billingType) = :category)
+                  AND (:anyStatus = true OR UPPER(b.paymentStatus) IN :statuses)
+                  AND (:search = ''
+                       OR LOWER(p.name) LIKE LOWER(CONCAT('%', :search, '%'))
+                       OR LOWER(b.customId) LIKE LOWER(CONCAT('%', :search, '%')))
+                  AND (:from IS NULL OR b.createdAt >= :from)
+                  AND (:to IS NULL OR b.createdAt < :to)
+                ORDER BY b.createdAt DESC
+            """)
+    Page<Billing> findFiltered(@org.springframework.data.repository.query.Param("hospitalId") Long hospitalId,
+                               @org.springframework.data.repository.query.Param("anyCategory") boolean anyCategory,
+                               @org.springframework.data.repository.query.Param("category") String category,
+                               @org.springframework.data.repository.query.Param("anyStatus") boolean anyStatus,
+                               @org.springframework.data.repository.query.Param("statuses") java.util.Collection<String> statuses,
+                               @org.springframework.data.repository.query.Param("search") String search,
+                               @org.springframework.data.repository.query.Param("from") java.time.LocalDateTime from,
+                               @org.springframework.data.repository.query.Param("to") java.time.LocalDateTime to,
+                               Pageable pageable);
+
     /** searchBillings with the payment-status filter applied in the query, so paging is correct. */
     @Query("""
                 SELECT b FROM Billing b
@@ -85,6 +113,9 @@ public interface BillingRepository extends JpaRepository<Billing, Long> {
 
     List<Billing> findByPatientIdOrderByCreatedAtDesc(Long patientId);
 
+    /** Patient File: every bill of one patient at this hospital, newest first. */
+    List<Billing> findByPatientIdAndHospitalIdOrderByCreatedAtDesc(Long patientId, Long hospitalId);
+
     java.util.List<Billing> findByIpdAdmissionId(Long ipdAdmissionId);
 
     boolean existsByAppointmentId(Long appointmentId);
@@ -94,6 +125,9 @@ public interface BillingRepository extends JpaRepository<Billing, Long> {
     java.util.Optional<Billing> findByAppointmentId(Long appointmentId);
 
     java.util.Optional<Billing> findByOpdId(Long opdId);
+
+    /** Every bill raised against one OPD visit, tenant-scoped (e.g. the visit that led to an admission). */
+    java.util.List<Billing> findByOpdIdAndHospitalId(Long opdId, Long hospitalId);
 
     /** The bills for one page of OPD visits (tenant-scoped), to show payment status on the OPD list. */
     java.util.List<Billing> findByHospitalIdAndOpdIdIn(Long hospitalId, java.util.Collection<Long> opdIds);

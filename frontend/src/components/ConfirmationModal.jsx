@@ -15,6 +15,8 @@ import { extractApiError } from '../utils/apiError';
  * @param {string} [confirmLabel] - What the confirm button says, e.g. "Send to front desk".
  *   Naming the action beats a generic "Yes, Proceed": the user reads what will happen.
  * @param {string} [cancelLabel] - What the cancel button says (default "Cancel").
+ * @param {string} [confirmText] - For irreversible actions: the user must type this text
+ *   (case-insensitive) before the confirm button enables. Passed to onConfirm as 2nd argument.
  */
 const ConfirmationModal = ({
   isOpen,
@@ -26,9 +28,11 @@ const ConfirmationModal = ({
   inputPlaceholder = 'Please provide a reason...',
   confirmLabel,
   cancelLabel = 'Cancel',
+  confirmText,
 }) => {
   const [isLoading, setIsLoading] = React.useState(false);
   const [reason, setReason] = React.useState('');
+  const [typed, setTyped] = React.useState('');
   const [submitError, setSubmitError] = React.useState('');
   const cancelBtnRef = useRef(null);
   const isProcessingRef = useRef(false);
@@ -38,6 +42,7 @@ const ConfirmationModal = ({
     if (isOpen) {
       isProcessingRef.current = false;
       setReason('');
+      setTyped('');
       setSubmitError('');
       // Move focus into the modal on open for keyboard accessibility (BUG-039)
       setTimeout(() => cancelBtnRef.current?.focus(), 50);
@@ -56,15 +61,19 @@ const ConfirmationModal = ({
 
   if (!isOpen) return null;
 
+  const typedOk =
+    !confirmText || typed.trim().toLowerCase() === String(confirmText).trim().toLowerCase();
+  const blocked = (showReasonInput && !reason.trim()) || !typedOk;
+
   const handleConfirm = async () => {
     if (isProcessingRef.current) return;
-    if (showReasonInput && !reason.trim()) return;
+    if (blocked) return;
 
     isProcessingRef.current = true;
     setIsLoading(true);
     setSubmitError('');
     try {
-      await onConfirm(reason); // Pass reason to callback
+      await onConfirm(reason, typed.trim()); // Pass reason (and typed confirmation) to callback
       onCancel(); // Close on success
     } catch (error) {
       console.error('Confirmation action failed', error);
@@ -151,6 +160,24 @@ const ConfirmationModal = ({
             </div>
           )}
 
+          {confirmText && (
+            <div className="mb-6 text-left">
+              <label
+                htmlFor="confirm-modal-typed"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
+                Type <span className="font-bold text-gray-900">{confirmText}</span> to confirm
+              </label>
+              <input
+                id="confirm-modal-typed"
+                value={typed}
+                onChange={(e) => setTyped(e.target.value)}
+                autoComplete="off"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 text-sm"
+              />
+            </div>
+          )}
+
           <div className="flex gap-3 justify-center">
             <button
               ref={cancelBtnRef}
@@ -163,10 +190,10 @@ const ConfirmationModal = ({
             </button>
             <button
               onClick={handleConfirm}
-              disabled={isLoading || (showReasonInput && !reason.trim())}
+              disabled={isLoading || blocked}
               aria-label={isLoading ? 'Processing, please wait' : confirmLabel || 'Confirm action'}
               aria-busy={isLoading}
-              className={`bg-gray-900 text-white px-4 py-2 rounded-lg font-medium transition shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 flex items-center gap-2 ${isLoading || (showReasonInput && !reason.trim()) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-800'}`}
+              className={`bg-gray-900 text-white px-4 py-2 rounded-lg font-medium transition shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 flex items-center gap-2 ${isLoading || blocked ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-800'}`}
             >
               {isLoading && (
                 <svg

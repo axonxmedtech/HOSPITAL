@@ -119,7 +119,7 @@ describe('Admin OPD modal — new patient', () => {
       'true'
     );
 
-    await user.type(scope.getByPlaceholderText(/patient name to search/i), 'Asha');
+    await user.type(scope.getByPlaceholderText(/search patient/i), 'Asha');
     await user.click(await scope.findByText('Asha Rao'));
     await user.click(scope.getByRole('button', { name: /Create OPD Case/i }));
 
@@ -135,7 +135,7 @@ describe('Admin OPD modal — new patient', () => {
 
     await user.click(scope.getByRole('button', { name: 'New Patient' }));
 
-    expect(scope.queryByPlaceholderText(/patient name to search/i)).not.toBeInTheDocument();
+    expect(scope.queryByPlaceholderText(/search patient/i)).not.toBeInTheDocument();
     expect(screen.queryByText('Add New Patient')).not.toBeInTheDocument();
     expect(scope.getByText('New Patient Details')).toBeInTheDocument();
     expect(scope.getByPlaceholderText(/full name/i)).toBeInTheDocument();

@@ -93,6 +93,9 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
 
         Optional<Patient> findByPublicIdAndHospitalIdAndIsActiveTrue(String publicId, Long hospitalId);
 
+        /** Patient File: an admin can still open the file of a deleted (inactive) patient — records are never lost. */
+        Optional<Patient> findByPublicIdAndHospitalId(String publicId, Long hospitalId);
+
         /**
          * Search active patients by name or phone
          * 

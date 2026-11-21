@@ -188,6 +188,7 @@ public class DatabaseMigrationRunner {
         ensureNurseShiftSchedulesTable(); // NEW — Nursing Mgmt Phase B2
         ensureHelpProgressTable();
         ensureHelpFeedbackTable();
+        ensureHospitalSidebarSettingsTable(); // V36
         ensureNurseAttendanceTable(); // NEW — Nursing Mgmt Phase D
         ensureNurseWardAssignmentsTable(); // NEW — Nursing Mgmt Phase F
         ensureNurseSubstitutionsTable(); // NEW — Nursing Mgmt Phase F
@@ -248,6 +249,8 @@ public class DatabaseMigrationRunner {
         addColumnIfMissing("prescription_preset_items", "medicine_id", BIGINT_NULL);
         addColumnIfMissing("prescription_preset_items", "quantity", INT_NULL);
         backfillPrescriptionPresetType();
+        addColumnIfMissing(PRESCRIPTIONS_TABLE, "strength", "VARCHAR(50) NULL"); // V35
+        backfillPrescriptionDurationText(); // V35: days missing from medicine lists
 
         // Print Settings (pages in the consultation-complete print) + bill payment timing.
         addColumnIfMissing(HOSPITAL_SETTINGS_TABLE, "print_case_paper", TINYINT_TRUE);
@@ -415,6 +418,25 @@ public class DatabaseMigrationRunner {
             }
         } catch (Exception e) {
             log.warn("Could not backfill hospital_settings print/payment defaults: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Medicines ordered on the IPD Medication tab stored only the number of days, leaving the
+     * duration text empty, so every list that prints the duration showed nothing. Fill the text
+     * from the number of days. Idempotent: only empty durations with a known day count change.
+     */
+    private void backfillPrescriptionDurationText() {
+        try {
+            int fixed = jdbcTemplate.update(
+                    "UPDATE prescriptions SET duration = CONCAT(duration_days, CASE WHEN duration_days = 1 "
+                    + "THEN ' Day' ELSE ' Days' END) "
+                    + "WHERE (duration IS NULL OR duration = '') AND duration_days IS NOT NULL AND duration_days > 0");
+            if (fixed > 0) {
+                log.info("DB migration applied: filled duration text on {} prescription(s)", fixed);
+            }
+        } catch (Exception e) {
+            log.warn("Could not backfill prescriptions.duration: {}", e.getMessage());
         }
     }
 
@@ -588,6 +610,17 @@ public class DatabaseMigrationRunner {
     }
 
     /** In-app help feedback (V34). Idempotent; mirrors setup/schema-full.sql. */
+    private void ensureHospitalSidebarSettingsTable() {
+        try {
+            jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS hospital_sidebar_settings (" +
+                "id BIGINT NOT NULL AUTO_INCREMENT, hospital_id BIGINT NOT NULL, role VARCHAR(30) NOT NULL," +
+                "hidden_tabs VARCHAR(1000) NOT NULL DEFAULT '', updated_by VARCHAR(100) NULL," +
+                "updated_at DATETIME(6) NULL, PRIMARY KEY (id)," +
+                "UNIQUE KEY uk_hospital_sidebar_role (hospital_id, role)," +
+                "CONSTRAINT fk_hospital_sidebar_hospital FOREIGN KEY (hospital_id) REFERENCES hospitals (id) ON DELETE CASCADE)");
+        } catch (Exception e) { log.warn("DB migration skipped (hospital_sidebar_settings): {}", e.getMessage()); }
+    }
+
     private void ensureHelpFeedbackTable() {
         try {
             jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS help_feedback (" +

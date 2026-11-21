@@ -47,14 +47,15 @@ class FrontDeskGuardWiringTest {
         return c;
     }
 
+    /** Registration is open to doctors in every reception mode, so the guard is not consulted. */
     @Test
-    void registeringAPatientIsRefusedBeforeTheServiceIsReached() {
+    void registeringAPatientDoesNotDependOnTheReceptionMode() {
         PatientService service = mock(PatientService.class);
         doThrow(new AccessDeniedException("denied")).when(guard).require();
 
-        assertThatThrownBy(() -> patientController(service).addPatient(new com.hms.dto.PatientRequest(), false))
-                .isInstanceOf(AccessDeniedException.class);
-        verify(service, never()).addPatient(any(), anyBoolean());
+        assertThatCode(() -> patientController(service).addPatient(new com.hms.dto.PatientRequest(), false))
+                .doesNotThrowAnyException();
+        verify(service, times(1)).addPatient(any(), anyBoolean());
     }
 
     @Test
@@ -87,7 +88,7 @@ class FrontDeskGuardWiringTest {
         assertThatCode(() -> appointmentController(appointments).createAppointment(new com.hms.dto.AppointmentRequest(), false))
                 .doesNotThrowAnyException();
 
-        verify(guard, times(2)).require();
+        verify(guard, times(1)).require(); // only the appointment is front-desk gated
         verify(patients, times(1)).addPatient(any(), anyBoolean());
         verify(appointments, times(1)).createAppointment(any(), anyBoolean());
     }

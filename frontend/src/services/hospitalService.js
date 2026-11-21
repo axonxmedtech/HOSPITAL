@@ -39,7 +39,7 @@ const hospitalService = {
 
   getPatients: async (search, page = 0, size = 10, date = '', view = '') => {
     let query = `?page=${page}&size=${size}`;
-    if (search) query += `&search=${search}`;
+    if (search) query += `&search=${encodeURIComponent(search)}`;
     if (view) query += `&view=${view}`;
     if (date) query += `&date=${date}`;
     const response = await apiClient.get(`/hospital/patients${query}`);
@@ -638,10 +638,13 @@ const hospitalService = {
   },
 
   // --- Billing ---
-  getBills: async (search = '', page = 0, size = 10, status) => {
+  getBills: async (search = '', page = 0, size = 10, status, category, range = {}) => {
     let url = `/hospital/billing?page=${page}&size=${size}`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
     if (status) url += `&status=${encodeURIComponent(status)}`;
+    if (category) url += `&category=${encodeURIComponent(category)}`;
+    if (range.from) url += `&from=${encodeURIComponent(range.from)}`;
+    if (range.to) url += `&to=${encodeURIComponent(range.to)}`;
     const response = await apiClient.get(url);
     return response.data; // Returns Page object with { content: [...], totalElements: ..., totalPages: ... }
   },
@@ -812,6 +815,11 @@ const hospitalService = {
   },
   cancelDischargePlan: async (id, reason) => {
     const response = await apiClient.post(`/hospital/ipd/${id}/cancel-discharge-plan`, { reason });
+    return response.data;
+  },
+  /** The IPD bill plus the bill of the OPD visit that led to the admission, with combined totals. */
+  getIpdRelatedBills: async (ipdId) => {
+    const response = await apiClient.get(`/hospital/billing/ipd/${ipdId}/related-bills`);
     return response.data;
   },
   getIpdBill: async (ipdId) => {

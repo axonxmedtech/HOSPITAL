@@ -183,7 +183,7 @@ class IpdAdmitRequestPayloadTest {
 
         // Same button, one bad medicine row: the server refuses the whole thing.
         ResponseEntity<String> res = post("/hospital/doctors/consultation", doctorToken,
-                admitPayload(opdId, "\"prescription\":[{\"medicineName\":\"Paracetamol\""
+                admitPayload(opdId, "\"prescription\":[{\"strength\":\"500 mg\",\"medicineName\":\"Paracetamol\""
                         + ",\"dosage\":\"\",\"frequency\":\"1-0-1\",\"duration\":\"5 Days\"}]"));
         assertThat(res.getStatusCode().value()).isEqualTo(400);
 
@@ -217,7 +217,7 @@ class IpdAdmitRequestPayloadTest {
     }
 
     private static String prescriptionRow(String name) {
-        return "{\"medicineName\":\"" + name + "\",\"dosage\":\"500mg\""
+        return "{\"strength\":\"500 mg\",\"medicineName\":\"" + name + "\",\"dosage\":\"500mg\""
                 + ",\"frequency\":\"Morning, Night\",\"duration\":\"5 Days\""
                 + ",\"instructions\":\"After food\"}";
     }

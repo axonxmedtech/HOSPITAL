@@ -20,6 +20,7 @@ const NurseDashboard = lazy(() => import('./pages/hospital/NurseDashboard'));
 const NurseInchargeDashboard = lazy(() => import('./pages/hospital/NurseInchargeDashboard'));
 const OtInchargeDashboard = lazy(() => import('./pages/hospital/OtInchargeDashboard'));
 const IpdDetails = lazy(() => import('./pages/hospital/IpdDetails'));
+const PatientFile = lazy(() => import('./pages/hospital/PatientFile'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
 // Minimal loading fallback shown while a lazy chunk is fetching
@@ -319,6 +320,24 @@ function App() {
                 }
               />
 
+              <Route
+                path="/patients/:publicId/file"
+                element={
+                  <ProtectedRoute
+                    allowedRoles={[
+                      'RECEPTIONIST',
+                      'DOCTOR',
+                      'HOSPITAL_ADMIN',
+                      'NURSE',
+                      'NURSE_INCHARGE',
+                    ]}
+                  >
+                    <PageMeta title="HMS - Patient File">
+                      <PatientFile />
+                    </PageMeta>
+                  </ProtectedRoute>
+                }
+              />
               <Route
                 path="/ipd/:id"
                 element={

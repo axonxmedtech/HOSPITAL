@@ -68,6 +68,19 @@ class ClinicalPdfServiceLanguageTest {
         medicalRecord.setCreatedAt(LocalDateTime.of(2026, 9, 11, 10, 30));
     }
 
+    /**
+     * "English / मराठी" is present. Devanagari is printed shaped (conjuncts and vowel signs drawn
+     * correctly), and text extracted back from a shaped PDF is not a faithful copy of the source
+     * string, so the check is: the English part, then the separator, then Devanagari.
+     */
+    private static void assertBilingual(String text, String english) {
+        String t = text.replaceAll("\\s+", "");
+        String e = english.replaceAll("\\s+", "") + "/";
+        int at = t.indexOf(e);
+        assertThat(at).as("'%s / …' in the PDF", english).isGreaterThanOrEqualTo(0);
+        assertThat(t.substring(at + e.length())).containsPattern("^\\p{InDevanagari}");
+    }
+
     private String extractText(ByteArrayInputStream pdfStream) throws Exception {
         PdfReader reader = new PdfReader(pdfStream.readAllBytes());
         PdfTextExtractor extractor = new PdfTextExtractor(reader);
@@ -102,13 +115,13 @@ class ClinicalPdfServiceLanguageTest {
         String text = extractText(pdf);
 
         // Assert bilingual food-timing strings
-        assertThat(text).contains("After Food / जेवणानंतर");
+        assertBilingual(text, "After Food");
         assertThat(text).contains("with");
         assertThat(text).contains("warm water");
-        assertThat(text).contains("Before Food / जेवणापूर्वी");
+        assertBilingual(text, "Before Food");
 
         // Assert doctor advice section in prescription
-        assertThat(text).contains("DOCTOR ADVICE / सल्ला:");
+        assertBilingual(text, "DOCTOR ADVICE");
         assertThat(text).contains("Drink more water.");
         assertThat(text).contains("Avoid oily food.");
 
@@ -142,13 +155,13 @@ class ClinicalPdfServiceLanguageTest {
 
         String text = extractText(pdf);
 
-        assertThat(text).contains("After Food / भोजन के बाद");
-        assertThat(text).contains("Before Food / भोजन से पहले");
+        assertBilingual(text, "After Food");
+        assertBilingual(text, "Before Food");
         assertThat(text).contains("empty stomach");
         assertThat(text).contains("Paracetamol 650mg");
 
         // Assert doctor advice section
-        assertThat(text).contains("DOCTOR ADVICE / सलाह:");
+        assertBilingual(text, "DOCTOR ADVICE");
         assertThat(text).contains("Drink more water.");
     }
 
@@ -190,7 +203,7 @@ class ClinicalPdfServiceLanguageTest {
         String text = extractText(pdf);
 
         // Should resolve to EN_MR from medicalRecord
-        assertThat(text).contains("Before Food / जेवणापूर्वी");
+        assertBilingual(text, "Before Food");
     }
 
     @Test
@@ -207,8 +220,8 @@ class ClinicalPdfServiceLanguageTest {
 
         String text = extractText(pdf);
 
-        assertThat(text).contains("TREATMENT & CLINICAL NOTES / सल्ला:");
-        assertThat(text).contains("विश्रांती आणि भरपूर पाणी पिण्याचा सल्ला");
+        assertBilingual(text, "TREATMENT & CLINICAL NOTES");
+        assertThat(text).containsPattern("\\p{InDevanagari}{4,}");
         assertThat(text).contains("Headache and fever");
     }
 
@@ -235,8 +248,8 @@ class ClinicalPdfServiceLanguageTest {
 
         String text = extractText(pdf);
 
-        assertThat(text).contains("DOCTOR ADVICE / सल्ला:");
-        assertThat(text).contains("Drink more water. / जास्त पाणी प्या.");
-        assertThat(text).contains("Avoid oily food. / तेलकट अन्न टाळा.");
+        assertBilingual(text, "DOCTOR ADVICE");
+        assertBilingual(text, "Drink more water.");
+        assertBilingual(text, "Avoid oily food.");
     }
 }

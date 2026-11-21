@@ -113,6 +113,15 @@ public interface OpdRepository extends JpaRepository<Opd, Long> {
 			@Param("excludedStatus") com.hms.entity.Opd.Status excludedStatus,
 			Pageable pageable);
 
+/** Open visits of one patient with one doctor since a moment (today's queue), newest first. */
+	@Query("SELECT o FROM Opd o WHERE o.patient.id = :patientId AND o.patient.hospitalId = :hospitalId "
+			+ "AND o.doctor.id = :doctorId AND o.status IN :statuses AND o.createdAt >= :since "
+			+ "ORDER BY o.id DESC")
+	java.util.List<Opd> findOpenVisits(@Param("patientId") Long patientId,
+			@Param("hospitalId") Long hospitalId, @Param("doctorId") Long doctorId,
+			@Param("statuses") java.util.Collection<com.hms.entity.Opd.Status> statuses,
+			@Param("since") java.time.LocalDateTime since);
+
 /**
 	 * CLIN-P1: every OPD encounter for one patient, tenant-proven through the patient join —
 	 * same reasoning as findByIdAndHospitalIdWithPatientAndDoctor above.

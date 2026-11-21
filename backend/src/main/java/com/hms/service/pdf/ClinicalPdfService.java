@@ -142,6 +142,8 @@ public class ClinicalPdfService {
                 }
             }
 
+            final String printMode = PatientInstructionFormatter.normalizeMode(effectiveLang);
+
             // Resolve case number from associated OPD
             String customNo = "-";
             if (medicalRecord != null && medicalRecord.getOpdId() != null) {
@@ -177,21 +179,17 @@ public class ClinicalPdfService {
             // 2. Main Medication Table
             PdfPTable rxTable = new PdfPTable(5);
             rxTable.setWidthPercentage(100);
-            rxTable.setWidths(new float[]{3f, 1f, 1f, 1.5f, 2.5f});
+            rxTable.setWidths(new float[]{2.6f, 1.4f, 1.3f, 1.4f, 2.3f});
             rxTable.setSpacingBefore(10f);
 
-            helper.addTableHeaderCell(rxTable, "Medicine");
-            helper.addTableHeaderCell(rxTable, "Dosage");
-            helper.addTableHeaderCell(rxTable, "Freq");
-            helper.addTableHeaderCell(rxTable, "Duration");
-            helper.addTableHeaderCell(rxTable, "Instruction");
+            addRxHeader(rxTable, printMode);
 
             if (prescriptions != null && !prescriptions.isEmpty()) {
                 for (Prescription p : prescriptions) {
-                    helper.addTableCell(rxTable, p.getMedicineName(), false);
-                    helper.addTableCell(rxTable, p.getDosage(), false);
-                    helper.addTableCell(rxTable, p.getFrequency(), false);
-                    helper.addTableCell(rxTable, p.getDuration(), false);
+                    helper.addTableCell(rxTable, withStrength(p), false);
+                    helper.addTableCell(rxTable, PrintLabels.dose(p.getDosage(), printMode), false, PdfLayoutHelper.UNICODE_NORMAL_FONT);
+                    helper.addTableCell(rxTable, PrintLabels.frequency(p.getFrequency(), printMode), false, PdfLayoutHelper.UNICODE_NORMAL_FONT);
+                    helper.addTableCell(rxTable, PrintLabels.duration(p.getDuration(), printMode), false, PdfLayoutHelper.UNICODE_NORMAL_FONT);
 
                     String foodTimingLabel = PatientInstructionFormatter.getFoodTimingLabel(p.getFoodTiming(), effectiveLang);
                     String rawInstruction = (p.getInstructions() != null && !p.getInstructions().trim().isEmpty())
@@ -211,7 +209,7 @@ public class ClinicalPdfService {
                     helper.addTableCell(rxTable, cellContent, false, PdfLayoutHelper.UNICODE_NORMAL_FONT);
                 }
             } else {
-                PdfPCell cell = new PdfPCell(new Phrase("No medications prescribed.", PdfLayoutHelper.NORMAL_FONT));
+                PdfPCell cell = new PdfPCell(new Phrase(PrintLabels.label("noMedicines", printMode), PdfLayoutHelper.UNICODE_NORMAL_FONT));
                 cell.setColspan(5);
                 cell.setPadding(8f);
                 rxTable.addCell(cell);
@@ -221,11 +219,7 @@ public class ClinicalPdfService {
             // 3. Doctor Advice Section (if present)
             if (medicalRecord != null && medicalRecord.getTreatmentNotes() != null && !medicalRecord.getTreatmentNotes().trim().isEmpty()) {
                 document.add(new Paragraph("\n"));
-                String adviceTitle = switch (PatientInstructionFormatter.normalizeMode(effectiveLang)) {
-                    case PatientInstructionFormatter.MODE_EN_MR -> "DOCTOR ADVICE / सल्ला:";
-                    case PatientInstructionFormatter.MODE_EN_HI -> "DOCTOR ADVICE / सलाह:";
-                    default -> "DOCTOR ADVICE:";
-                };
+                String adviceTitle = PrintLabels.label("advice", printMode) + ":";
                 Paragraph advHead = new Paragraph(adviceTitle, PdfLayoutHelper.UNICODE_NAVY_BOLD_FONT);
                 advHead.setSpacingBefore(6f);
                 advHead.setSpacingAfter(3f);
@@ -239,7 +233,7 @@ public class ClinicalPdfService {
             // 4. Follow Up Section
             if (medicalRecord != null && medicalRecord.getFollowUpDate() != null) {
                 document.add(new Paragraph("\n"));
-                Paragraph flw = new Paragraph("Follow Up Date: ", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, Font.BOLD, PdfLayoutHelper.NAVY_BLUE));
+                Paragraph flw = new Paragraph(PrintLabels.label("followUp", printMode) + ": ", PdfLayoutHelper.UNICODE_NAVY_BOLD_FONT);
                 flw.add(new Chunk(medicalRecord.getFollowUpDate().format(DateTimeFormatter.ofPattern("MMM dd, yyyy")), PdfLayoutHelper.NORMAL_FONT));
                 document.add(flw);
             }
@@ -281,6 +275,7 @@ public class ClinicalPdfService {
                     ? ipd.getAdmissionDatetime()
                     : java.time.LocalDateTime.now();
             String primaryDiag = (ipd != null && ipd.getPrimaryDiagnosis() != null) ? ipd.getPrimaryDiagnosis() : "-";
+            final String printMode = PatientInstructionFormatter.normalizeMode(hospitalDefaultLanguage(hospital));
 
             // 1. Premium Patient Header
             helper.addPremiumPatientHeader(
@@ -297,25 +292,21 @@ public class ClinicalPdfService {
             // 2. Main Medication Table
             PdfPTable rxTable = new PdfPTable(5);
             rxTable.setWidthPercentage(100);
-            rxTable.setWidths(new float[]{3f, 1f, 1f, 1.5f, 2.5f});
+            rxTable.setWidths(new float[]{2.6f, 1.4f, 1.3f, 1.4f, 2.3f});
             rxTable.setSpacingBefore(10f);
 
-            helper.addTableHeaderCell(rxTable, "Medicine");
-            helper.addTableHeaderCell(rxTable, "Dosage");
-            helper.addTableHeaderCell(rxTable, "Freq");
-            helper.addTableHeaderCell(rxTable, "Duration");
-            helper.addTableHeaderCell(rxTable, "Instruction");
+            addRxHeader(rxTable, printMode);
 
             if (prescriptions != null && !prescriptions.isEmpty()) {
                 for (Prescription p : prescriptions) {
-                    helper.addTableCell(rxTable, p.getMedicineName(), false);
-                    helper.addTableCell(rxTable, p.getDosage(), false);
-                    helper.addTableCell(rxTable, p.getFrequency(), false);
-                    helper.addTableCell(rxTable, p.getDuration(), false);
+                    helper.addTableCell(rxTable, withStrength(p), false);
+                    helper.addTableCell(rxTable, PrintLabels.dose(p.getDosage(), printMode), false, PdfLayoutHelper.UNICODE_NORMAL_FONT);
+                    helper.addTableCell(rxTable, PrintLabels.frequency(p.getFrequency(), printMode), false, PdfLayoutHelper.UNICODE_NORMAL_FONT);
+                    helper.addTableCell(rxTable, PrintLabels.duration(p.getDuration(), printMode), false, PdfLayoutHelper.UNICODE_NORMAL_FONT);
                     helper.addTableCell(rxTable, p.getInstructions(), false);
                 }
             } else {
-                PdfPCell cell = new PdfPCell(new Phrase("No medications prescribed.", PdfLayoutHelper.NORMAL_FONT));
+                PdfPCell cell = new PdfPCell(new Phrase(PrintLabels.label("noMedicines", printMode), PdfLayoutHelper.UNICODE_NORMAL_FONT));
                 cell.setColspan(5);
                 cell.setPadding(8f);
                 rxTable.addCell(cell);
@@ -398,6 +389,8 @@ public class ClinicalPdfService {
                 diagnosis = medicalRecord.getDiagnosis();
             }
 
+            final String printMode = PatientInstructionFormatter.normalizeMode(effectiveLang);
+
             // 1. Standard Premium Header
             helper.addPremiumPatientHeader(
                     document,
@@ -415,7 +408,7 @@ public class ClinicalPdfService {
             if (opd != null) {
                 java.util.List<String[]> vitals = resolveVitalsForPrint(hospital, opd); // [header, value]
                 if (!vitals.isEmpty()) {
-                    Paragraph vitalsTitle = new Paragraph("VITAL SIGNS", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, Font.BOLD, PdfLayoutHelper.NAVY_BLUE));
+                    Paragraph vitalsTitle = new Paragraph(PrintLabels.label("vitals", printMode), PdfLayoutHelper.UNICODE_NAVY_BOLD_FONT);
                     vitalsTitle.setSpacingBefore(10f);
                     vitalsTitle.setSpacingAfter(5f);
                     document.add(vitalsTitle);
@@ -443,7 +436,7 @@ public class ClinicalPdfService {
                 hasClinicalInfo = true;
                 PdfPCell cell = new PdfPCell();
                 cell.setBorder(Rectangle.NO_BORDER);
-                Paragraph problemTitle = new Paragraph("CHIEF COMPLAINT / REASON FOR VISIT:", PdfLayoutHelper.SMALL_BOLD_FONT);
+                Paragraph problemTitle = new Paragraph(PrintLabels.label("complaint", printMode) + ":", PdfLayoutHelper.UNICODE_BOLD_FONT);
                 problemTitle.setSpacingBefore(5f);
                 Paragraph problemVal = new Paragraph(opd.getProblem(), PdfLayoutHelper.UNICODE_NORMAL_FONT);
                 problemVal.setSpacingAfter(10f);
@@ -457,7 +450,7 @@ public class ClinicalPdfService {
                     hasClinicalInfo = true;
                     PdfPCell cell = new PdfPCell();
                     cell.setBorder(Rectangle.NO_BORDER);
-                    Paragraph symTitle = new Paragraph("SYMPTOMS / CHIEF COMPLAINTS:", PdfLayoutHelper.SMALL_BOLD_FONT);
+                    Paragraph symTitle = new Paragraph(PrintLabels.label("symptoms", printMode) + ":", PdfLayoutHelper.UNICODE_BOLD_FONT);
                     symTitle.setSpacingBefore(5f);
                     Paragraph symVal = new Paragraph(medicalRecord.getSymptoms(), PdfLayoutHelper.UNICODE_NORMAL_FONT);
                     symVal.setSpacingAfter(10f);
@@ -470,7 +463,7 @@ public class ClinicalPdfService {
                     hasClinicalInfo = true;
                     PdfPCell cell = new PdfPCell();
                     cell.setBorder(Rectangle.NO_BORDER);
-                    Paragraph diagTitle = new Paragraph("DIAGNOSIS / CLINICAL IMPRESSION:", PdfLayoutHelper.SMALL_BOLD_FONT);
+                    Paragraph diagTitle = new Paragraph(PrintLabels.label("diagnosis", printMode) + ":", PdfLayoutHelper.UNICODE_BOLD_FONT);
                     diagTitle.setSpacingBefore(5f);
                     Paragraph diagVal = new Paragraph(medicalRecord.getDiagnosis(), PdfLayoutHelper.UNICODE_NORMAL_FONT);
                     diagVal.setSpacingAfter(10f);
@@ -483,11 +476,7 @@ public class ClinicalPdfService {
                     hasClinicalInfo = true;
                     PdfPCell cell = new PdfPCell();
                     cell.setBorder(Rectangle.NO_BORDER);
-                    String notesHeader = switch (PatientInstructionFormatter.normalizeMode(effectiveLang)) {
-                        case PatientInstructionFormatter.MODE_EN_MR -> "TREATMENT & CLINICAL NOTES / सल्ला:";
-                        case PatientInstructionFormatter.MODE_EN_HI -> "TREATMENT & CLINICAL NOTES / सलाह:";
-                        default -> "TREATMENT & CLINICAL NOTES:";
-                    };
+                    String notesHeader = PrintLabels.label("treatment", printMode) + ":";
                     Paragraph notesTitle = new Paragraph(notesHeader, PdfLayoutHelper.UNICODE_BOLD_FONT);
                     notesTitle.setSpacingBefore(5f);
                     String formattedNotes = formatAdviceNotes(
@@ -501,7 +490,7 @@ public class ClinicalPdfService {
             }
 
             if (hasClinicalInfo) {
-                Paragraph clinHeading = new Paragraph("CLINICAL EVALUATION", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, Font.BOLD, PdfLayoutHelper.NAVY_BLUE));
+                Paragraph clinHeading = new Paragraph(PrintLabels.label("evaluation", printMode), PdfLayoutHelper.UNICODE_NAVY_BOLD_FONT);
                 clinHeading.setSpacingBefore(10f);
                 clinHeading.setSpacingAfter(5f);
                 document.add(clinHeading);
@@ -510,7 +499,7 @@ public class ClinicalPdfService {
 
             // 4. Lab Tests Advised (printed when the doctor ordered any at this consultation)
             if (labOrders != null && !labOrders.isEmpty()) {
-                Paragraph labHead = new Paragraph("LAB TESTS ADVISED:", PdfLayoutHelper.SMALL_BOLD_FONT);
+                Paragraph labHead = new Paragraph(PrintLabels.label("labTests", printMode) + ":", PdfLayoutHelper.UNICODE_BOLD_FONT);
                 labHead.setSpacingBefore(10f);
                 document.add(labHead);
                 String tests = labOrders.stream()
@@ -522,7 +511,7 @@ public class ClinicalPdfService {
 
             // 5. Follow-up date (printed when the doctor scheduled one)
             if (medicalRecord != null && medicalRecord.getFollowUpDate() != null) {
-                Paragraph flwHead = new Paragraph("FOLLOW UP DATE:", PdfLayoutHelper.SMALL_BOLD_FONT);
+                Paragraph flwHead = new Paragraph(PrintLabels.label("followUp", printMode).toUpperCase() + ":", PdfLayoutHelper.UNICODE_BOLD_FONT);
                 flwHead.setSpacingBefore(10f);
                 document.add(flwHead);
                 document.add(new Paragraph(
@@ -636,5 +625,36 @@ public class ClinicalPdfService {
         } catch (Exception ignored) {
         }
         return text;
+    }
+
+    /** The medicine table's column headings, bilingual when the print is. */
+    private void addRxHeader(PdfPTable rxTable, String printMode) {
+        boolean bilingual = !PatientInstructionFormatter.MODE_EN.equals(printMode);
+        com.lowagie.text.Font font = bilingual ? PdfLayoutHelper.UNICODE_WHITE_BOLD_FONT : null;
+        for (String key : new String[] {"medicine", "dosage", "frequency", "duration", "instruction"}) {
+            if (font == null) helper.addTableHeaderCell(rxTable, PrintLabels.label(key, printMode));
+            else helper.addTableHeaderCell(rxTable, PrintLabels.label(key, printMode), font);
+        }
+    }
+
+    /** The hospital's chosen print language (Settings), for documents without a consultation of their own. */
+    private String hospitalDefaultLanguage(Hospital hospital) {
+        if (hospital == null || hospital.getId() == null || hospitalSettingRepository == null) return null;
+        try {
+            return hospitalSettingRepository.findByHospital_Id(hospital.getId())
+                    .map(HospitalSetting::getDefaultConsultationLanguage).orElse(null);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** "Paracetamol 500 mg": the strength is printed with the name when it was recorded. */
+    private static String withStrength(Prescription p) {
+        String name = p.getMedicineName() == null ? "" : p.getMedicineName();
+        String strength = p.getStrength();
+        if (strength == null || strength.isBlank() || name.toLowerCase().contains(strength.trim().toLowerCase())) {
+            return name;
+        }
+        return name + " " + strength.trim();
     }
 }

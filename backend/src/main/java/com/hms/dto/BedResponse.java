@@ -7,4 +7,6 @@ public class BedResponse {
     private Long bedId;
     private String bedCode;
     private String status;
+    /** When the bed entered its current status (from the bed status audit), if recorded. */
+    private java.time.LocalDateTime statusSince;
 }

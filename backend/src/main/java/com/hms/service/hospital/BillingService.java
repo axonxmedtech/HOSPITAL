@@ -171,22 +171,63 @@ public class BillingService {
      * Get all bills for current hospital with optional search
      */
     public Page<Billing> getAllBills(String search, String status, Pageable pageable) {
+        return getAllBills(search, status, null, pageable);
+    }
+
+    /** Bill categories offered by the list filter: what a bill is for. */
+    public static final java.util.List<String> CATEGORIES = java.util.List.of("OPD", "IPD");
+
+    /** The bills list, optionally narrowed to one category (OPD / IPD). */
+    public Page<Billing> getAllBills(String search, String status, String category, Pageable pageable) {
+        return getAllBills(search, status, category, null, null, pageable);
+    }
+
+    /**
+     * The bills list with all its filters: category (OPD / IPD), payment status, search and a
+     * bill-date window (inclusive dates). Read-only.
+     */
+    public Page<Billing> getAllBills(String search, String status, String category,
+                                     java.time.LocalDate from, java.time.LocalDate to, Pageable pageable) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         java.util.List<String> statuses = statusesForFilter(status);
-        if (search != null && !search.isEmpty()) {
-            // The status filter belongs in the query. Filtering one fetched page in memory
-            // dropped matching bills from later pages and reported a total of whatever survived
-            // on this page, so a search for "PENDING" bills could show a few and hide the rest.
-            if (statuses != null) {
-                return billingRepository.searchBillingsByStatus(hospitalId, search, statuses, pageable);
-            }
+        if (from != null && to != null && to.isBefore(from)) {
+            throw new IllegalArgumentException("The 'to' date is before the 'from' date");
+        }
+        String c = normaliseCategory(category);
+        if (c == null && from == null && to == null) {
+            return unfilteredByCategoryOrDate(hospitalId, search, statuses, pageable);
+        }
+        boolean anyStatus = statuses == null;
+        return billingRepository.findFiltered(hospitalId, c == null, c == null ? "" : c,
+                anyStatus, anyStatus ? java.util.List.of("") : statuses,
+                search == null ? "" : search.trim(),
+                from == null ? null : from.atStartOfDay(),
+                to == null ? null : to.plusDays(1).atStartOfDay(), pageable);
+    }
+
+    /** OPD / IPD, or null for "all categories". */
+    private static String normaliseCategory(String category) {
+        if (category == null || category.isBlank()) return null;
+        String c = category.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!CATEGORIES.contains(c)) {
+            throw new IllegalArgumentException("Unknown bill category: " + category);
+        }
+        return c;
+    }
+
+    /** The list with only search and status. Both are applied in the query, never per page. */
+    private Page<Billing> unfilteredByCategoryOrDate(Long hospitalId, String search,
+                                                     java.util.List<String> statuses, Pageable pageable) {
+        boolean hasSearch = search != null && !search.isEmpty();
+        if (hasSearch && statuses != null) {
+            return billingRepository.searchBillingsByStatus(hospitalId, search, statuses, pageable);
+        }
+        if (hasSearch) {
             return billingRepository.searchBillings(hospitalId, search, pageable);
         }
-
         if (statuses != null) {
             return billingRepository.findByHospitalIdAndPaymentStatusIn(hospitalId, statuses, pageable);
         }
-
         return billingRepository.findByHospitalId(hospitalId, pageable);
     }
 

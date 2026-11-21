@@ -45,12 +45,15 @@ public class WardService {
     private final HospitalWebSocketHandler webSocketHandler;
     private final WardWriteService wardWrites;
     private final com.hms.repository.IcuWardRepository icuWardRepository;
+    private final com.hms.repository.BedStatusAuditRepository bedStatusAuditRepository;
 
     public WardService(WardRepository wardRepository, BedRepository bedRepository,
                        SecurityContextHelper securityHelper,
                        HospitalWebSocketHandler webSocketHandler,
                        WardWriteService wardWrites,
-                       com.hms.repository.IcuWardRepository icuWardRepository) {
+                       com.hms.repository.IcuWardRepository icuWardRepository,
+                       com.hms.repository.BedStatusAuditRepository bedStatusAuditRepository) {
+        this.bedStatusAuditRepository = bedStatusAuditRepository;
         this.wardRepository = wardRepository;
         this.bedRepository = bedRepository;
         this.securityHelper = securityHelper;
@@ -150,12 +153,22 @@ public class WardService {
 
     public List<BedResponse> getBedsForWard(Long wardId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
-        return bedRepository.findByWardIdAndHospitalId(wardId, hospitalId)
-                .stream().map(b -> {
+        List<com.hms.entity.Bed> beds = bedRepository.findByWardIdAndHospitalId(wardId, hospitalId);
+        // Since when each bed has been in its current state (e.g. waiting for cleaning since 10:40),
+        // in one query for the whole ward.
+        java.util.Map<Long, java.time.LocalDateTime> since = new java.util.HashMap<>();
+        if (bedStatusAuditRepository != null && !beds.isEmpty()) {
+            for (Object[] row : bedStatusAuditRepository.latestChangePerBed(hospitalId,
+                    beds.stream().map(com.hms.entity.Bed::getBedId).toList())) {
+                since.put((Long) row[0], (java.time.LocalDateTime) row[1]);
+            }
+        }
+        return beds.stream().map(b -> {
                     BedResponse br = new BedResponse();
                     br.setBedId(b.getBedId());
                     br.setBedCode(b.getBedCode());
                     br.setStatus(b.getStatus());
+                    br.setStatusSince(since.get(b.getBedId()));
                     return br;
                 }).collect(Collectors.toList());
     }

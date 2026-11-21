@@ -215,6 +215,8 @@ public final class TenantTables {
         purge(26, "help_progress", BY_HOSPITAL);
         // Ratings of help answers and questions help could not answer -- usage feedback only.
         purge(27, "help_feedback", BY_HOSPITAL);
+        // Which sidebar tabs each role sees -- a display preference only.
+        purge(28, "hospital_sidebar_settings", BY_HOSPITAL);
 
         // An ICU episode and everything charted during it is clinical record. The stay itself carries
         // the admission and discharge times a later review depends on; the rest is what was
