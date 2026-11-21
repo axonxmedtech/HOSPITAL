@@ -46,6 +46,8 @@ class PharmacySaleServiceTest {
 
     @Mock com.hms.service.RealtimeNotifier notifier;
 
+    @Mock PharmacyInvoiceNumberService invoiceNumberService;
+
     @InjectMocks
     PharmacySaleService saleService;
 
@@ -97,6 +99,8 @@ class PharmacySaleServiceTest {
         MedicineBatch batch = new MedicineBatch();
         batch.setCurrentQuantity(BigDecimal.valueOf(5));
         batch.setBatchNumber("B001");
+        batch.setSellingPrice(new BigDecimal("50"));
+        batch.setMrp(new BigDecimal("50"));
 
         when(batchRepository.findByIdAndHospitalIdForUpdate(eq(1L), eq(1L), any())).thenReturn(Optional.of(batch));
 
@@ -125,6 +129,8 @@ class PharmacySaleServiceTest {
         MedicineBatch batch = new MedicineBatch();
         batch.setCurrentQuantity(BigDecimal.valueOf(10));
         batch.setBatchNumber("B001");
+        batch.setSellingPrice(new BigDecimal("50"));
+        batch.setMrp(new BigDecimal("50"));
 
         when(batchRepository.findByIdAndHospitalIdForUpdate(eq(1L), eq(1L), any())).thenReturn(Optional.of(batch));
 
@@ -155,6 +161,8 @@ class PharmacySaleServiceTest {
         batch.setId(7L);
         batch.setCurrentQuantity(BigDecimal.valueOf(10));
         batch.setBatchNumber("B001");
+        batch.setSellingPrice(new BigDecimal("50"));
+        batch.setMrp(new BigDecimal("50"));
         when(batchRepository.findByIdAndHospitalIdForUpdate(eq(1L), eq(1L), any())).thenReturn(Optional.of(batch));
 
         PharmacySale savedSale = new PharmacySale();
@@ -172,5 +180,36 @@ class PharmacySaleServiceTest {
             assertThat(tx.getRemarks()).isEqualTo("Sale Bill #PHB-5");
             assertThat(tx.getQuantityAfter()).isEqualByComparingTo("8");
         });
+    }
+
+    /** The prescription id comes from the browser: another facility's prescriptions must not change. */
+    @Test
+    void createSale_marksOnlyThisFacilitysPrescriptionsDispensed() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+        when(securityHelper.getCurrentUserId()).thenReturn(10L);
+        MedicineBatch batch = new MedicineBatch();
+        batch.setId(7L);
+        batch.setCurrentQuantity(BigDecimal.valueOf(10));
+        batch.setBatchNumber("B001");
+        batch.setSellingPrice(new BigDecimal("50"));
+        batch.setMrp(new BigDecimal("50"));
+        when(batchRepository.findByIdAndHospitalIdForUpdate(eq(1L), eq(1L), any())).thenReturn(Optional.of(batch));
+        when(saleRepository.save(any(PharmacySale.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        com.hms.entity.Prescription ours = new com.hms.entity.Prescription();
+        ours.setHospitalId(1L);
+        ours.setStatus("ACTIVE");
+        com.hms.entity.Prescription theirs = new com.hms.entity.Prescription();
+        theirs.setHospitalId(2L);
+        theirs.setStatus("ACTIVE");
+        when(prescriptionRepository.findByMedicalRecordId(55L)).thenReturn(List.of(ours, theirs));
+
+        PharmacySaleRequest request = buildRequest(new BigDecimal("1"));
+        request.setPrescriptionId(55L);
+        saleService.createSale(request);
+
+        assertThat(ours.getStatus()).isEqualTo("DISPENSED");
+        assertThat(theirs.getStatus()).isEqualTo("ACTIVE");
+        verify(prescriptionRepository, never()).save(theirs);
     }
 }

@@ -201,6 +201,7 @@ class TenantScopingArchTest {
             "PlatformTicketController#updateTicketStatus",
             "PlatformTicketService#getTicketById",
             "PlatformTicketService#updateTicketStatus",
+            "PharmacyInvoiceDetailsService#load",
             "PlatformUserService#resetUserPassword",
             "PrescriptionPresetController#doctorNameOrNull",
             "PresetOwnershipSupport#sanitizeAssignedDoctorId",
