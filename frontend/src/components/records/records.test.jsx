@@ -185,3 +185,50 @@ describe('date range picker', () => {
     });
   });
 });
+
+describe('Patient File access log', () => {
+  const asRole = (role) => sessionStorage.setItem('user', JSON.stringify({ role }));
+  const logPage = {
+    content: [
+      {
+        accessedAt: '2026-11-20T21:31:00',
+        action: 'PRINT',
+        recordType: 'CASE_PAPER',
+        recordRef: 'OPD-3',
+        userName: 'Asha Kale',
+        userEmail: 'asha@demo.test',
+        userRole: 'RECEPTIONIST',
+      },
+    ],
+    totalElements: 1,
+    totalPages: 1,
+    page: 0,
+  };
+
+  beforeEach(() => sessionStorage.clear());
+
+  it('shows the admin who opened or printed the records', async () => {
+    asRole('HOSPITAL_ADMIN');
+    apiClient.get.mockImplementation((url) =>
+      Promise.resolve({
+        data: url.endsWith('/access-log') ? logPage : fileFor({ clinical: true, billing: true }),
+      })
+    );
+    renderFile();
+    await userEvent.click(await screen.findByRole('tab', { name: /Access log/ }));
+    expect(await screen.findByText('Asha Kale')).toBeInTheDocument();
+    expect(screen.getByText(/Printed case paper/)).toBeInTheDocument();
+    expect(screen.getByText(/Reception · asha@demo.test/)).toBeInTheDocument();
+    expect(apiClient.get).toHaveBeenCalledWith('/hospital/patients/p-1/access-log', {
+      params: { page: 0, size: 25 },
+    });
+  });
+
+  it('is not offered to other roles', async () => {
+    asRole('DOCTOR');
+    apiClient.get.mockResolvedValue({ data: fileFor({ clinical: true, billing: true }) });
+    renderFile();
+    await screen.findByRole('heading', { name: 'Sunanda Joshi' });
+    expect(screen.queryByRole('tab', { name: /Access log/ })).not.toBeInTheDocument();
+  });
+});
