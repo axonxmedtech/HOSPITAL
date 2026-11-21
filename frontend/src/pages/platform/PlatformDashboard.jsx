@@ -519,6 +519,8 @@ const PlatformDashboard = () => {
       onConfirm: action,
       showReasonInput,
       inputPlaceholder,
+      confirmText: undefined,
+      confirmLabel: undefined,
     });
   };
 
@@ -671,23 +673,41 @@ const PlatformDashboard = () => {
     setShowCreateModal(true);
   };
 
-  const handleDeleteHospital = (id, name) => {
-    openConfirmation(
-      'Delete Hospital',
-      `Permanently delete "${name}"? This will remove all patients, staff, billing records, and data. This cannot be undone.`,
-      async () => {
+  const handleDeleteHospital = (id, name, isActive) => {
+    if (isActive) {
+      // The server refuses to delete a facility people can still be working in.
+      setConfirmModal({
+        isOpen: true,
+        title: 'Block it first',
+        message: `"${name}" is active. Block (deactivate) it first — only a blocked facility can be deleted permanently.`,
+        showReasonInput: false,
+        confirmLabel: 'OK',
+        onConfirm: async () => {},
+      });
+      return;
+    }
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete permanently',
+      message: `Permanently delete "${name}"? Every patient, visit, admission, bill and record of this facility is removed and cannot be recovered. Take a backup first.`,
+      showReasonInput: true,
+      inputPlaceholder: 'Why is this facility being deleted?',
+      confirmText: name,
+      confirmLabel: 'Delete permanently',
+      onConfirm: async (reason, confirmName) => {
         try {
-          await platformService.deleteHospital(id);
+          await platformService.deleteHospital(id, { confirmName, reason });
           // BUG-027: invalidate stats cache after deletion
           statsCache.clear();
-          success('Hospital deleted successfully');
+          success('Hospital deleted permanently');
           // BUG-015: use PLATFORM_PAGE_SIZE constant
           loadHospitals(0, PLATFORM_PAGE_SIZE, getEntityType(activeTab));
         } catch (err) {
           setError(extractError(err, 'Failed to delete hospital'));
+          throw err;
         }
-      }
-    );
+      },
+    });
   };
 
   const handleResetPassword = (id) => {
@@ -1167,6 +1187,8 @@ const PlatformDashboard = () => {
         onCancel={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
         showReasonInput={confirmModal.showReasonInput}
         inputPlaceholder={confirmModal.inputPlaceholder}
+        confirmText={confirmModal.confirmText}
+        confirmLabel={confirmModal.confirmLabel}
       />
 
       {/* Ticket Detail Modal — shows the full description the truncated row can't */}
@@ -3066,7 +3088,8 @@ const HospitalsTable = ({
                 onClick: () =>
                   onDeleteHospital(
                     info.row.original.publicId || info.row.original.id,
-                    info.row.original.name
+                    info.row.original.name,
+                    info.row.original.isActive
                   ),
                 icon: (
                   <svg

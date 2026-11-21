@@ -214,4 +214,39 @@ class PlatformHospitalDeleteTest {
         }
         jdbc.execute("DELETE FROM medicine_list WHERE name LIKE 'SA1-Catalogue-%'");
     }
+
+    // ── The three locks on a permanent delete ──────────────────────────────────────────────
+
+    @Test
+    void anActiveFacilityCannotBeDeletedPermanently() {
+        Hospital h = newFacility(HospitalType.HOSPITAL);
+        addOpdVisit(h.getId());
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> service.deleteHospitalPermanently(h.getPublicId(), h.getName(), "Closing the account"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Block");
+        assertThat(opdCountFor(h.getId())).as("nothing removed").isEqualTo(1);
+        assertThat(hospitalRepository.findByPublicId(h.getPublicId())).isPresent();
+    }
+
+    @Test
+    void aBlockedFacilityNeedsItsExactNameAndAReason() {
+        Hospital h = newFacility(HospitalType.HOSPITAL);
+        addOpdVisit(h.getId());
+        service.updateHospitalStatus(h.getPublicId(), false, "Contract ended");
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> service.deleteHospitalPermanently(h.getPublicId(), "wrong name", "Closing the account"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("name");
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> service.deleteHospitalPermanently(h.getPublicId(), h.getName(), " "))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("reason");
+        assertThat(opdCountFor(h.getId())).as("nothing removed").isEqualTo(1);
+
+        service.deleteHospitalPermanently(h.getPublicId(), "  " + h.getName().toUpperCase() + " ", "Closing the account");
+        assertFacilityFullyRemoved(h);
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM audit_logs WHERE action = 'HOSPITAL_DELETED_PERMANENTLY' AND details LIKE ?",
+                Long.class, "%" + h.getName() + "%")).as("audited").isEqualTo(1);
+    }
 }

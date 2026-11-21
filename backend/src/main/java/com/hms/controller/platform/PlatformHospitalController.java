@@ -87,9 +87,16 @@ public class PlatformHospitalController {
         return ResponseEntity.ok(hospital);
     }
 
+    /**
+     * Permanent delete of a facility and all its data. Refused unless the facility is already
+     * blocked, the exact name is typed as {@code confirmName}, and a {@code reason} is given.
+     */
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> deleteHospital(@PathVariable String id) {
-        hospitalService.deleteHospital(id);
+    public ResponseEntity<?> deleteHospital(@PathVariable String id,
+                                            @RequestBody(required = false) Map<String, String> body) {
+        String confirmName = body != null ? body.get("confirmName") : null;
+        String reason = body != null ? body.get("reason") : null;
+        hospitalService.deleteHospitalPermanently(id, confirmName, reason);
         return ResponseEntity.ok(Map.of("message", "Hospital deleted successfully"));
     }
 
