@@ -21,6 +21,8 @@ class PrintLabelsTest {
     void doseFrequencyAndDurationCarryTheirMarathi() {
         assertThat(PrintLabels.dose("1/2 tablet", MR)).isEqualTo("1/2 tablet / 1/2 गोळी");
         assertThat(PrintLabels.dose("5 ml", MR)).isEqualTo("5 ml / 5 मिली");
+        assertThat(PrintLabels.dose("1 1/2 tablets", MR)).isEqualTo("1 1/2 tablets / 1 1/2 गोळी");
+        assertThat(PrintLabels.dose("2.5ml", MR)).isEqualTo("2.5ml / 2.5 मिली");
         assertThat(PrintLabels.frequency("1-0-1", MR)).isEqualTo("1-0-1 / सकाळ-रात्र");
         assertThat(PrintLabels.duration("3 Days", MR)).isEqualTo("3 Days / 3 दिवस");
         assertThat(PrintLabels.duration("2 Weeks", MR)).isEqualTo("2 Weeks / 2 आठवडे");

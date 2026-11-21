@@ -148,7 +148,7 @@ export default function PatientFile() {
       });
   }, [tab, timeline, publicId, toastError]);
 
-  const access = file?.access || {};
+  const access = useMemo(() => file?.access || {}, [file]);
   const tabs = useMemo(() => TABS.filter((t) => !t.needs || access[t.needs]), [access]);
   // "Everything" shows only what exists; empty sections are listed in one line instead.
   const show = (id, count) => tab === id || (tab === 'all' && count > 0);

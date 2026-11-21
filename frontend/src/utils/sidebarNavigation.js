@@ -160,9 +160,11 @@ function getReceptionistTabs(user, tenantWord) {
     tabs.push({ id: 'follow-ups', label: 'Follow-ups', icon: null });
   }
   if (modules.includes('IPD')) {
-    tabs.push({ id: 'ipd', label: 'IPD', icon: null });
-    tabs.push({ id: 'icu', label: 'ICU', icon: null });
-    tabs.push({ id: 'beds', label: 'Beds', icon: null });
+    tabs.push(
+      { id: 'ipd', label: 'IPD', icon: null },
+      { id: 'icu', label: 'ICU', icon: null },
+      { id: 'beds', label: 'Beds', icon: null }
+    );
   }
   if (canManageBilling(user)) {
     tabs.push({ id: 'billing', label: 'Billing', icon: null });
@@ -359,4 +361,13 @@ export function tabsForRole(role, user) {
     default:
       return [];
   }
+}
+
+/** The tabs minus hidden ones; a group whose items are all hidden disappears too. */
+export function withoutHidden(tabs, hidden) {
+  if (!hidden || hidden.size === 0) return tabs;
+  return (tabs || [])
+    .filter((t) => !hidden.has(t.id))
+    .map((t) => (t.subItems ? { ...t, subItems: t.subItems.filter((s) => !hidden.has(s.id)) } : t))
+    .filter((t) => !t.subItems || t.subItems.length > 0);
 }

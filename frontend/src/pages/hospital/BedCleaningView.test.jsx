@@ -1,6 +1,9 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import icuWardService from '../../services/icuWardService';
+import wardService from '../../services/wardService';
+import BedCleaningView from './BedCleaningView';
 
 vi.mock('../../services/wardService', () => ({
   default: { getWards: vi.fn(), getBeds: vi.fn(), markBedCleaned: vi.fn() },
@@ -9,10 +12,6 @@ vi.mock('../../services/icuWardService', () => ({ default: { getIcuWards: vi.fn(
 vi.mock('../../context/ToastContext', () => ({
   useToast: () => ({ success: vi.fn(), error: vi.fn() }),
 }));
-
-import icuWardService from '../../services/icuWardService';
-import wardService from '../../services/wardService';
-import BedCleaningView from './BedCleaningView';
 
 const beds = {
   1: [

@@ -69,4 +69,7 @@ export const formatWhen = (v) => {
 };
 
 /** "1 day" / "3 days". */
-export const formatDays = (n) => (n == null ? '—' : `${n} day${Number(n) === 1 ? '' : 's'}`);
+export const formatDays = (n) => {
+  if (n == null) return '—';
+  return Number(n) === 1 ? '1 day' : `${n} days`;
+};

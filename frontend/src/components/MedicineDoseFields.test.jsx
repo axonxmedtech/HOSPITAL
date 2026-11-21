@@ -6,7 +6,7 @@ import {
   parseDuration,
   parseStrength,
   strengthFromName,
-} from './MedicineDoseFields';
+} from '../utils/medicineDose';
 
 describe('medicine strength, dose and duration', () => {
   it('requires a strength, a dose and a duration', () => {

@@ -19,31 +19,41 @@ public class BillingAccessPolicy {
 
     /** Throws {@link AccessDeniedException} with the reason when the caller may not see bills. */
     public void check() {
-        String role = securityHelper.getCurrentUserRole();
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new AccessDeniedException("Invalid hospital context");
-        if (role == null) throw new AccessDeniedException("Billing is not available for your role.");
-        String r = role.toUpperCase(java.util.Locale.ROOT).replaceFirst("^ROLE_", "");
-        if ("HOSPITAL_ADMIN".equals(r) || "ADMIN".equals(r)) return;
+        String role = normalise(securityHelper.getCurrentUserRole());
+        if ("HOSPITAL_ADMIN".equals(role) || "ADMIN".equals(role)) return;
 
         HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(hospitalId)
                 .orElseGet(HospitalSetting::new);
         String handler = settings.getBillingHandler() != null && !settings.getBillingHandler().isBlank()
-                ? settings.getBillingHandler() : "BOTH";
+                ? settings.getBillingHandler().toUpperCase(java.util.Locale.ROOT) : "BOTH";
         boolean solo = "SOLO".equalsIgnoreCase(settings.getReceptionMode());
 
-        if ("DOCTOR".equals(r)) {
-            if (!"DOCTOR".equalsIgnoreCase(handler) && !"BOTH".equalsIgnoreCase(handler) && !solo) {
-                throw new AccessDeniedException("Billing management is restricted to receptionists.");
-            }
-        } else if ("RECEPTIONIST".equals(r)) {
-            if (!"RECEPTIONIST".equalsIgnoreCase(handler) && !"BOTH".equalsIgnoreCase(handler)) {
-                throw new AccessDeniedException("Billing management is restricted to doctors.");
-            }
-            if (solo) throw new AccessDeniedException("Receptionist access is restricted under Solo Doctor mode.");
-        } else {
-            throw new AccessDeniedException("Billing is not available for your role.");
+        switch (role) {
+            case "DOCTOR" -> checkDoctor(handler, solo);
+            case "RECEPTIONIST" -> checkReceptionist(handler, solo);
+            default -> throw new AccessDeniedException("Billing is not available for your role.");
         }
+    }
+
+    private static String normalise(String role) {
+        return role == null ? "" : role.toUpperCase(java.util.Locale.ROOT).replaceFirst("^ROLE_", "");
+    }
+
+    /** A doctor bills when the handler is DOCTOR or BOTH, or in Solo mode (no front desk). */
+    private static void checkDoctor(String handler, boolean solo) {
+        if (!"DOCTOR".equals(handler) && !"BOTH".equals(handler) && !solo) {
+            throw new AccessDeniedException("Billing management is restricted to receptionists.");
+        }
+    }
+
+    /** Reception bills when the handler is RECEPTIONIST or BOTH, and never in Solo mode. */
+    private static void checkReceptionist(String handler, boolean solo) {
+        if (!"RECEPTIONIST".equals(handler) && !"BOTH".equals(handler)) {
+            throw new AccessDeniedException("Billing management is restricted to doctors.");
+        }
+        if (solo) throw new AccessDeniedException("Receptionist access is restricted under Solo Doctor mode.");
     }
 
     public boolean allowed() {

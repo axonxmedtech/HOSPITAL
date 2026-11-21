@@ -6,6 +6,7 @@ import hospitalService from '../services/hospitalService';
 import vitalsService from '../services/vitalsService';
 import { extractApiError } from '../utils/apiError';
 import { describeFoodTiming, FOOD_TIMING_OPTIONS } from '../utils/foodTiming';
+import { doseProblem, parseDose, strengthFromName } from '../utils/medicineDose';
 import CharCountInput from './CharCountInput';
 import DateSelect from './DateSelect';
 import FrequencyInput, { isFrequencyValid } from './FrequencyInput';
@@ -14,7 +15,7 @@ import ManageInClinicPresetsModal from './ManageInClinicPresetsModal';
 import ManageNotePresetsModal from './ManageNotePresetsModal';
 import ManagePrescriptionPresetsModal from './ManagePrescriptionPresetsModal';
 import MedicineAutocomplete from './MedicineAutocomplete';
-import MedicineDoseFields, { doseProblem, parseDose, strengthFromName } from './MedicineDoseFields';
+import MedicineDoseFields from './MedicineDoseFields';
 
 /** Built-in vital key -> the Opd field that stores it. */
 const BUILT_IN_OPD_FIELD = {

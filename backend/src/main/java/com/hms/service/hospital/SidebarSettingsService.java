@@ -21,25 +21,29 @@ import java.util.regex.Pattern;
 @Service
 public class SidebarSettingsService {
 
+    private static final String DOCTOR = "DOCTOR";
+    private static final String OVERVIEW = "overview";
+    private static final String DASHBOARD = "dashboard";
+
     /** The roles whose sidebar can be configured. */
     public static final List<String> ROLES = List.of(
-            "HOSPITAL_ADMIN", "DOCTOR", "RECEPTIONIST", "NURSE", "NURSE_INCHARGE", "PHARMACIST", "OT_INCHARGE");
+            "HOSPITAL_ADMIN", DOCTOR, "RECEPTIONIST", "NURSE", "NURSE_INCHARGE", "PHARMACIST", "OT_INCHARGE");
 
     /**
      * Hidden unless the admin shows them. Doctors: follow-ups (already on their Overview),
      * stock screens and the ICU bed board are front-desk / nursing work (client feedback).
      */
     static final Map<String, Set<String>> DEFAULT_HIDDEN = Map.of(
-            "DOCTOR", Set.of("follow-ups", "inventory", "hospital-inventory", "icu-beds"));
+            DOCTOR, Set.of("follow-ups", "inventory", "hospital-inventory", "icu-beds"));
 
     /** Tabs that can never be hidden: the landing screen, and the admin's way back to Settings. */
     static final Map<String, Set<String>> ALWAYS_SHOWN = Map.of(
-            "HOSPITAL_ADMIN", Set.of("overview", "settings"),
-            "DOCTOR", Set.of("overview"),
-            "RECEPTIONIST", Set.of("overview"),
-            "NURSE", Set.of("dashboard"),
-            "NURSE_INCHARGE", Set.of("dashboard"),
-            "PHARMACIST", Set.of("dashboard"),
+            "HOSPITAL_ADMIN", Set.of(OVERVIEW, "settings"),
+            DOCTOR, Set.of(OVERVIEW),
+            "RECEPTIONIST", Set.of(OVERVIEW),
+            "NURSE", Set.of(DASHBOARD),
+            "NURSE_INCHARGE", Set.of(DASHBOARD),
+            "PHARMACIST", Set.of(DASHBOARD),
             "OT_INCHARGE", Set.of("board"));
 
     private static final Pattern TAB_ID = Pattern.compile("^[a-z0-9][a-z0-9_:-]{0,39}$");

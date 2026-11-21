@@ -45,14 +45,15 @@ public class WardService {
     private final HospitalWebSocketHandler webSocketHandler;
     private final WardWriteService wardWrites;
     private final com.hms.repository.IcuWardRepository icuWardRepository;
-    @org.springframework.beans.factory.annotation.Autowired
-    private com.hms.repository.BedStatusAuditRepository bedStatusAuditRepository;
+    private final com.hms.repository.BedStatusAuditRepository bedStatusAuditRepository;
 
     public WardService(WardRepository wardRepository, BedRepository bedRepository,
                        SecurityContextHelper securityHelper,
                        HospitalWebSocketHandler webSocketHandler,
                        WardWriteService wardWrites,
-                       com.hms.repository.IcuWardRepository icuWardRepository) {
+                       com.hms.repository.IcuWardRepository icuWardRepository,
+                       com.hms.repository.BedStatusAuditRepository bedStatusAuditRepository) {
+        this.bedStatusAuditRepository = bedStatusAuditRepository;
         this.wardRepository = wardRepository;
         this.bedRepository = bedRepository;
         this.securityHelper = securityHelper;

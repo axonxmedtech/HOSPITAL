@@ -2,17 +2,16 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import PatientFile from '../../pages/hospital/PatientFile';
+import apiClient from '../../services/apiService';
+import { rangeFor, rangeParams } from '../../utils/dateRange';
+import ConfirmationModal from '../ConfirmationModal';
+import IpdHistoryView from './IpdHistoryView';
 
 vi.mock('../../services/apiService', () => ({ default: { get: vi.fn() } }));
 vi.mock('../../context/ToastContext', () => ({
   useToast: () => ({ success: vi.fn(), error: vi.fn() }),
 }));
-
-import PatientFile from '../../pages/hospital/PatientFile';
-import apiClient from '../../services/apiService';
-import ConfirmationModal from '../ConfirmationModal';
-import { rangeFor, rangeParams } from '../RecordsFilterBar';
-import IpdHistoryView from './IpdHistoryView';
 
 const iso = (d) => d.toISOString().slice(0, 10);
 
@@ -174,7 +173,8 @@ describe('typed confirmation', () => {
 
 describe('date range picker', () => {
   it('warns when "To" is before "From" and sends no dates until it is fixed', async () => {
-    const { DateRangeFilter, rangeParams: params } = await import('../RecordsFilterBar');
+    const { DateRangeFilter } = await import('../RecordsFilterBar');
+    const { rangeParams: params } = await import('../../utils/dateRange');
     const backwards = { preset: 'custom', from: '2026-11-10', to: '2026-11-01' };
     render(<DateRangeFilter range={backwards} onChange={() => {}} label="Bill date" />);
     expect(screen.getByRole('alert')).toHaveTextContent('before the “From” date');

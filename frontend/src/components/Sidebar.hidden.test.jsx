@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { tabsForRole } from '../utils/sidebarNavigation';
-import { withoutHidden } from './Sidebar';
+import { tabsForRole, withoutHidden } from '../utils/sidebarNavigation';
 
 describe('Settings → Sidebar', () => {
   it('leaves out hidden tabs, and a group whose items are all hidden', () => {

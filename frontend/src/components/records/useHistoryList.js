@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
+import useDebounced from '../../hooks/useDebounced';
 import useLiveRefresh from '../../hooks/useLiveRefresh';
 import apiClient from '../../services/apiService';
 import { extractApiError } from '../../utils/apiError';
-import { rangeFor, rangeIsBackwards, rangeParams, useDebounced } from '../RecordsFilterBar';
+import { rangeFor, rangeIsBackwards, rangeParams } from '../../utils/dateRange';
 
 /**
  * Shared state for a server-filtered, paged history list: the view tab, date window, search

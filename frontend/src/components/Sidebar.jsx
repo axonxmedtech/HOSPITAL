@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { helpStore } from '../help/helpStore';
 import useHiddenTabs from '../hooks/useHiddenTabs';
 import { mobileNav, useMobileNavOpen } from '../hooks/useMobileNav';
+import { withoutHidden } from '../utils/sidebarNavigation';
 import { titleCase } from '../utils/text';
 import AccessLabel from './plan/AccessLabel';
 
@@ -1109,15 +1110,6 @@ const MobileDrawer = ({ onClose, onTabChange, ...contentProps }) => {
     </div>
   );
 };
-
-/** The tabs minus hidden ones; a group whose items are all hidden disappears too. */
-export function withoutHidden(tabs, hidden) {
-  if (!hidden || hidden.size === 0) return tabs;
-  return (tabs || [])
-    .filter((t) => !hidden.has(t.id))
-    .map((t) => (t.subItems ? { ...t, subItems: t.subItems.filter((s) => !hidden.has(s.id)) } : t))
-    .filter((t) => !t.subItems || t.subItems.length > 0);
-}
 
 const Sidebar = ({
   title: _title,

@@ -57,7 +57,7 @@ import IpdHistoryView from '../../components/records/IpdHistoryView';
 import { patientFilePath } from '../../components/records/patientFile';
 import PatientNameLink from '../../components/records/PatientNameLink';
 import SubTabs from '../../components/records/SubTabs';
-import { DateRangeFilter, rangeFor, rangeParams } from '../../components/RecordsFilterBar';
+import { DateRangeFilter } from '../../components/RecordsFilterBar';
 import SetupChecklist from '../../components/SetupChecklist';
 import Sidebar from '../../components/Sidebar';
 import {
@@ -89,6 +89,7 @@ import timeSlotService from '../../services/timeSlotService';
 import wardService from '../../services/wardService';
 import { safeLoadMessage, extractApiError } from '../../utils/apiError';
 import { localIsoDate } from '../../utils/date';
+import { rangeFor, rangeParams } from '../../utils/dateRange';
 import { extractPhoneConflicts } from '../../utils/duplicatePhone';
 import { backdropProps } from '../../utils/modalA11y';
 import { describeShift, isOnShiftNow } from '../../utils/nurseShift';

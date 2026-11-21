@@ -38,7 +38,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.function.Function;
 
 /**
  * The Patient File: everything that ever happened to one patient at this hospital, in one read —
@@ -137,159 +136,51 @@ public class PatientFileService {
         }
     }
 
+    private static final String STATUS = "status";
+    private static final String PUBLIC_ID = "publicId";
+    private static final String IPD_ADMISSION_ID = "ipdAdmissionId";
+    private static final String TOTAL_AMOUNT = "totalAmount";
+    private static final String PAID_AMOUNT = "paidAmount";
+    private static final String BALANCE = "balance";
+    private static final String CANCELLED = "CANCELLED";
+
+    /** Doctor and ward names looked up once each, scoped to the hospital. */
+    private final class Names {
+        private final Long hospitalId;
+        private final Map<Long, String> doctors = new HashMap<>();
+        private final Map<Long, String> wards = new HashMap<>();
+
+        Names(Long hospitalId) {
+            this.hospitalId = hospitalId;
+        }
+
+        String doctor(Long id) {
+            if (id == null) return null;
+            return doctors.computeIfAbsent(id, k -> doctorRepository.findByIdAndHospitalId(k, hospitalId)
+                    .map(com.hms.entity.Doctor::getName).orElse(null));
+        }
+
+        String ward(Long id) {
+            if (id == null) return null;
+            return wards.computeIfAbsent(id, k -> wardRepository.findByWardIdAndHospitalId(k, hospitalId)
+                    .map(com.hms.entity.Ward::getWardName).orElse(null));
+        }
+    }
+
     @Transactional(readOnly = true)
     public Map<String, Object> fileFor(String publicId) {
         Patient patient = requireViewable(publicId);
         Long hospitalId = hospitalId();
         Long patientId = patient.getId();
         Access access = accessFor();
+        Names names = new Names(hospitalId);
 
-        Map<Long, String> doctorNames = new HashMap<>();
-        Function<Long, String> doctorName = id -> id == null ? null
-                : doctorNames.computeIfAbsent(id, k -> doctorRepository.findByIdAndHospitalId(k, hospitalId)
-                        .map(d -> d.getName()).orElse(null));
-        Map<Long, String> wardNames = new HashMap<>();
-        Function<Long, String> wardName = id -> id == null ? null
-                : wardNames.computeIfAbsent(id, k -> wardRepository.findByWardIdAndHospitalId(k, hospitalId)
-                        .map(w -> w.getWardName()).orElse(null));
-
-        // ---- OPD visits ----
-        List<Map<String, Object>> opdVisits = new ArrayList<>();
-        List<Opd> opds = new ArrayList<>(opdRepository.findByPatientAndHospitalIdOrderByCreatedAtAsc(patientId, hospitalId));
-        opds.sort(Comparator.comparing(Opd::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())));
-        for (Opd o : opds) {
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("id", o.getId());
-            m.put("caseId", o.getCaseId());
-            m.put("date", o.getCreatedAt());
-            m.put("status", o.getStatus() != null ? o.getStatus().name() : null);
-            m.put("visitType", o.getVisitType() != null ? o.getVisitType().name() : null);
-            m.put("doctorName", o.getDoctor() != null ? o.getDoctor().getName() : null);
-            if (access.clinical()) m.put("problem", o.getProblem());
-            opdVisits.add(m);
-        }
-
-        // ---- IPD stays ----
-        List<Map<String, Object>> ipdStays = new ArrayList<>();
-        List<IpdAdmission> admissions = new ArrayList<>(ipdAdmissionRepository.findByHospitalIdAndPatientId(hospitalId, patientId));
-        admissions.sort(Comparator.comparing(IpdAdmission::getAdmissionDatetime, Comparator.nullsLast(Comparator.reverseOrder())));
-        for (IpdAdmission a : admissions) {
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("id", a.getId());
-            m.put("ipdNumber", a.getIpdNumber());
-            m.put("status", a.getStatus());
-            m.put("admissionType", a.getAdmissionType());
-            m.put("admittedAt", a.getAdmissionDatetime());
-            m.put("dischargedAt", a.getDischargeDatetime());
-            m.put("days", days(a.getAdmissionDatetime(), a.getDischargeDatetime()));
-            m.put("doctorName", doctorName.apply(a.getDoctorId()));
-            m.put("wardName", wardName.apply(a.getWardId()));
-            m.put("bedCode", a.getBedId() == null ? null : bedRepository.findByBedIdAndHospitalId(a.getBedId(), hospitalId)
-                    .map(b -> b.getBedCode()).orElse(null));
-            if (access.clinical()) {
-                m.put("hasDischargeSummary", dischargeSummaryRepository.findByIpdAdmissionId(a.getId()).isPresent());
-            }
-            ipdStays.add(m);
-        }
-
-        // ---- ICU stays ----
-        List<Map<String, Object>> icuStays = new ArrayList<>();
-        for (IcuStay s : icuStayRepository.findByPatientIdAndHospitalIdOrderByAdmittedAtDesc(patientId, hospitalId)) {
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("publicId", s.getPublicId());
-            m.put("ipdAdmissionId", s.getIpdAdmissionId());
-            m.put("status", s.getStatus());
-            m.put("unitName", wardName.apply(s.getWardId()));
-            m.put("admittedAt", s.getAdmittedAt());
-            m.put("dischargedAt", s.getDischargedAt());
-            m.put("days", days(s.getAdmittedAt(), s.getDischargedAt()));
-            m.put("disposition", s.getDisposition());
-            m.put("intensivistName", doctorName.apply(s.getIntensivistDoctorId()));
-            if (access.clinical()) m.put("admissionReason", s.getAdmissionReason());
-            icuStays.add(m);
-        }
-
-        // ---- Surgeries ----
-        List<Map<String, Object>> surgeries = new ArrayList<>();
-        List<Surgery> ops = new ArrayList<>(surgeryRepository.findByPatientIdAndHospitalId(patientId, hospitalId));
-        ops.sort(Comparator.comparing((Surgery s) -> s.getScheduledAt() != null ? s.getScheduledAt() : s.getRequestedAt(),
-                Comparator.nullsLast(Comparator.reverseOrder())));
-        for (Surgery s : ops) {
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("publicId", s.getPublicId());
-            m.put("ipdAdmissionId", s.getIpdAdmissionId());
-            m.put("encounterType", s.getEncounterType());
-            m.put("procedureName", s.getProcedureName());
-            m.put("status", s.getStatus());
-            m.put("priority", s.getPriority());
-            m.put("requestedAt", s.getRequestedAt());
-            m.put("scheduledAt", s.getScheduledAt());
-            m.put("completedAt", s.getCompletedAt());
-            m.put("surgeonName", s.getSurgeonName() != null ? s.getSurgeonName() : doctorName.apply(s.getSurgeonDoctorId()));
-            m.put("anaesthetistName", s.getAnaesthetistName());
-            surgeries.add(m);
-        }
-
-        // ---- Bills ----
-        List<Map<String, Object>> bills = new ArrayList<>();
-        BigDecimal total = BigDecimal.ZERO, paid = BigDecimal.ZERO, balance = BigDecimal.ZERO;
-        if (access.billing()) {
-            for (Billing b : billingRepository.findByPatientIdAndHospitalIdOrderByCreatedAtDesc(patientId, hospitalId)) {
-                BillMoney money = billingService.moneyFor(b);
-                Map<String, Object> m = new LinkedHashMap<>();
-                m.put("id", b.getId());
-                m.put("customId", b.getCustomId());
-                m.put("category", b.getBillingType());
-                m.put("opdId", b.getOpdId());
-                m.put("ipdAdmissionId", b.getIpdAdmissionId());
-                m.put("date", b.getCreatedAt());
-                m.put("status", b.getPaymentStatus());
-                m.put("description", b.getDescription());
-                m.put("totalAmount", money.net());
-                m.put("paidAmount", money.paid());
-                m.put("balance", money.balance());
-                bills.add(m);
-                if (!"CANCELLED".equalsIgnoreCase(b.getPaymentStatus())) {
-                    total = total.add(nz(money.net()));
-                    paid = paid.add(nz(money.paid()));
-                    balance = balance.add(nz(money.balance()));
-                }
-            }
-        }
-
-        // ---- Documents (clinical) ----
-        List<Map<String, Object>> documents = new ArrayList<>();
-        if (access.clinical()) {
-            for (PatientDocument d : patientDocumentRepository
-                    .findByHospitalIdAndPatientIdAndIsActiveTrueOrderByReportDateDescIdDesc(hospitalId, patientId)) {
-                Map<String, Object> m = new LinkedHashMap<>();
-                m.put("publicId", d.getPublicId());
-                m.put("title", d.getTitle());
-                m.put("documentType", d.getDocumentType());
-                m.put("reportDate", d.getReportDate());
-                m.put("opdId", d.getOpdId());
-                m.put("ipdAdmissionId", d.getIpdAdmissionId());
-                documents.add(m);
-            }
-        }
-
-        Map<String, Object> p = new LinkedHashMap<>();
-        p.put("id", patient.getId());
-        p.put("publicId", patient.getPublicId());
-        p.put("customId", patient.getCustomId());
-        p.put("name", patient.getName());
-        p.put("phone", patient.getPhone());
-        p.put("gender", patient.getGender());
-        p.put("dateOfBirth", patient.getDateOfBirth());
-        p.put("address", patient.getAddress());
-        p.put("registeredAt", patient.getCreatedAt());
-        p.put("isActive", !Boolean.FALSE.equals(patient.getIsActive()));
-        if (access.clinical()) p.put("medicalHistory", patient.getMedicalHistory());
-
-        Map<String, Object> totals = new LinkedHashMap<>();
-        totals.put("totalAmount", total);
-        totals.put("paidAmount", paid);
-        totals.put("balance", balance);
+        List<Map<String, Object>> opdVisits = opdVisits(patientId, hospitalId, access);
+        List<Map<String, Object>> ipdStays = ipdStays(patientId, hospitalId, access, names);
+        List<Map<String, Object>> icuStays = icuStays(patientId, hospitalId, access, names);
+        List<Map<String, Object>> surgeries = surgeries(patientId, hospitalId, names);
+        List<Map<String, Object>> bills = access.billing() ? bills(patientId, hospitalId) : List.of();
+        List<Map<String, Object>> documents = access.clinical() ? documents(patientId, hospitalId) : List.of();
 
         Map<String, Object> counts = new LinkedHashMap<>();
         counts.put("opdVisits", opdVisits.size());
@@ -300,7 +191,7 @@ public class PatientFileService {
         counts.put("documents", documents.size());
 
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("patient", p);
+        out.put("patient", patientCard(patient, access));
         out.put("access", Map.of("clinical", access.clinical(), "billing", access.billing()));
         out.put("counts", counts);
         out.put("opdVisits", opdVisits);
@@ -308,9 +199,169 @@ public class PatientFileService {
         out.put("icuStays", icuStays);
         out.put("surgeries", surgeries);
         out.put("bills", bills);
-        out.put("billTotals", totals);
+        out.put("billTotals", billTotals(bills));
         out.put("documents", documents);
         return out;
+    }
+
+    private static Map<String, Object> patientCard(Patient patient, Access access) {
+        Map<String, Object> p = new LinkedHashMap<>();
+        p.put("id", patient.getId());
+        p.put(PUBLIC_ID, patient.getPublicId());
+        p.put("customId", patient.getCustomId());
+        p.put("name", patient.getName());
+        p.put("phone", patient.getPhone());
+        p.put("gender", patient.getGender());
+        p.put("dateOfBirth", patient.getDateOfBirth());
+        p.put("address", patient.getAddress());
+        p.put("registeredAt", patient.getCreatedAt());
+        p.put("isActive", !Boolean.FALSE.equals(patient.getIsActive()));
+        if (access.clinical()) p.put("medicalHistory", patient.getMedicalHistory());
+        return p;
+    }
+
+    private List<Map<String, Object>> opdVisits(Long patientId, Long hospitalId, Access access) {
+        List<Opd> opds = new ArrayList<>(opdRepository.findByPatientAndHospitalIdOrderByCreatedAtAsc(patientId, hospitalId));
+        opds.sort(Comparator.comparing(Opd::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())));
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (Opd o : opds) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", o.getId());
+            m.put("caseId", o.getCaseId());
+            m.put("date", o.getCreatedAt());
+            m.put(STATUS, o.getStatus() != null ? o.getStatus().name() : null);
+            m.put("visitType", o.getVisitType() != null ? o.getVisitType().name() : null);
+            m.put("doctorName", o.getDoctor() != null ? o.getDoctor().getName() : null);
+            if (access.clinical()) m.put("problem", o.getProblem());
+            rows.add(m);
+        }
+        return rows;
+    }
+
+    private List<Map<String, Object>> ipdStays(Long patientId, Long hospitalId, Access access, Names names) {
+        List<IpdAdmission> admissions = new ArrayList<>(ipdAdmissionRepository.findByHospitalIdAndPatientId(hospitalId, patientId));
+        admissions.sort(Comparator.comparing(IpdAdmission::getAdmissionDatetime, Comparator.nullsLast(Comparator.reverseOrder())));
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (IpdAdmission a : admissions) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", a.getId());
+            m.put("ipdNumber", a.getIpdNumber());
+            m.put(STATUS, a.getStatus());
+            m.put("admissionType", a.getAdmissionType());
+            m.put("admittedAt", a.getAdmissionDatetime());
+            m.put("dischargedAt", a.getDischargeDatetime());
+            m.put("days", days(a.getAdmissionDatetime(), a.getDischargeDatetime()));
+            m.put("doctorName", names.doctor(a.getDoctorId()));
+            m.put("wardName", names.ward(a.getWardId()));
+            m.put("bedCode", bedCode(a.getBedId(), hospitalId));
+            if (access.clinical()) {
+                m.put("hasDischargeSummary", dischargeSummaryRepository.findByIpdAdmissionId(a.getId()).isPresent());
+            }
+            rows.add(m);
+        }
+        return rows;
+    }
+
+    private String bedCode(Long bedId, Long hospitalId) {
+        if (bedId == null) return null;
+        return bedRepository.findByBedIdAndHospitalId(bedId, hospitalId).map(com.hms.entity.Bed::getBedCode).orElse(null);
+    }
+
+    private List<Map<String, Object>> icuStays(Long patientId, Long hospitalId, Access access, Names names) {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (IcuStay s : icuStayRepository.findByPatientIdAndHospitalIdOrderByAdmittedAtDesc(patientId, hospitalId)) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put(PUBLIC_ID, s.getPublicId());
+            m.put(IPD_ADMISSION_ID, s.getIpdAdmissionId());
+            m.put(STATUS, s.getStatus());
+            m.put("unitName", names.ward(s.getWardId()));
+            m.put("admittedAt", s.getAdmittedAt());
+            m.put("dischargedAt", s.getDischargedAt());
+            m.put("days", days(s.getAdmittedAt(), s.getDischargedAt()));
+            m.put("disposition", s.getDisposition());
+            m.put("intensivistName", names.doctor(s.getIntensivistDoctorId()));
+            if (access.clinical()) m.put("admissionReason", s.getAdmissionReason());
+            rows.add(m);
+        }
+        return rows;
+    }
+
+    private List<Map<String, Object>> surgeries(Long patientId, Long hospitalId, Names names) {
+        List<Surgery> ops = new ArrayList<>(surgeryRepository.findByPatientIdAndHospitalId(patientId, hospitalId));
+        ops.sort(Comparator.comparing((Surgery s) -> s.getScheduledAt() != null ? s.getScheduledAt() : s.getRequestedAt(),
+                Comparator.nullsLast(Comparator.reverseOrder())));
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (Surgery s : ops) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put(PUBLIC_ID, s.getPublicId());
+            m.put(IPD_ADMISSION_ID, s.getIpdAdmissionId());
+            m.put("encounterType", s.getEncounterType());
+            m.put("procedureName", s.getProcedureName());
+            m.put(STATUS, s.getStatus());
+            m.put("priority", s.getPriority());
+            m.put("requestedAt", s.getRequestedAt());
+            m.put("scheduledAt", s.getScheduledAt());
+            m.put("completedAt", s.getCompletedAt());
+            m.put("surgeonName", s.getSurgeonName() != null ? s.getSurgeonName() : names.doctor(s.getSurgeonDoctorId()));
+            m.put("anaesthetistName", s.getAnaesthetistName());
+            rows.add(m);
+        }
+        return rows;
+    }
+
+    private List<Map<String, Object>> bills(Long patientId, Long hospitalId) {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (Billing b : billingRepository.findByPatientIdAndHospitalIdOrderByCreatedAtDesc(patientId, hospitalId)) {
+            BillMoney money = billingService.moneyFor(b);
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", b.getId());
+            m.put("customId", b.getCustomId());
+            m.put("category", b.getBillingType());
+            m.put("opdId", b.getOpdId());
+            m.put(IPD_ADMISSION_ID, b.getIpdAdmissionId());
+            m.put("date", b.getCreatedAt());
+            m.put(STATUS, b.getPaymentStatus());
+            m.put("description", b.getDescription());
+            m.put(TOTAL_AMOUNT, money.net());
+            m.put(PAID_AMOUNT, money.paid());
+            m.put(BALANCE, money.balance());
+            rows.add(m);
+        }
+        return rows;
+    }
+
+    /** Totals across the bills, leaving cancelled bills out. */
+    private static Map<String, Object> billTotals(List<Map<String, Object>> bills) {
+        BigDecimal total = BigDecimal.ZERO;
+        BigDecimal paid = BigDecimal.ZERO;
+        BigDecimal balance = BigDecimal.ZERO;
+        for (Map<String, Object> b : bills) {
+            if (CANCELLED.equalsIgnoreCase(String.valueOf(b.get(STATUS)))) continue;
+            total = total.add(nz((BigDecimal) b.get(TOTAL_AMOUNT)));
+            paid = paid.add(nz((BigDecimal) b.get(PAID_AMOUNT)));
+            balance = balance.add(nz((BigDecimal) b.get(BALANCE)));
+        }
+        Map<String, Object> totals = new LinkedHashMap<>();
+        totals.put(TOTAL_AMOUNT, total);
+        totals.put(PAID_AMOUNT, paid);
+        totals.put(BALANCE, balance);
+        return totals;
+    }
+
+    private List<Map<String, Object>> documents(Long patientId, Long hospitalId) {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (PatientDocument d : patientDocumentRepository
+                .findByHospitalIdAndPatientIdAndIsActiveTrueOrderByReportDateDescIdDesc(hospitalId, patientId)) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put(PUBLIC_ID, d.getPublicId());
+            m.put("title", d.getTitle());
+            m.put("documentType", d.getDocumentType());
+            m.put("reportDate", d.getReportDate());
+            m.put("opdId", d.getOpdId());
+            m.put(IPD_ADMISSION_ID, d.getIpdAdmissionId());
+            rows.add(m);
+        }
+        return rows;
     }
 
     private static BigDecimal nz(BigDecimal v) {
@@ -320,7 +371,7 @@ public class PatientFileService {
     /** Whole days stayed (at least 1); a stay still open counts up to now. */
     private static Long days(LocalDateTime from, LocalDateTime to) {
         if (from == null) return null;
-        long d = ChronoUnit.DAYS.between(from.toLocalDate(), (to != null ? to : LocalDateTime.now()).toLocalDate());
+        long d = ChronoUnit.DAYS.between(from.toLocalDate(), (to != null ? to : LocalDateTime.now(java.time.ZoneId.systemDefault())).toLocalDate());
         return Math.max(1, d);
     }
 }

@@ -118,13 +118,11 @@ const DateSelect = ({
   // three dropdowns until their values clipped, and its 48px height sat out of line with the
   // 38px toolbar buttons beside a date filter. Each part now has room for its value.
   const border = hasError ? 'border-error-300 focus:ring-error-500' : 'border-neutral-300';
+  const compactBorder = hasError ? 'border-error-300' : 'border-gray-300';
+  const size = filter ? 'h-[38px] py-0 bg-white rounded-lg' : 'h-11 py-2';
   const selCls = compact
-    ? `w-full px-0.5 py-1.5 text-xs text-center border rounded-lg bg-white text-gray-800 cursor-pointer appearance-none focus:outline-none focus:ring-1 focus:ring-gray-400 ${
-        hasError ? 'border-error-300' : 'border-gray-300'
-      }`
-    : `w-full min-w-0 pl-2.5 pr-6 text-sm border ${border} rounded-xl bg-neutral-50 text-slate-800 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white disabled:opacity-60 ${
-        filter ? 'h-[38px] py-0 bg-white rounded-lg' : 'h-11 py-2'
-      }`;
+    ? `w-full px-0.5 py-1.5 text-xs text-center border rounded-lg bg-white text-gray-800 cursor-pointer appearance-none focus:outline-none focus:ring-1 focus:ring-gray-400 ${compactBorder}`
+    : `w-full min-w-0 pl-2.5 pr-6 text-sm border ${border} rounded-xl bg-neutral-50 text-slate-800 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white disabled:opacity-60 ${size}`;
 
   return (
     <div

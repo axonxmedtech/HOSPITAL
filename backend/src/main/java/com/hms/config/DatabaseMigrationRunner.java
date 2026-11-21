@@ -249,7 +249,7 @@ public class DatabaseMigrationRunner {
         addColumnIfMissing("prescription_preset_items", "medicine_id", BIGINT_NULL);
         addColumnIfMissing("prescription_preset_items", "quantity", INT_NULL);
         backfillPrescriptionPresetType();
-        addColumnIfMissing("prescriptions", "strength", "VARCHAR(50) NULL"); // V35
+        addColumnIfMissing(PRESCRIPTIONS_TABLE, "strength", "VARCHAR(50) NULL"); // V35
         backfillPrescriptionDurationText(); // V35: days missing from medicine lists
 
         // Print Settings (pages in the consultation-complete print) + bill payment timing.
@@ -422,13 +422,6 @@ public class DatabaseMigrationRunner {
     }
 
     /**
-     * Existing presets predate preset_type and must stay in the PRESCRIPTION list. Hibernate's
-     * ddl-auto=update can win the race and add the NOT NULL column itself *without* the default,
-     * in which case MySQL backfills old rows with '' — which matches neither preset type, so
-     * every existing prescription preset would silently vanish from the doctor's list. Repair
-     * any such row. Idempotent.
-     */
-    /**
      * Medicines ordered on the IPD Medication tab stored only the number of days, leaving the
      * duration text empty, so every list that prints the duration showed nothing. Fill the text
      * from the number of days. Idempotent: only empty durations with a known day count change.
@@ -447,6 +440,13 @@ public class DatabaseMigrationRunner {
         }
     }
 
+    /**
+     * Existing presets predate preset_type and must stay in the PRESCRIPTION list. Hibernate's
+     * ddl-auto=update can win the race and add the NOT NULL column itself *without* the default,
+     * in which case MySQL backfills old rows with '' — which matches neither preset type, so
+     * every existing prescription preset would silently vanish from the doctor's list. Repair
+     * any such row. Idempotent.
+     */
     private void backfillPrescriptionPresetType() {
         try {
             int fixed = jdbcTemplate.update(

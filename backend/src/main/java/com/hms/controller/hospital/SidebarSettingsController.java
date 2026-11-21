@@ -13,6 +13,8 @@ import java.util.Map;
 @RequestMapping({"/hospital/settings/sidebar", "/clinic/settings/sidebar"})
 public class SidebarSettingsController {
 
+    private static final String HIDDEN = "hidden";
+
     private final SidebarSettingsService service;
 
     public SidebarSettingsController(SidebarSettingsService service) {
@@ -23,7 +25,7 @@ public class SidebarSettingsController {
     @GetMapping("/mine")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','DOCTOR','RECEPTIONIST','NURSE','NURSE_INCHARGE','PHARMACIST','OT_INCHARGE')")
     public ResponseEntity<Map<String, List<String>>> mine() {
-        return ResponseEntity.ok(Map.of("hidden", service.hiddenForCurrentUser()));
+        return ResponseEntity.ok(Map.of(HIDDEN, service.hiddenForCurrentUser()));
     }
 
     @GetMapping
@@ -36,12 +38,12 @@ public class SidebarSettingsController {
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     public ResponseEntity<Map<String, List<String>>> update(@PathVariable String role,
             @RequestBody Map<String, List<String>> body) {
-        return ResponseEntity.ok(Map.of("hidden", service.update(role, body == null ? null : body.get("hidden"))));
+        return ResponseEntity.ok(Map.of(HIDDEN, service.update(role, body == null ? null : body.get(HIDDEN))));
     }
 
     @DeleteMapping("/{role}")
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     public ResponseEntity<Map<String, List<String>>> reset(@PathVariable String role) {
-        return ResponseEntity.ok(Map.of("hidden", service.reset(role)));
+        return ResponseEntity.ok(Map.of(HIDDEN, service.reset(role)));
     }
 }

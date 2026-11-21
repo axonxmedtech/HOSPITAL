@@ -57,7 +57,7 @@ public final class PrintLabels {
             "application", new String[] {"लावणे", "लगाएं"},
             "injection", new String[] {"इंजेक्शन", "इंजेक्शन"});
 
-    private static final Pattern DOSE = Pattern.compile("^(\\d+(?:\\s+\\d+/\\d+)?|\\d+/\\d+|\\d+(?:\\.\\d+)?)\\s*([a-zA-Z]+)$");
+    private static final Pattern DOSE = Pattern.compile("(\\d+(?:[./]\\d+)?(?: \\d+/\\d+)?) ?([a-zA-Z]+)");
 
     /** "1/2 tablet" → "1/2 tablet / 1/2 गोळी". Anything not recognised prints as written. */
     public static String dose(String dose, String mode) {
@@ -67,7 +67,7 @@ public final class PrintLabels {
         String unit = m.group(2).toLowerCase().replaceAll("s$", "");
         String[] t = DOSE_UNITS.getOrDefault(unit, DOSE_UNITS.get(unit + "s"));
         if (t == null) return dose;
-        String local = PatientInstructionFormatter.MODE_EN_MR.equals(mode) ? t[0] : t[1];
+        String local = t[PatientInstructionFormatter.MODE_EN_MR.equals(mode) ? 0 : 1];
         return dose.trim() + " / " + m.group(1) + " " + local;
     }
 
@@ -100,10 +100,10 @@ public final class PrintLabels {
         StringBuilder when = new StringBuilder();
         for (int i = 0; i < 3; i++) {
             if (!"0".equals(m.group(i + 1))) {
-                if (when.length() > 0) when.append('-');
+                if (!when.isEmpty()) when.append('-');
                 when.append(times[i]);
             }
         }
-        return when.length() == 0 ? frequency : frequency.trim() + " / " + when;
+        return when.isEmpty() ? frequency : frequency.trim() + " / " + when;
     }
 }

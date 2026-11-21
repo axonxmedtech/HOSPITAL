@@ -37,6 +37,7 @@ import com.hms.service.PdfService;
 @RequestMapping({"/hospital/billing", "/clinic/billing", "/pharmacy/billing"})
 public class BillingController {
     private static final String DOCTOR_ROLE = "DOCTOR";
+    private static final String TOTAL_AMOUNT = "totalAmount";
     private static final String AMOUNT = "amount";
 
     /** The money figures every bill response carries, all from the server's own arithmetic. */
@@ -340,7 +341,7 @@ public class BillingController {
             row.put("category", bill.getIpdAdmissionId() != null ? "IPD" : "OPD");
             row.put("status", bill.getPaymentStatus());
             row.put("createdAt", bill.getCreatedAt());
-            row.put("totalAmount", money.net());
+            row.put(TOTAL_AMOUNT, money.net());
             putMoney(row, money);
             rows.add(row);
             if (!cancelled) {
@@ -350,7 +351,7 @@ public class BillingController {
         }
         Map<String, Object> resp = new HashMap<>();
         resp.put("bills", rows);
-        resp.put("totalAmount", total);
+        resp.put(TOTAL_AMOUNT, total);
         resp.put("paidAmount", paid);
         resp.put("balance", total.subtract(paid));
         return ResponseEntity.ok(resp);
@@ -387,7 +388,7 @@ public class BillingController {
         resp.put("status", bill.getPaymentStatus());
         putMoney(resp, money);
         resp.put("discountReason", bill.getDiscountReason());
-        resp.put("totalAmount", money.net());
+        resp.put(TOTAL_AMOUNT, money.net());
         java.util.List<Map<String,Object>> list = new java.util.ArrayList<>();
         for (BillingItem it : items) {
             Map<String,Object> m = new HashMap<>();

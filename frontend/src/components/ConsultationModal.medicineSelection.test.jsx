@@ -1,6 +1,8 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import hospitalService from '../services/hospitalService';
+import ConsultationModal from './ConsultationModal';
 
 // headlessui's combobox measures itself when it closes; jsdom has no ResizeObserver.
 globalThis.ResizeObserver =
@@ -46,9 +48,6 @@ vi.mock('../services/hospitalService', () => ({
     }),
   },
 }));
-
-import hospitalService from '../services/hospitalService';
-import ConsultationModal from './ConsultationModal';
 
 /**
  * The medicine field names nothing until something is picked from the catalogue.

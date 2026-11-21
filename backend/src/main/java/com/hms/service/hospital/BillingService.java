@@ -193,34 +193,41 @@ public class BillingService {
         if (from != null && to != null && to.isBefore(from)) {
             throw new IllegalArgumentException("The 'to' date is before the 'from' date");
         }
-        String c = null;
-        if (category != null && !category.isBlank()) {
-            c = category.trim().toUpperCase(java.util.Locale.ROOT);
-            if (!CATEGORIES.contains(c)) {
-                throw new IllegalArgumentException("Unknown bill category: " + category);
-            }
+        String c = normaliseCategory(category);
+        if (c == null && from == null && to == null) {
+            return unfilteredByCategoryOrDate(hospitalId, search, statuses, pageable);
         }
-        if (c != null || from != null || to != null) {
-            return billingRepository.findFiltered(hospitalId, c == null, c == null ? "" : c,
-                    statuses == null, statuses == null ? java.util.List.of("") : statuses,
-                    search == null ? "" : search.trim(),
-                    from == null ? null : from.atStartOfDay(),
-                    to == null ? null : to.plusDays(1).atStartOfDay(), pageable);
+        boolean anyStatus = statuses == null;
+        return billingRepository.findFiltered(hospitalId, c == null, c == null ? "" : c,
+                anyStatus, anyStatus ? java.util.List.of("") : statuses,
+                search == null ? "" : search.trim(),
+                from == null ? null : from.atStartOfDay(),
+                to == null ? null : to.plusDays(1).atStartOfDay(), pageable);
+    }
+
+    /** OPD / IPD, or null for "all categories". */
+    private static String normaliseCategory(String category) {
+        if (category == null || category.isBlank()) return null;
+        String c = category.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!CATEGORIES.contains(c)) {
+            throw new IllegalArgumentException("Unknown bill category: " + category);
         }
-        if (search != null && !search.isEmpty()) {
-            // The status filter belongs in the query. Filtering one fetched page in memory
-            // dropped matching bills from later pages and reported a total of whatever survived
-            // on this page, so a search for "PENDING" bills could show a few and hide the rest.
-            if (statuses != null) {
-                return billingRepository.searchBillingsByStatus(hospitalId, search, statuses, pageable);
-            }
+        return c;
+    }
+
+    /** The list with only search and status. Both are applied in the query, never per page. */
+    private Page<Billing> unfilteredByCategoryOrDate(Long hospitalId, String search,
+                                                     java.util.List<String> statuses, Pageable pageable) {
+        boolean hasSearch = search != null && !search.isEmpty();
+        if (hasSearch && statuses != null) {
+            return billingRepository.searchBillingsByStatus(hospitalId, search, statuses, pageable);
+        }
+        if (hasSearch) {
             return billingRepository.searchBillings(hospitalId, search, pageable);
         }
-
         if (statuses != null) {
             return billingRepository.findByHospitalIdAndPaymentStatusIn(hospitalId, statuses, pageable);
         }
-
         return billingRepository.findByHospitalId(hospitalId, pageable);
     }
 

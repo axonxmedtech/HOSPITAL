@@ -215,13 +215,6 @@ public class GlobalExceptionHandler {
     }
     // -- 409 ---------------------------------------------------------------------
 
-    /**
-     * A business precondition that has changed under the caller: the bed was taken, the
-     * theatre is already running another case. The message is ours, so it is shown as-is.
-     *
-     * <p>Without this the exception fell through to the catch-all as a 500, telling the caller
-     * a server fault when the truth is that someone else got there first.
-     */
     /** A second open visit for the same patient: says where the open one is. */
     @ExceptionHandler(ActiveEncounterConflictException.class)
     public ResponseEntity<ApiErrorResponse> handleActiveEncounter(ActiveEncounterConflictException ex) {
@@ -230,6 +223,13 @@ public class GlobalExceptionHandler {
                         ex.getEncounter(), null, CorrelationIdFilter.currentId(), null));
     }
 
+    /**
+     * A business precondition that has changed under the caller: the bed was taken, the
+     * theatre is already running another case. The message is ours, so it is shown as-is.
+     *
+     * <p>Without this the exception fell through to the catch-all as a 500, telling the caller
+     * a server fault when the truth is that someone else got there first.
+     */
     @ExceptionHandler(ConflictException.class)
     public ResponseEntity<ApiErrorResponse> handleConflict(ConflictException ex) {
         return respond(ErrorCode.CONFLICT, ex.getMessage());

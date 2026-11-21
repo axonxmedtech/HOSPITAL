@@ -134,8 +134,8 @@ public class Prescription {
             duration = durationDays + (durationDays == 1 ? " Day" : " Days");
         } else if (!noText && durationDays == null) {
             java.util.regex.Matcher m = java.util.regex.Pattern
-                    .compile("^\\s*(\\d{1,3})\\s*(d|day|days)?\\s*$", java.util.regex.Pattern.CASE_INSENSITIVE)
-                    .matcher(duration);
+                    .compile("(\\d{1,3})\\s*+(?:days?|d)?", java.util.regex.Pattern.CASE_INSENSITIVE)
+                    .matcher(duration.strip());
             if (m.matches()) durationDays = Integer.parseInt(m.group(1));
         }
     }

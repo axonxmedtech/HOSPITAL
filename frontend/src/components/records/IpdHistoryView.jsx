@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { formatWhen } from '../../utils/date';
 import RecordsFilterBar from '../RecordsFilterBar';
+import HistoryRows from './HistoryRows';
 import { patientFilePath } from './patientFile';
 import useHistoryList from './useHistoryList';
 
@@ -78,20 +79,13 @@ export default function IpdHistoryView() {
             </tr>
           </thead>
           <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
-                  Loading…
-                </td>
-              </tr>
-            ) : rows.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
-                  No admissions match these filters.
-                </td>
-              </tr>
-            ) : (
-              rows.map(({ ipd, patient, doctor, ward, bed }) => (
+            <HistoryRows
+              loading={loading}
+              count={rows.length}
+              colSpan={8}
+              emptyText="No admissions match these filters."
+            >
+              {rows.map(({ ipd, patient, doctor, ward, bed }) => (
                 <tr key={ipd.id} className="border-t border-gray-100 hover:bg-gray-50">
                   <td className="px-4 py-2 font-medium text-gray-900 whitespace-nowrap">
                     {ipd.ipdNumber}
@@ -141,8 +135,8 @@ export default function IpdHistoryView() {
                     </button>
                   </td>
                 </tr>
-              ))
-            )}
+              ))}
+            </HistoryRows>
           </tbody>
         </table>
       </div>

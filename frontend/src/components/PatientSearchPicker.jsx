@@ -48,7 +48,7 @@ export default function PatientSearchPicker({
 
   const choose = (p) => {
     onSelect(p);
-    onTextChange(`${p.name}${p.phone ? ` (${p.phone})` : ''}`);
+    onTextChange(p.phone ? `${p.name} (${p.phone})` : p.name);
     setOpen(false);
   };
 

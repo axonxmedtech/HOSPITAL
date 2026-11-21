@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { formatWhen } from '../../utils/date';
 import RecordsFilterBar from '../RecordsFilterBar';
+import HistoryRows from './HistoryRows';
 import { Pager } from './IpdHistoryView';
 import { patientFilePath } from './patientFile';
 import useHistoryList from './useHistoryList';
@@ -70,20 +71,13 @@ export default function OtHistoryView() {
             </tr>
           </thead>
           <tbody>
-            {h.loading ? (
-              <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
-                  Loading…
-                </td>
-              </tr>
-            ) : rows.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
-                  No surgeries match these filters.
-                </td>
-              </tr>
-            ) : (
-              rows.map((s) => (
+            <HistoryRows
+              loading={h.loading}
+              count={rows.length}
+              colSpan={8}
+              emptyText="No surgeries match these filters."
+            >
+              {rows.map((s) => (
                 <tr key={s.publicId} className="border-t border-gray-100 hover:bg-gray-50">
                   <td className="px-4 py-2">
                     {s.patientPublicId ? (
@@ -122,8 +116,8 @@ export default function OtHistoryView() {
                     )}
                   </td>
                 </tr>
-              ))
-            )}
+              ))}
+            </HistoryRows>
           </tbody>
         </table>
       </div>

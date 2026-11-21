@@ -531,23 +531,6 @@ public class PlatformHospitalService {
     }
 
     /**
-     * Delete a facility (hospital, clinic or pharmacy) and all its related data.
-     *
-     * <p>Statements are ordered child-before-parent so every foreign key stays satisfied
-     * while it runs. FOREIGN_KEY_CHECKS is deliberately NOT disabled: suppressing the
-     * constraints also suppresses the ON DELETE CASCADE rules that the migration-created
-     * tenant tables declare against hospitals(id), which is what left orphaned rows behind.
-     * Leaving the checks on means the database enforces the ordering rather than trusting it,
-     * and the cascades it owns actually fire.
-     *
-     * <p>OPD carries no hospital_id. Its tenancy is the owning patient -- the same rule
-     * OpdRepository uses ("Opd has no hospital_id of its own, so tenancy is proven through
-     * the owning patient"). Deletion additionally sweeps rows reachable through this
-     * facility's doctor or receptionist: those columns are real foreign keys into doctors
-     * and users, both of which are deleted below, so a visit with a missing patient would
-     * otherwise survive and block them.
-     */
-    /**
      * The only way the platform permanently deletes a facility, and every patient record with it.
      * Because that cannot be undone, three locks must all hold:
      * <ol>
@@ -586,7 +569,24 @@ public class PlatformHospitalService {
         deleteHospital(publicId);
     }
 
-    /** The purge itself. Reached only through {@link #deleteHospitalPermanently} (tests call it directly). */
+    /**
+     * The purge itself: deletes a facility (hospital, clinic or pharmacy) and all its related data.
+     * Reached only through {@link #deleteHospitalPermanently} (tests call it directly).
+     *
+     * <p>Statements are ordered child-before-parent so every foreign key stays satisfied
+     * while it runs. FOREIGN_KEY_CHECKS is deliberately NOT disabled: suppressing the
+     * constraints also suppresses the ON DELETE CASCADE rules that the migration-created
+     * tenant tables declare against hospitals(id), which is what left orphaned rows behind.
+     * Leaving the checks on means the database enforces the ordering rather than trusting it,
+     * and the cascades it owns actually fire.
+     *
+     * <p>OPD carries no hospital_id. Its tenancy is the owning patient -- the same rule
+     * OpdRepository uses ("Opd has no hospital_id of its own, so tenancy is proven through
+     * the owning patient"). Deletion additionally sweeps rows reachable through this
+     * facility's doctor or receptionist: those columns are real foreign keys into doctors
+     * and users, both of which are deleted below, so a visit with a missing patient would
+     * otherwise survive and block them.
+     */
     @Transactional
     void deleteHospital(String publicId) {
         Hospital hospital = hospitalRepository.findByPublicId(publicId)

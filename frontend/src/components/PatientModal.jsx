@@ -24,7 +24,7 @@ const PatientModal = ({ isOpen, onClose, onSuccess, initialData, prefill }) => {
         setFormData({ insurance: 'NO', ...initialData });
       } else {
         // A new patient started from a search: carry over what was typed (e.g. the name).
-        setFormData({ insurance: 'NO', ...(prefill || {}) });
+        setFormData({ insurance: 'NO', ...prefill });
       }
       setErrors({});
       setIsSubmitting(false);

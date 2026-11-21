@@ -41,8 +41,7 @@ public class OpdService {
     private BillingService billingService;
     @org.springframework.beans.factory.annotation.Autowired
     private com.hms.repository.HospitalSettingRepository hospitalSettingRepository;
-    @org.springframework.beans.factory.annotation.Autowired
-    private IpdAdmissionRepository ipdAdmissionRepository;
+    private final IpdAdmissionRepository ipdAdmissionRepository;
     private final HospitalStaffing staffing;
 
     /** In hospital: an OPD visit is never opened alongside these. */
@@ -63,8 +62,10 @@ public class OpdService {
                       AuditLogService auditLogService,
                       HospitalWebSocketHandler webSocketHandler,
                       VitalSettingsService vitalSettingsService,
-                      HospitalStaffing staffing) {
+                      HospitalStaffing staffing,
+                      IpdAdmissionRepository ipdAdmissionRepository) {
         this.staffing = staffing;
+        this.ipdAdmissionRepository = ipdAdmissionRepository;
         this.opdRepository = opdRepository;
         this.queueEntryRepository = queueEntryRepository;
         this.patientRepository = patientRepository;
@@ -118,7 +119,7 @@ public class OpdService {
                         where);
             });
         }
-        java.time.LocalDateTime today = java.time.LocalDate.now().atStartOfDay();
+        java.time.LocalDateTime today = java.time.LocalDate.now(java.time.ZoneId.systemDefault()).atStartOfDay();
         opdRepository.findOpenVisits(patient.getId(), hospitalId, doctor.getId(), OPD_OPEN, today)
                 .stream().findFirst().ifPresent(open -> {
             java.util.Map<String, String> where = new java.util.HashMap<>();

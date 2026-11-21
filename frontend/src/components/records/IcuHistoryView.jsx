@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { formatDays, formatWhen } from '../../utils/date';
 import RecordsFilterBar from '../RecordsFilterBar';
+import HistoryRows from './HistoryRows';
 import { Pager } from './IpdHistoryView';
 import { patientFilePath } from './patientFile';
 import useHistoryList from './useHistoryList';
@@ -68,20 +69,13 @@ export default function IcuHistoryView() {
             </tr>
           </thead>
           <tbody>
-            {h.loading ? (
-              <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
-                  Loading…
-                </td>
-              </tr>
-            ) : rows.length === 0 ? (
-              <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
-                  No ICU stays match these filters.
-                </td>
-              </tr>
-            ) : (
-              rows.map((r) => (
+            <HistoryRows
+              loading={h.loading}
+              count={rows.length}
+              colSpan={9}
+              emptyText="No ICU stays match these filters."
+            >
+              {rows.map((r) => (
                 <tr key={r.publicId} className="border-t border-gray-100 hover:bg-gray-50">
                   <td className="px-4 py-2">
                     {r.patient ? (
@@ -121,8 +115,8 @@ export default function IcuHistoryView() {
                     </button>
                   </td>
                 </tr>
-              ))
-            )}
+              ))}
+            </HistoryRows>
           </tbody>
         </table>
       </div>

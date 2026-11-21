@@ -2,11 +2,10 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-vi.mock('../services/hospitalService', () => ({ default: { getPatients: vi.fn() } }));
-
 import hospitalService from '../services/hospitalService';
 import PatientSearchPicker from './PatientSearchPicker';
+
+vi.mock('../services/hospitalService', () => ({ default: { getPatients: vi.fn() } }));
 
 function Harness({ onSelect, onRegisterNew }) {
   const [text, setText] = useState('');
