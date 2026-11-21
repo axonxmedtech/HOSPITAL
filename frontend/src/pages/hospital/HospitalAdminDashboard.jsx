@@ -112,6 +112,7 @@ import OtPoliciesCard from './OtPoliciesCard';
 import OtRoomsCard from './OtRoomsCard';
 import BillingHistoryView from './pharmacy/BillingHistoryView';
 import SuppliersView from './pharmacy/SuppliersView';
+import PharmacyInvoiceDetailsCard from './PharmacyInvoiceDetailsCard';
 import PrintPaymentSettingsCard from './PrintPaymentSettingsCard';
 import ScoreSettingsCard from './ScoreSettingsCard';
 import SidebarSettingsCard from './SidebarSettingsCard';
@@ -161,7 +162,12 @@ const HospitalAdminDashboard = () => {
   const hasIPD = modules.includes('IPD');
   const hasAppointments = modules.includes('APPOINTMENTS');
   // Tenant-aware label: clinic logins say "Clinic" wherever we'd otherwise say "Hospital".
-  const tenantWord = user?.hospitalType === 'CLINIC' ? 'Clinic' : 'Hospital';
+  const tenantWord =
+    user?.hospitalType === 'CLINIC'
+      ? 'Clinic'
+      : user?.hospitalType === 'PHARMACY'
+        ? 'Pharmacy'
+        : 'Hospital';
   const isPharmacyTenant = user?.hospitalType === 'PHARMACY';
   // The analytics endpoint is HOSPITAL-only and is not aliased for the other tenant types.
   // Framed as "not one of the others" to match apiService, which rewrites /hospital/** only for
@@ -690,7 +696,8 @@ const HospitalAdminDashboard = () => {
 
   // Effect for Patients list loading (Overview Tab specific)
   useEffect(() => {
-    if (activeTab !== 'overview') return;
+    // A pharmacy's Overview has no patient list (and a pharmacy has no patient records).
+    if (activeTab !== 'overview' || isPharmacyTenant) return;
     if (patientsSearchInput === '' && patientsSearchTerm !== '') return;
     loadPatients(patientsSearchTerm, patientsPage);
   }, [activeTab, patientsSearchTerm, patientsPage, pageSize]);
@@ -1310,7 +1317,7 @@ const HospitalAdminDashboard = () => {
       if (activeTab === 'overview') {
         if (isPharmacyTenant) {
           const [dashboardData, recentBillsData, lowStockData] = await Promise.all([
-            reportsApi.getDashboardData(),
+            reportsApi.getDashboardData(rangeParams(rangeFor('30d'))),
             salesApi.getHistory(0, 5),
             inventoryApi.getLowStock(0, 5),
           ]);
@@ -2641,7 +2648,7 @@ const HospitalAdminDashboard = () => {
                 <div className="bg-white p-6 rounded-2xl border border-gray-150 shadow-sm relative overflow-hidden group">
                   <div className="absolute top-0 right-0 w-20 h-20 bg-blue-50/50 rounded-bl-full -z-10"></div>
                   <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                    Gross Sales
+                    Sales (incl. GST)
                   </p>
                   <h3 className="text-2xl font-black text-gray-900 mt-2">
                     ₹
@@ -2651,7 +2658,7 @@ const HospitalAdminDashboard = () => {
                     })}
                   </h3>
                   <p className="text-[10px] text-gray-400 mt-1 font-semibold">
-                    Total processed invoices
+                    Last 30 days, before refunds
                   </p>
                 </div>
 
@@ -2659,17 +2666,17 @@ const HospitalAdminDashboard = () => {
                 <div className="bg-white p-6 rounded-2xl border border-gray-150 shadow-sm relative overflow-hidden group">
                   <div className="absolute top-0 right-0 w-20 h-20 bg-green-50/50 rounded-bl-full -z-10"></div>
                   <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                    Net Revenue
+                    Net Sales
                   </p>
                   <h3 className="text-2xl font-black text-emerald-600 mt-2">
                     ₹
-                    {(pharmacyStats?.kpis?.netRevenue || 0).toLocaleString('en-IN', {
+                    {(pharmacyStats?.kpis?.netSales || 0).toLocaleString('en-IN', {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     })}
                   </h3>
                   <p className="text-[10px] text-emerald-600/80 mt-1 font-semibold">
-                    Net profit after customer returns
+                    Last 30 days, after refunds
                   </p>
                 </div>
 
@@ -2687,7 +2694,7 @@ const HospitalAdminDashboard = () => {
                     })}
                   </h3>
                   <p className="text-[10px] text-indigo-500/80 mt-1 font-semibold">
-                    Cash value of active shelf stock
+                    Stock on the shelf today, at cost
                   </p>
                 </div>
 
@@ -2695,13 +2702,13 @@ const HospitalAdminDashboard = () => {
                 <div className="bg-white p-6 rounded-2xl border border-gray-150 shadow-sm relative overflow-hidden group">
                   <div className="absolute top-0 right-0 w-20 h-20 bg-amber-50/50 rounded-bl-full -z-10"></div>
                   <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                    Profit Margin
+                    Gross Margin
                   </p>
                   <h3 className="text-2xl font-black text-amber-600 mt-2">
                     {pharmacyStats?.kpis?.profitMargin || 0}%
                   </h3>
                   <p className="text-[10px] text-amber-600/80 mt-1 font-semibold">
-                    Average mark-up profit margin
+                    Last 30 days, profit on sales excl. GST
                   </p>
                 </div>
               </div>
@@ -2831,10 +2838,11 @@ const HospitalAdminDashboard = () => {
                       ) : (
                         <div className="text-center py-12 text-green-600 font-bold text-xs flex items-center justify-center gap-1">
                           <svg
-                            className="w-4.5 h-4.5"
+                            className="w-5 h-5 shrink-0"
                             fill="none"
                             viewBox="0 0 24 24"
                             stroke="currentColor"
+                            aria-hidden="true"
                           >
                             <path
                               strokeLinecap="round"
@@ -2843,7 +2851,7 @@ const HospitalAdminDashboard = () => {
                               d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
                             />
                           </svg>
-                          All medicine stocks are healthy!
+                          Nothing below its low-stock level. Set levels per medicine in Inventory.
                         </div>
                       )
                     ) : (pharmacyStats?.fastMoving || []).length > 0 ? (
@@ -4592,6 +4600,10 @@ const HospitalAdminDashboard = () => {
                         </div>
                       )}
                     </div>
+                  )}
+                  {(isPharmacyTenant ||
+                    (settingsView === 'operations' && user?.modules?.includes('PHARMACY'))) && (
+                    <PharmacyInvoiceDetailsCard />
                   )}
                   {!isPharmacyTenant && settingsView === 'sidebar' && (
                     <div className="max-w-4xl mx-auto my-4">

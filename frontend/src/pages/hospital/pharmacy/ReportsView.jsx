@@ -1,17 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { DateRangeFilter } from '../../../components/RecordsFilterBar';
 import { SkeletonDashboard } from '../../../components/Skeleton';
 import { useToast } from '../../../context/ToastContext';
 import reportsApi from '../../../services/pharmacy/reportsApi';
 import { localIsoDate } from '../../../utils/date';
+import { rangeFor, rangeIsBackwards, rangeParams } from '../../../utils/dateRange';
 
 const ReportsView = () => {
   const { success, error: toastError } = useToast();
   const [loading, setLoading] = useState(true);
+  const [range, setRange] = useState(() => rangeFor('30d'));
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [data, setData] = useState({
     kpis: {
       totalSales: 0,
       totalRefunds: 0,
+      netSales: 0,
       netRevenue: 0,
+      cogs: 0,
       inventoryValue: 0,
       expiredValue: 0,
       grossProfit: 0,
@@ -32,14 +38,11 @@ const ReportsView = () => {
     salesTrend: [],
   });
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
+    if (rangeIsBackwards(range)) return;
     setLoading(true);
     try {
-      const res = await reportsApi.getDashboardData();
+      const res = await reportsApi.getDashboardData(rangeParams(range));
       if (res) {
         setData(res);
       }
@@ -48,19 +51,28 @@ const ReportsView = () => {
       toastError('Failed to load real-time analytics data');
     } finally {
       setLoading(false);
+      setHasLoaded(true);
     }
-  };
+  }, [range, toastError]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const [exporting, setExporting] = useState(false);
   const handleExport = async () => {
     if (exporting) return;
     setExporting(true);
     try {
-      const blob = await reportsApi.exportLedgerCsv();
+      const blob = await reportsApi.exportLedgerCsv(rangeParams(range));
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `pharmacy_tax_ledger_${localIsoDate()}.csv`);
+      const span =
+        range.from || range.to
+          ? `${range.from || 'start'}_to_${range.to || 'today'}`
+          : localIsoDate();
+      link.setAttribute('download', `pharmacy_sales_${span}.csv`);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -73,7 +85,8 @@ const ReportsView = () => {
     }
   };
 
-  if (loading) {
+  // Skeleton only on the first load; changing the period keeps the page (and the picker) in place.
+  if (loading && !hasLoaded) {
     return (
       <SkeletonDashboard
         statCount={4}
@@ -103,10 +116,12 @@ const ReportsView = () => {
         <div>
           <h1 className="text-xl font-bold text-gray-900">Reports & Analytics</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Real-time ledger audit, inventory capital valuations, and tax margins.
+            Sales, refunds, GST and profit for the chosen period. Stock value and expiry risk are as
+            of today.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 items-center">
+          <DateRangeFilter range={range} onChange={setRange} label="Report period" />
           <button
             onClick={loadData}
             className="p-2 border border-gray-300 rounded text-gray-600 hover:bg-gray-50 bg-white"
@@ -157,7 +172,7 @@ const ReportsView = () => {
                 />
               </svg>
             )}
-            {exporting ? 'Exporting...' : 'Export Tax Ledger'}
+            {exporting ? 'Exporting...' : 'Export Sales (CSV)'}
           </button>
         </div>
       </div>
@@ -168,14 +183,18 @@ const ReportsView = () => {
         <div className="bg-white border border-gray-200 rounded-lg p-5 shadow-sm relative overflow-hidden group hover:border-gray-400 transition-all duration-200">
           <div className="absolute top-0 left-0 bottom-0 w-1 bg-gray-900"></div>
           <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">
-            Gross POS Sales
+            Sales (incl. GST)
           </span>
           <span className="text-2xl font-black text-gray-900 mt-2 block">
             {formatINR(data.kpis.totalSales)}
           </span>
           <div className="mt-3 flex items-center justify-between text-xs border-t border-gray-100 pt-2.5">
-            <span className="text-gray-500">Refunds deducted:</span>
+            <span className="text-gray-500">Refunds:</span>
             <span className="font-semibold text-red-600">-{formatINR(data.kpis.totalRefunds)}</span>
+          </div>
+          <div className="mt-1 flex items-center justify-between text-xs">
+            <span className="text-gray-500">Net sales:</span>
+            <span className="font-semibold text-gray-900">{formatINR(data.kpis.netSales)}</span>
           </div>
         </div>
 
@@ -183,14 +202,16 @@ const ReportsView = () => {
         <div className="bg-white border border-gray-200 rounded-lg p-5 shadow-sm relative overflow-hidden group hover:border-gray-400 transition-all duration-200">
           <div className="absolute top-0 left-0 bottom-0 w-1 bg-blue-500"></div>
           <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">
-            Net Revenue
+            Revenue (excl. GST)
           </span>
           <span className="text-2xl font-black text-blue-900 mt-2 block">
             {formatINR(data.kpis.netRevenue)}
           </span>
           <div className="mt-3 flex items-center justify-between text-xs border-t border-gray-100 pt-2.5">
-            <span className="text-gray-500">Capital margins:</span>
-            <span className="font-semibold text-blue-600">Live POS Tracker</span>
+            <span className="text-gray-500">GST collected (not income):</span>
+            <span className="font-semibold text-blue-600">
+              {formatINR(data.taxSummary?.outputGst)}
+            </span>
           </div>
         </div>
 
@@ -213,7 +234,7 @@ const ReportsView = () => {
         <div className="bg-white border border-gray-200 rounded-lg p-5 shadow-sm relative overflow-hidden group hover:border-gray-400 transition-all duration-200">
           <div className="absolute top-0 left-0 bottom-0 w-1 bg-emerald-600"></div>
           <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">
-            Net Profit (Margin)
+            Gross Profit (Margin)
           </span>
           <div className="flex items-baseline gap-2 mt-2">
             <span className="text-2xl font-black text-emerald-700">
@@ -224,7 +245,8 @@ const ReportsView = () => {
             </span>
           </div>
           <div className="mt-3 flex items-center justify-between text-xs border-t border-gray-100 pt-2.5">
-            <span className="text-gray-500">Adjusted Cost of Goods Sold</span>
+            <span className="text-gray-500">Cost of medicines sold:</span>
+            <span className="font-semibold text-gray-700">{formatINR(data.kpis.cogs)}</span>
           </div>
         </div>
       </div>

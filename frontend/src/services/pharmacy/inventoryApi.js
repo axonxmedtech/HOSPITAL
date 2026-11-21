@@ -47,6 +47,11 @@ const inventoryApi = {
     const response = await apiClient.post(`/pharmacy/inventory/batches/${id}/block`);
     return response.data;
   },
+  /** Puts a blocked batch back on sale; the reason goes to the audit log. */
+  unblockBatch: async (id, reason) => {
+    const response = await apiClient.post(`/pharmacy/inventory/batches/${id}/unblock`, { reason });
+    return response.data;
+  },
   disposeBatch: async (id, remarks) => {
     const response = await apiClient.post(`/pharmacy/inventory/batches/${id}/dispose`, { remarks });
     return response.data;
