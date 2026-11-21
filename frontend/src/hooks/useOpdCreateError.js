@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useConfirm } from '../context/ConfirmContext';
 import { useToast } from '../context/ToastContext';
-import { extractApiError } from '../utils/apiError';
+import { apiErrorStatus, extractApiDetails, extractApiError } from '../utils/apiError';
 
 /**
  * Explains why an OPD visit could not be opened, using the server's own reason (never a bare
@@ -16,10 +16,9 @@ export default function useOpdCreateError() {
 
   return useCallback(
     async (err, fallback = 'Could not create the OPD case') => {
-      const data = err?.response?.data;
-      const where = data?.details;
+      const where = extractApiDetails(err);
       const message = extractApiError(err, fallback);
-      if (err?.response?.status === 409 && where?.encounter === 'IPD' && where.ipdAdmissionId) {
+      if (apiErrorStatus(err) === 409 && where?.encounter === 'IPD' && where.ipdAdmissionId) {
         const open = await confirm({
           title: 'Patient is admitted in IPD',
           message,
