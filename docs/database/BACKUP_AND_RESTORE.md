@@ -4,20 +4,21 @@ Backups exist so patient data survives a bad migration, a bad deploy, or a failu
 **not real until a restore has been proven** — so this doc covers both, plus the drills that keep
 them trustworthy.
 
-> **PHI stays on the server.** Dumps contain patient data. They are written and retained **on the
-> VPS** and are **never** downloaded to a CI runner or uploaded as a GitHub artifact. Only metadata
+> **PHI never passes through CI.** Dumps contain patient data. They are written **on the VPS**,
+> and the VPS itself sends an **encrypted** copy off-site ([OFFSITE_BACKUPS.md](OFFSITE_BACKUPS.md)).
+> They are **never** downloaded to a CI runner or uploaded as a GitHub artifact. Only metadata
 > (filename, size, checksum, verify result) is surfaced.
 
 ---
 
 ## Backup strategy
 
-| Trigger                   | How                                                             | Notes                                              |
-| ------------------------- | --------------------------------------------------------------- | -------------------------------------------------- |
-| **Scheduled**             | `.github/workflows/db-backup.yml` (weekly cron — Sun 00:00 IST) | full logical backup                                |
-| **Pre-production-deploy** | `_deploy.yml` step (production)                                 | **before** any schema change; **gates** the deploy |
-| **Manual**                | `db-backup.yml` → _Run workflow_ (choose env)                   | ad-hoc, e.g. before risky ops                      |
-| **On the box**            | `scripts/db/backup.sh`                                          | what all of the above call                         |
+| Trigger                   | How                                                        | Notes                                                                         |
+| ------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| **Scheduled**             | `.github/workflows/db-backup.yml` (daily cron — 00:00 IST) | full logical backup + **required** off-site copy                              |
+| **Pre-production-deploy** | `_deploy.yml` step (production)                            | **before** any schema change; **gates** the deploy; off-site copy best-effort |
+| **Manual**                | `db-backup.yml` → _Run workflow_ (choose env)              | ad-hoc, e.g. before risky ops                                                 |
+| **On the box**            | `scripts/db/backup.sh`                                     | what all of the above call                                                    |
 
 `scripts/db/backup.sh` produces a **consistent** (`--single-transaction`, no locks), gzipped,
 **timestamped** dump: `‹db›-‹env›-‹UTC-timestamp›.sql.gz` in `BACKUP_DIR` (default
@@ -43,7 +44,9 @@ them trustworthy.
         │  gzip -t · size · footer · sha256
         ▼
    verified ✔  → retention prune (keep RETENTION_DAYS, never below KEEP_MIN newest)
-   metadata (no PHI) → GitHub step summary / log artifact
+        │  offsite-copy.sh: age-encrypt (public key) → S3 daily/ (+ monthly/ once a month)
+        ▼
+   off-site copy verified ✔ (size)   metadata (no PHI) → GitHub step summary / log artifact
 ```
 
 ### Retention policy
@@ -51,9 +54,8 @@ them trustworthy.
 - Keep backups for **`RETENTION_DAYS`** (default **30**, via `DB_BACKUP_RETENTION_DAYS`).
 - **Never** prune below **`KEEP_MIN`** newest (default **7**) regardless of age.
 - The newest backup is never deleted. Pre-deploy backups are kept alongside scheduled ones.
-- Healthcare retention/compliance may require longer archival — copy periodic dumps to secure
-  offsite/object storage out-of-band (documented as an operational step; not automated here to avoid
-  moving PHI through CI).
+- Off-site copies are kept longer by the bucket's lifecycle rules: daily copies 35 days, monthly
+  copies 400 days. See [OFFSITE_BACKUPS.md](OFFSITE_BACKUPS.md).
 
 ---
 
@@ -125,8 +127,10 @@ forward-fix (a new `V(n+1)` migration) rather than a DB restore.
 - Ensure the deploy user can write `BACKUP_DIR` (`/var/backups/hms`) and run `mysqldump`/`mysql`
   with the app's DB credentials (they come from the VPS `.env`).
 - Set `DB_BACKUP_RETENTION_DAYS` (variable) if 30 days isn't right for your compliance needs.
-- Schedule the restore **drill** and periodic **offsite** copy of dumps.
-- Confirm the weekly backup cron window in `db-backup.yml` matches your low-traffic hours.
+- Set up the off-site bucket, keys and `/etc/hms/offsite.env` once: [OFFSITE_BACKUPS.md](OFFSITE_BACKUPS.md).
+  Until then the nightly job fails on purpose.
+- Schedule the restore **drill** (every 3 months, from an off-site monthly copy).
+- Confirm the daily backup cron window in `db-backup.yml` matches your low-traffic hours.
 - **Required:** set a repository-level variable `PRODUCTION_SSH_HOST` (and `STAGING_SSH_HOST`).
   The scheduled backup job runs without an `environment:` scope on purpose — an environment with
   required reviewers would stall every unattended backup waiting for approval — so it cannot read
@@ -134,5 +138,5 @@ forward-fix (a new `V(n+1)` migration) rather than a DB restore.
 
 ## Future (out of scope for this phase)
 
-Point-in-time recovery via binlog, cross-region backup replication, and automated offsite archival
-— these need infrastructure/DR work explicitly excluded here.
+Point-in-time recovery via binlog (would shrink the worst-case loss below one day) — needs
+infrastructure work beyond this phase.

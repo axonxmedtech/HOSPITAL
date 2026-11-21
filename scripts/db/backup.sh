@@ -10,6 +10,10 @@
 #   BACKUP_DIR      (default /var/backups/hms)
 #   ENV_LABEL       (default production) — used in the filename
 #   RETENTION_DAYS  (default 30)   KEEP_MIN (default 7 — never prune below this many)
+#   OFFSITE         auto (default) | required | skip — encrypted copy off the VPS via
+#                   offsite-copy.sh (config: OFFSITE_CONFIG, default /etc/hms/offsite.env).
+#                   auto: copy when configured, a failed copy is a warning (pre-deploy use).
+#                   required: no config or a failed copy fails the run (the scheduled backup).
 # Exit: 0 on a verified backup; non-zero on any failure (caller should stop the deploy).
 set -euo pipefail
 
@@ -110,5 +114,31 @@ if [ "${#all[@]}" -gt "$KEEP_MIN" ]; then
     $keep || { echo "[retention] pruning $(basename "$old")"; rm -f "$old" "$old.meta.json"; }
   done
 fi
+
+# ── Off-site copy (encrypted, different provider) ──────────────────────────
+# The local dump above is kept whatever happens here.
+OFFSITE="${OFFSITE:-auto}"
+OFFSITE_CONFIG="${OFFSITE_CONFIG:-/etc/hms/offsite.env}"
+export OFFSITE_CONFIG ENV_LABEL
+case "$OFFSITE" in
+  skip) echo "[offsite] skipped (OFFSITE=skip)" ;;
+  auto | required)
+    if [ ! -f "$OFFSITE_CONFIG" ]; then
+      if [ "$OFFSITE" = required ]; then
+        echo "ERROR: off-site copy required but $OFFSITE_CONFIG does not exist (local backup kept: $OUT)" >&2
+        echo "  Set it up: docs/database/OFFSITE_BACKUPS.md" >&2
+        exit 6
+      fi
+      echo "WARNING: no off-site copy — $OFFSITE_CONFIG not configured. This backup exists ONLY on this server." >&2
+    elif ! bash "$(dirname "$0")/offsite-copy.sh" "$OUT"; then
+      if [ "$OFFSITE" = required ]; then
+        echo "ERROR: off-site copy failed (local backup kept: $OUT)" >&2
+        exit 7
+      fi
+      echo "WARNING: off-site copy failed — this backup exists ONLY on this server." >&2
+    fi
+    ;;
+  *) echo "ERROR: OFFSITE must be auto, required or skip (got '$OFFSITE')" >&2; exit 8 ;;
+esac
 
 echo "$OUT"
