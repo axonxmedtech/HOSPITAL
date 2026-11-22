@@ -360,7 +360,11 @@ class IcuStayLifecycleTest {
         // test ends up measuring. Billing behaviour is IPD's, and unchanged by ICU-3.
         Long freeIcuWard = ward("ICU-Free", CareUnitRegistry.ICU, BigDecimal.ZERO);
         IpdAdmission a = admitTo(freeIcuWard, "ELECTIVE");
-        ipdService.planDischarge(a.getId(), new com.hms.dto.PlanDischargeRequest());
+        com.hms.dto.PlanDischargeRequest plan = new com.hms.dto.PlanDischargeRequest();
+        plan.setFinalDiagnosis("Recovered");
+        plan.setTreatmentGiven("Treated");
+        plan.setConditionAtDischarge("IMPROVED");
+        ipdService.planDischarge(a.getId(), plan);
         ipdService.confirmDischarge(a.getId());
 
         assertThat(activeOf(a.getId())).isNull();

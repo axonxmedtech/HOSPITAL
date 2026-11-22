@@ -61,6 +61,17 @@ class IpdAdmissionServiceTest {
     @Mock HospitalWebSocketHandler webSocketHandler;
     @Mock com.hms.service.hospital.PatientAssignmentService patientAssignmentService;
     @Mock com.hms.service.hospital.BedStatusService bedStatusService;
+    @Mock com.hms.service.hospital.IpdBillingSettingsService ipdBillingSettingsService;
+    @Mock com.hms.service.hospital.IpdPackageService ipdPackageService;
+    @Mock com.hms.service.hospital.IpdInsuranceService ipdInsuranceService;
+    @Mock com.hms.service.hospital.BedReservationService bedReservationService;
+
+    @org.junit.jupiter.api.BeforeEach
+    void defaultIpdBillingRules() {
+        // No rules saved: calendar-day beds, no minimum advance, no visit fee.
+        lenient().when(ipdBillingSettingsService.forHospital(any())).thenReturn(new com.hms.entity.IpdBillingSetting());
+        lenient().when(ipdPackageService.find(any(), any())).thenReturn(Optional.empty());
+    }
 
     @InjectMocks
     IpdAdmissionService service;
@@ -76,7 +87,7 @@ class IpdAdmissionServiceTest {
         when(opdRepository.findByIdAndHospitalIdWithPatientAndDoctorForUpdate(1L, 1L)).thenReturn(Optional.of(opd));
         when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
         when(patientRepository.findByIdAndHospitalIdForUpdate(5L, 1L)).thenReturn(Optional.of(patient));
-        when(hospitalRepository.findGlobalIpdNumberLock()).thenReturn(Optional.of(new com.hms.entity.Hospital()));
+        when(hospitalRepository.lockById(any())).thenReturn(Optional.of(new com.hms.entity.Hospital()));
 
         Bed bed = new Bed();
         bed.setBedId(2L);
@@ -110,7 +121,7 @@ class IpdAdmissionServiceTest {
         bed.setStatus("available");
 
         when(bedRepository.findByBedIdAndHospitalIdForUpdate(2L, 1L)).thenReturn(Optional.of(bed));
-        when(ipdAdmissionRepository.findMaxIpdSequence()).thenReturn(0L);
+        when(ipdAdmissionRepository.findMaxIpdSequence(any())).thenReturn(0L);
 
         Bed occupiedBed = new Bed();
         occupiedBed.setBedId(2L);
@@ -127,8 +138,8 @@ class IpdAdmissionServiceTest {
         com.hms.entity.Hospital hospital = new com.hms.entity.Hospital();
         hospital.setId(1L);
         hospital.setModules(java.util.List.of("BILLING", "NURSING"));
-        when(hospitalRepository.findById(1L)).thenReturn(Optional.of(hospital));
-        when(hospitalRepository.findGlobalIpdNumberLock()).thenReturn(Optional.of(hospital));
+        // The admission reads the hospital's modules from the row it locks for numbering.
+        when(hospitalRepository.lockById(any())).thenReturn(Optional.of(hospital));
         when(ipdAdmissionRepository.save(any(IpdAdmission.class))).thenReturn(savedIpd);
         when(billingRepository.save(any(Billing.class))).thenAnswer(i -> i.getArguments()[0]);
         when(ipdBedHistoryRepository.save(any(com.hms.entity.IpdBedHistory.class))).thenAnswer(i -> i.getArguments()[0]);

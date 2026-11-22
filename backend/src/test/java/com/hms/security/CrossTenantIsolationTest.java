@@ -314,7 +314,7 @@ class CrossTenantIsolationTest {
         assertRefused(HttpMethod.POST, "/hospital/billing/" + aBillId + "/pay", "{\"amount\":1,\"mode\":\"CASH\"}");
         // Empty list keeps @Valid happy so the request reaches the service's tenant check
         // (a non-empty item would 400 on body validation before the check is exercised).
-        assertRefused(HttpMethod.POST, "/hospital/ipd/" + aIpdId + "/administer", "{\"administeredItems\":[]}");
+        assertRefused(HttpMethod.POST, "/hospital/ipd/" + aIpdId + "/cancel", "{\"reason\":\"x\"}");
         assertRefused(HttpMethod.POST, "/hospital/ipd/" + aIpdId + "/confirm-discharge", "{}");
         assertRefused(HttpMethod.POST, "/hospital/beds/" + aBedId + "/maintenance", "{}");
         assertRefused(HttpMethod.POST, "/hospital/beds/" + aBedId + "/available", "{}");

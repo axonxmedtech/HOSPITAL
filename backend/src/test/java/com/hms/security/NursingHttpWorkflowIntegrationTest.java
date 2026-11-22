@@ -182,7 +182,7 @@ class NursingHttpWorkflowIntegrationTest {
                 .isEqualTo(nurseB.getUserId());
 
         assertThat(call(HttpMethod.POST, "/hospital/ipd/" + admissionA.getId() + "/plan-discharge", adminToken,
-                "{\"dischargeNotes\":\"release gate\"}").getStatusCode()).isEqualTo(HttpStatus.OK);
+                "{\"dischargeNotes\":\"release gate\",\"finalDiagnosis\":\"Recovered\",\"treatmentGiven\":\"Treated\",\"conditionAtDischarge\":\"IMPROVED\"}").getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(call(HttpMethod.POST, "/hospital/ipd/" + admissionA.getId() + "/confirm-discharge", adminToken, null).getStatusCode())
                 .isEqualTo(HttpStatus.OK);
         assertThat(admissions.findById(admissionA.getId()).orElseThrow().getStatus()).isEqualTo("DISCHARGED");

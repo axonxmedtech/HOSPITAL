@@ -221,7 +221,7 @@ class BillingLifecycleIntegrationTest {
 
         // --- Discharge. Plan, then confirm; confirming closes the bill.
         assertThat(post("/hospital/ipd/" + ipdId + "/plan-discharge",
-                "{\"finalDiagnosis\":\"resolved\",\"treatmentGiven\":\"observed\"}")
+                "{\"finalDiagnosis\":\"resolved\",\"treatmentGiven\":\"observed\",\"conditionAtDischarge\":\"STABLE\"}")
                 .getStatusCode().value()).isEqualTo(200);
         assertThat(post("/hospital/ipd/" + ipdId + "/confirm-discharge", "{}")
                 .getStatusCode().value()).isEqualTo(200);
@@ -268,7 +268,7 @@ class BillingLifecycleIntegrationTest {
                 "{\"amount\":500.00,\"mode\":\"CASH\"}").getStatusCode().value()).isEqualTo(200);
 
         assertThat(post("/hospital/ipd/" + ipdId + "/plan-discharge",
-                "{\"finalDiagnosis\":\"resolved\"}").getStatusCode().value()).isEqualTo(200);
+                "{\"finalDiagnosis\":\"resolved\",\"treatmentGiven\":\"observed\",\"conditionAtDischarge\":\"STABLE\"}").getStatusCode().value()).isEqualTo(200);
 
         ResponseEntity<String> refused = post("/hospital/ipd/" + ipdId + "/confirm-discharge", "{}");
         assertThat(refused.getStatusCode().value()).isEqualTo(400);

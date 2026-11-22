@@ -29,7 +29,7 @@ class IpdModuleGateTest {
 
     /** The nine mutations S-SEC-3A identified, named so a rename cannot silently drop one. */
     private static final List<String> MUTATIONS = List.of(
-            "admitToIpd", "addFollowup", "planDischarge", "confirmDischarge", "administerItems",
+            "admitToIpd", "addFollowup", "planDischarge", "confirmDischarge", "cancelAdmission",
             "administerHospitalItems", "addPrescription", "stopPrescription", "changeBed");
 
     private static final List<String> WITH_IPD = List.of("OPD", "IPD", "BILLING");
