@@ -21,6 +21,10 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  */
 @Testcontainers(disabledWithoutDocker = true) // skips (not fails) where Docker is absent
 @SpringBootTest
+// Each subclass gets its own container, stopped after the class. Without this, Spring's context
+// cache hands the NEXT subclass (same configuration, same cache key) a context whose pool points at
+// the previous, already-stopped container: "Communications link failure ... Connection refused".
+@org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_CLASS)
 public abstract class AbstractMySqlIT {
 
     @Container
