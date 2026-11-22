@@ -32,6 +32,10 @@ public class DatabaseMigrationRunner {
     private static final String BILLING_TABLE = "billing";
     private static final String NOTE_PRESETS_TABLE = "consultation_note_presets";
     private static final String HOSPITALS_TABLE = "hospitals";
+    private static final String PURCHASE_INVOICES_TABLE = "purchase_invoices";
+    private static final String CANCEL_REASON = "cancel_reason";
+    private static final String CANCELLED_BY = "cancelled_by";
+    private static final String CANCELLED_AT = "cancelled_at";
     private static final String PRESCRIPTIONS_TABLE = "prescriptions";
     private static final String MAR_TABLE = "medication_administrations";
     private static final String HOSPITAL_SETTINGS_TABLE = "hospital_settings";
@@ -189,6 +193,7 @@ public class DatabaseMigrationRunner {
         ensureHelpProgressTable();
         ensureHelpFeedbackTable();
         ensureHospitalSidebarSettingsTable(); // V36
+        ensurePharmacyLegalInvoice(); // V38
         ensureNurseAttendanceTable(); // NEW — Nursing Mgmt Phase D
         ensureNurseWardAssignmentsTable(); // NEW — Nursing Mgmt Phase F
         ensureNurseSubstitutionsTable(); // NEW — Nursing Mgmt Phase F
@@ -205,9 +210,9 @@ public class DatabaseMigrationRunner {
         addColumnIfMissing(BILLING_TABLE, "discount_amount", "DECIMAL(10,2) NULL");
         addColumnIfMissing(BILLING_TABLE, "discount_reason", VARCHAR_255_NULL);
         addColumnIfMissing(BILLING_TABLE, "discounted_by", VARCHAR_150_NULL);
-        addColumnIfMissing(BILLING_TABLE, "cancel_reason", VARCHAR_255_NULL);
-        addColumnIfMissing(BILLING_TABLE, "cancelled_by", VARCHAR_150_NULL);
-        addColumnIfMissing(BILLING_TABLE, "cancelled_at", DATETIME_6_NULL);
+        addColumnIfMissing(BILLING_TABLE, CANCEL_REASON, VARCHAR_255_NULL);
+        addColumnIfMissing(BILLING_TABLE, CANCELLED_BY, VARCHAR_150_NULL);
+        addColumnIfMissing(BILLING_TABLE, CANCELLED_AT, DATETIME_6_NULL);
         addColumnIfMissing(BILLING_PAYMENTS_TABLE, "kind", "VARCHAR(10) NULL DEFAULT 'PAYMENT'");
         addColumnIfMissing(BILLING_PAYMENTS_TABLE, "recorded_by", VARCHAR_150_NULL);
         addColumnIfMissing(BILLING_PAYMENTS_TABLE, "note", VARCHAR_255_NULL);
@@ -216,9 +221,9 @@ public class DatabaseMigrationRunner {
         addColumnIfMissing("ipd_admission", "discharge_note", VARCHAR_500_NULL);
         // OPD visit cancellation (V30).
         addOpdCancelledStatus();
-        addColumnIfMissing("opd", "cancel_reason", VARCHAR_255_NULL);
-        addColumnIfMissing("opd", "cancelled_by", VARCHAR_150_NULL);
-        addColumnIfMissing("opd", "cancelled_at", "DATETIME NULL");
+        addColumnIfMissing("opd", CANCEL_REASON, VARCHAR_255_NULL);
+        addColumnIfMissing("opd", CANCELLED_BY, VARCHAR_150_NULL);
+        addColumnIfMissing("opd", CANCELLED_AT, "DATETIME NULL");
         // Demo accounts (V31). plan_limits / hospital_limit_overrides are created by Hibernate here.
         addColumnIfMissing(HOSPITALS_TABLE, "is_demo", "BIT(1) NOT NULL DEFAULT b'0'");
         addColumnIfMissing(HOSPITALS_TABLE, "demo_started_at", DATETIME_6_NULL);
@@ -607,6 +612,49 @@ public class DatabaseMigrationRunner {
                 "data TEXT NOT NULL, updated_at DATETIME(6) NULL, PRIMARY KEY (id)," +
                 "UNIQUE KEY UK_help_progress_scope (scope_key), KEY idx_help_progress_hospital (hospital_id))");
         } catch (Exception e) { log.warn("DB migration skipped (help_progress): {}", e.getMessage()); }
+    }
+
+    /**
+     * Pharmacy invoices that meet GST and drug-licence rules (V38): GSTIN and drug licence on the
+     * facility, HSN per medicine, a consecutive invoice series per facility per financial year, and
+     * invoice numbers unique per facility instead of globally. Mirrors schema-full.sql.
+     */
+    private void ensurePharmacyLegalInvoice() {
+        addColumnIfMissing(HOSPITALS_TABLE, "gstin", "VARCHAR(15) NULL");
+        addColumnIfMissing(HOSPITALS_TABLE, "drug_license_number", "VARCHAR(120) NULL");
+        addColumnIfMissing("medicine_master", "hsn_code", "VARCHAR(10) NULL");
+        addColumnIfMissing(PURCHASE_INVOICES_TABLE, "paid_amount", "DECIMAL(12,2) NULL DEFAULT 0");
+        addColumnIfMissing(PURCHASE_INVOICES_TABLE, CANCEL_REASON, VARCHAR_255_NULL);
+        addColumnIfMissing(PURCHASE_INVOICES_TABLE, CANCELLED_AT, DATETIME_6_NULL);
+        addColumnIfMissing(PURCHASE_INVOICES_TABLE, CANCELLED_BY, BIGINT_NULL);
+        try {
+            jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS pharmacy_invoice_sequences (" +
+                "id BIGINT NOT NULL AUTO_INCREMENT, hospital_id BIGINT NOT NULL, series VARCHAR(20) NOT NULL," +
+                "last_number BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (id)," +
+                "UNIQUE KEY uk_pharmacy_invoice_series (hospital_id, series))");
+            jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS pharmacy_sale_returns (" +
+                "id BIGINT NOT NULL AUTO_INCREMENT, hospital_id BIGINT NOT NULL, branch_id BIGINT NULL," +
+                "sale_id BIGINT NOT NULL, sale_item_id BIGINT NOT NULL, medicine_batch_id BIGINT NOT NULL," +
+                "quantity DECIMAL(12,2) NOT NULL, refund_amount DECIMAL(12,2) NOT NULL, gst_amount DECIMAL(12,2) NOT NULL," +
+                "created_by BIGINT NULL, created_at DATETIME(6) NOT NULL, PRIMARY KEY (id)," +
+                "KEY idx_psr_hospital_date (hospital_id, created_at), KEY idx_psr_sale (sale_id))");
+            jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS purchase_payments ( id BIGINT NOT NULL AUTO_INCREMENT, hospital_id BIGINT NOT NULL, branch_id BIGINT NULL, purchase_invoice_id BIGINT NOT NULL, amount DECIMAL(12,2) NOT NULL, method VARCHAR(20) NOT NULL, reference VARCHAR(60) NULL, paid_on DATE NOT NULL, created_by BIGINT NULL, created_at DATETIME(6) NOT NULL, PRIMARY KEY (id), KEY idx_pp_invoice (purchase_invoice_id) )");
+            jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS supplier_return_notes ( id BIGINT NOT NULL AUTO_INCREMENT, hospital_id BIGINT NOT NULL, branch_id BIGINT NULL, note_number VARCHAR(20) NOT NULL, supplier_id BIGINT NOT NULL, total_claimed DECIMAL(12,2) NOT NULL, reason VARCHAR(255) NULL, created_by BIGINT NULL, created_at DATETIME(6) NOT NULL, PRIMARY KEY (id), UNIQUE KEY uk_supplier_return_note_number (hospital_id, note_number) )");
+            jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS supplier_return_note_items ( id BIGINT NOT NULL AUTO_INCREMENT, note_id BIGINT NOT NULL, medicine_batch_id BIGINT NOT NULL, batch_number VARCHAR(60) NULL, medicine_name VARCHAR(200) NULL, quantity DECIMAL(12,2) NOT NULL, rate DECIMAL(12,2) NOT NULL, amount DECIMAL(12,2) NOT NULL, PRIMARY KEY (id), KEY idx_srni_note (note_id) )");
+            java.util.List<String> globalUnique = jdbcTemplate.queryForList(
+                "SELECT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() " +
+                "AND TABLE_NAME = 'pharmacy_sales' AND NON_UNIQUE = 0 AND INDEX_NAME <> 'PRIMARY' " +
+                "GROUP BY INDEX_NAME HAVING GROUP_CONCAT(COLUMN_NAME) = 'invoice_number'", String.class);
+            for (String idx : globalUnique) {
+                jdbcTemplate.execute("ALTER TABLE pharmacy_sales DROP INDEX `" + idx.replace("`", "") + "`");
+            }
+            Integer perFacility = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() " +
+                "AND TABLE_NAME = 'pharmacy_sales' AND INDEX_NAME = 'uk_pharmacy_sales_hospital_invoice'", Integer.class);
+            if (perFacility == null || perFacility == 0) {
+                jdbcTemplate.execute("ALTER TABLE pharmacy_sales ADD UNIQUE KEY uk_pharmacy_sales_hospital_invoice (hospital_id, invoice_number)");
+            }
+        } catch (Exception e) { log.warn("DB migration skipped (pharmacy legal invoice): {}", e.getMessage()); }
     }
 
     /** In-app help feedback (V34). Idempotent; mirrors setup/schema-full.sql. */
@@ -1408,7 +1456,7 @@ public class DatabaseMigrationRunner {
     private void ensurePharmacyDataBranchColumns() {
         String[] tables = {
             "medicine_master", "medicine_batches", "suppliers",
-            "purchase_invoices", "inventory_transactions", "pharmacy_sales"
+            PURCHASE_INVOICES_TABLE, "inventory_transactions", "pharmacy_sales"
         };
         for (String table : tables) {
             try {

@@ -23,6 +23,8 @@ import java.util.List;
 @Service
 public class MedicineMasterService {
 
+    private static final String MEDICINE_NOT_FOUND = "Medicine not found";
+
     private static final Logger logger = LoggerFactory.getLogger(MedicineMasterService.class);
 
     @Autowired
@@ -36,6 +38,9 @@ public class MedicineMasterService {
 
     @Autowired
     private HospitalWebSocketHandler webSocketHandler;
+
+    @Autowired
+    private PharmacyAuditTrail auditTrail;
 
     @Transactional
     public MedicineMaster create(MedicineMasterRequest req) {
@@ -68,7 +73,7 @@ public class MedicineMasterService {
 
     public MedicineMaster getById(Long id) {
         return repository.findByIdAndHospitalId(id, securityHelper.getCurrentHospitalId())
-                .orElseThrow(() -> new ResourceNotFoundException("Medicine not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(MEDICINE_NOT_FOUND));
     }
 
     public Page<MedicineMaster> searchAndList(String query, Pageable pageable) {
@@ -115,9 +120,30 @@ public class MedicineMasterService {
     @Transactional
     public MedicineMaster toggleStatus(Long id, Boolean isActive) {
         MedicineMaster m = repository.findByIdAndHospitalId(id, securityHelper.getCurrentHospitalId())
-                .orElseThrow(() -> new ResourceNotFoundException("Medicine not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(MEDICINE_NOT_FOUND));
         m.setIsActive(isActive);
         return repository.save(m);
     }
 
+
+    /**
+     * The low-stock level of one medicine: an alert shows once sellable stock (not expired, not
+     * blocked) falls below it. Zero switches the alert off. Medicines bought through a purchase
+     * start at zero, so without this nothing could ever be "low".
+     */
+    @org.springframework.transaction.annotation.Transactional
+    public MedicineMaster updateStockLevels(Long id, Integer minStockLevel) {
+        if (minStockLevel == null || minStockLevel < 0 || minStockLevel > 1_000_000) {
+            throw new IllegalArgumentException("Low-stock level must be a whole number from 0 to 1,000,000");
+        }
+        MedicineMaster m = repository.findByIdAndHospitalId(id, securityHelper.getCurrentHospitalId())
+                .orElseThrow(() -> new com.hms.exception.ResourceNotFoundException(MEDICINE_NOT_FOUND));
+        Integer before = m.getMinStockLevel();
+        m.setMinStockLevel(minStockLevel);
+        m.setReorderLevel(minStockLevel);
+        MedicineMaster saved = repository.save(m);
+        auditTrail.write("LOW_STOCK_LEVEL_SET", "MEDICINE_BATCH", m.getMedicineName(),
+                m.getMedicineName() + ": low-stock level " + (before == null ? 0 : before) + " → " + minStockLevel);
+        return saved;
+    }
 }

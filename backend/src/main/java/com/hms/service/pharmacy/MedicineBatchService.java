@@ -17,6 +17,11 @@ import java.time.LocalDate;
 @Service
 public class MedicineBatchService {
 
+    private static final String BATCH_NOT_FOUND = "Batch not found";
+    private static final String AUDIT_ENTITY = "MEDICINE_BATCH";
+    private static final String BATCH = "Batch ";
+    private static final String RETURN_NOTE = "Return note ";
+
     @Autowired private com.hms.service.RealtimeNotifier notifier;
 
     @Autowired
@@ -27,6 +32,18 @@ public class MedicineBatchService {
 
     @Autowired
     private SecurityContextHelper securityHelper;
+
+    @Autowired
+    private PharmacyAuditTrail auditTrail;
+
+    @Autowired
+    private com.hms.repository.pharmacy.SupplierRepository supplierRepository;
+
+    @Autowired
+    private com.hms.repository.pharmacy.SupplierReturnNoteRepository returnNoteRepository;
+
+    @Autowired
+    private PharmacyInvoiceNumberService numberService;
 
     public Page<MedicineBatch> getInventory(String query, Long categoryId, Pageable pageable) {
         Long hid = securityHelper.getCurrentHospitalId();
@@ -147,9 +164,33 @@ public class MedicineBatchService {
     public MedicineBatch blockBatch(Long id) {
         Long hid = securityHelper.getCurrentHospitalId();
         MedicineBatch batch = repository.findByIdAndHospitalIdForUpdate(id, hid, securityHelper.getCurrentBranchId())
-                .orElseThrow(() -> new ResourceNotFoundException("Batch not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(BATCH_NOT_FOUND));
         batch.setStatus("BLOCKED");
         MedicineBatch saved = repository.save(batch);
+        auditTrail.write("BATCH_BLOCKED", AUDIT_ENTITY, batch.getBatchNumber(),
+                BATCH + batch.getBatchNumber() + " blocked from sale (" + plain(batch.getCurrentQuantity()) + " in stock)");
+        notifier.refresh(hid);
+        return saved;
+    }
+
+    /** Puts a blocked batch back on sale, with the reason recorded in the audit log. */
+    @org.springframework.transaction.annotation.Transactional
+    public MedicineBatch unblockBatch(Long id, String reason) {
+        if (reason == null || reason.trim().length() < 3) {
+            throw new IllegalArgumentException("Give a reason for putting this batch back on sale");
+        }
+        Long hid = securityHelper.getCurrentHospitalId();
+        MedicineBatch batch = repository.findByIdAndHospitalIdForUpdate(id, hid, securityHelper.getCurrentBranchId())
+                .orElseThrow(() -> new ResourceNotFoundException(BATCH_NOT_FOUND));
+        if (!"BLOCKED".equalsIgnoreCase(batch.getStatus())) {
+            throw new IllegalArgumentException("Only a blocked batch can be unblocked (this one is "
+                    + (batch.getStatus() == null ? "active" : batch.getStatus().toLowerCase(java.util.Locale.ROOT)) + ")");
+        }
+        batch.setStatus("ACTIVE");
+        MedicineBatch saved = repository.save(batch);
+        auditTrail.write("BATCH_UNBLOCKED", AUDIT_ENTITY, batch.getBatchNumber(),
+                BATCH + batch.getBatchNumber() + " put back on sale (" + plain(batch.getCurrentQuantity()) + " in stock)",
+                reason.trim());
         notifier.refresh(hid);
         return saved;
     }
@@ -158,7 +199,7 @@ public class MedicineBatchService {
     public MedicineBatch disposeBatch(Long id, String remarks) {
         Long hid = securityHelper.getCurrentHospitalId();
         MedicineBatch batch = repository.findByIdAndHospitalIdForUpdate(id, hid, securityHelper.getCurrentBranchId())
-                .orElseThrow(() -> new ResourceNotFoundException("Batch not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(BATCH_NOT_FOUND));
         
         java.math.BigDecimal qtyBefore = batch.getCurrentQuantity();
         if (qtyBefore == null) qtyBefore = java.math.BigDecimal.ZERO;
@@ -183,71 +224,115 @@ public class MedicineBatchService {
 
         batch.setStatus("DISPOSED");
         MedicineBatch saved = repository.save(batch);
+        auditTrail.write("BATCH_DISPOSED", AUDIT_ENTITY, batch.getBatchNumber(),
+                BATCH + batch.getBatchNumber() + " disposed, " + plain(qtyBefore) + " units written off",
+                remarks != null ? remarks : "Disposed due to expiry");
         notifier.refresh(securityHelper.getCurrentHospitalId());
         return saved;
     }
 
+    /**
+     * Sends medicine back to a supplier and issues a numbered return note (SR/26-27/00001) listing
+     * what went back and the amount claimed. The supplier must be one of this pharmacy's; the
+     * claim rate may be lower than the purchase rate (e.g. near-expiry) but never higher.
+     */
     @org.springframework.transaction.annotation.Transactional
     public java.util.Map<String, Object> processSupplierReturn(Long supplierId, java.util.List<java.util.Map<String, Object>> items) {
         Long hid = securityHelper.getCurrentHospitalId();
+        Long branchId = securityHelper.getCurrentBranchId();
         Long userId = securityHelper.getCurrentUserId();
-        
+        if (supplierId == null) {
+            throw new IllegalArgumentException("Choose the supplier the medicine goes back to");
+        }
+        com.hms.entity.pharmacy.Supplier supplier = supplierRepository.findByIdScoped(supplierId, hid, branchId)
+                .orElseThrow(() -> new IllegalArgumentException("Supplier not found in this pharmacy"));
+        if (items == null || items.isEmpty()) {
+            throw new IllegalArgumentException("Add at least one batch to return");
+        }
+
+        com.hms.entity.pharmacy.SupplierReturnNote note = new com.hms.entity.pharmacy.SupplierReturnNote();
+        note.setHospitalId(hid);
+        note.setBranchId(branchId);
+        note.setSupplierId(supplier.getId());
+        note.setCreatedBy(userId);
+        note.setNoteNumber(numberService.nextReturnNote(hid, branchId));
         java.math.BigDecimal totalClaimed = java.math.BigDecimal.ZERO;
-        
+
         for (java.util.Map<String, Object> item : items) {
             Long batchId = Long.valueOf(item.get("medicineBatchId").toString());
             java.math.BigDecimal qtyToReturn = new java.math.BigDecimal(item.get("quantityToReturn").toString());
-            
             if (qtyToReturn.compareTo(java.math.BigDecimal.ZERO) <= 0) {
                 throw new IllegalArgumentException("Return quantity must be positive");
             }
-            
-            MedicineBatch batch = repository.findByIdAndHospitalIdForUpdate(batchId, hid, securityHelper.getCurrentBranchId())
+            MedicineBatch batch = repository.findByIdAndHospitalIdForUpdate(batchId, hid, branchId)
                     .orElseThrow(() -> new ResourceNotFoundException("Batch not found or unauthorized"));
-            
             if (batch.getCurrentQuantity().compareTo(qtyToReturn) < 0) {
                 throw new IllegalArgumentException("Insufficient stock in batch " + batch.getBatchNumber() + " to return. Available: " + batch.getCurrentQuantity());
             }
-            
+            java.math.BigDecimal rate = claimRate(item.get("returnRate"), batch);
+            java.math.BigDecimal amount = qtyToReturn.multiply(rate).setScale(2, java.math.RoundingMode.HALF_UP);
+            totalClaimed = totalClaimed.add(amount);
+
             java.math.BigDecimal qtyBefore = batch.getCurrentQuantity();
             batch.setCurrentQuantity(qtyBefore.subtract(qtyToReturn));
             repository.save(batch);
-            
-            // Calculate claim total
-            // An explicit returnRate (e.g. expired stock taken back at a lower rate)
-            // overrides the batch purchase rate when provided.
-            Object returnRateObj = item.get("returnRate");
-            java.math.BigDecimal rate;
-            if (returnRateObj != null && !returnRateObj.toString().trim().isEmpty()) {
-                rate = new java.math.BigDecimal(returnRateObj.toString());
-                if (rate.compareTo(java.math.BigDecimal.ZERO) < 0) {
-                    throw new IllegalArgumentException("Return rate cannot be negative");
-                }
-            } else {
-                rate = batch.getPurchaseRate() != null ? batch.getPurchaseRate() : java.math.BigDecimal.ZERO;
-            }
-            totalClaimed = totalClaimed.add(qtyToReturn.multiply(rate));
-            
-            // Record Return Transaction
+
+            com.hms.entity.pharmacy.SupplierReturnNoteItem line = new com.hms.entity.pharmacy.SupplierReturnNoteItem();
+            line.setMedicineBatchId(batch.getId());
+            line.setBatchNumber(batch.getBatchNumber());
+            line.setMedicineName(batch.getMedicine() != null ? batch.getMedicine().getMedicineName() : null);
+            line.setQuantity(qtyToReturn);
+            line.setRate(rate);
+            line.setAmount(amount);
+            note.getItems().add(line);
+
             InventoryTransaction tx = new InventoryTransaction();
             tx.setHospitalId(hid);
-            tx.setBranchId(securityHelper.getCurrentBranchId());
+            tx.setBranchId(branchId);
             tx.setMedicineBatchId(batch.getId());
             tx.setTransactionType("RETURN");
             tx.setQuantity(qtyToReturn.negate()); // Negative because stock leaves inventory
             tx.setQuantityBefore(qtyBefore);
             tx.setQuantityAfter(batch.getCurrentQuantity());
             tx.setReferenceType("SUPPLIER_RETURN");
-            tx.setRemarks("Returned to Supplier ID: " + supplierId + " @ rate " + rate);
+            tx.setRemarks(RETURN_NOTE + note.getNoteNumber() + " to " + supplier.getSupplierName() + " @ rate " + rate);
             tx.setCreatedBy(userId);
             transactionRepository.save(tx);
         }
-        
+        note.setTotalClaimed(totalClaimed);
+        com.hms.entity.pharmacy.SupplierReturnNote saved = returnNoteRepository.save(note);
+
+        auditTrail.write("SUPPLIER_RETURN", AUDIT_ENTITY, saved.getNoteNumber(),
+                RETURN_NOTE + saved.getNoteNumber() + " to " + supplier.getSupplierName() + ": " + items.size()
+                        + " line(s), claim ₹" + totalClaimed.toPlainString());
+        notifier.refresh(hid);
+
         java.util.Map<String, Object> res = new java.util.HashMap<>();
         res.put("status", "SUCCESS");
+        res.put("noteNumber", saved.getNoteNumber());
         res.put("totalClaimed", totalClaimed);
-        res.put("message", "Supplier return note dispatched successfully!");
+        res.put("message", RETURN_NOTE + saved.getNoteNumber() + " issued to " + supplier.getSupplierName());
         return res;
+    }
+
+    /** The batch's purchase rate, or a lower agreed rate; never more than was paid for it. */
+    private static java.math.BigDecimal claimRate(Object requested, MedicineBatch batch) {
+        java.math.BigDecimal purchaseRate = batch.getPurchaseRate() != null ? batch.getPurchaseRate() : java.math.BigDecimal.ZERO;
+        if (requested == null || requested.toString().trim().isEmpty()) {
+            return purchaseRate;
+        }
+        java.math.BigDecimal rate = new java.math.BigDecimal(requested.toString());
+        if (rate.signum() < 0) {
+            throw new IllegalArgumentException("Return rate cannot be negative");
+        }
+        if (rate.compareTo(purchaseRate) > 0) {
+            throw new IllegalArgumentException("Return rate cannot be more than the purchase rate (₹" + purchaseRate.toPlainString() + ")");
+        }
+        return rate;
+    }
+
+    private static String plain(java.math.BigDecimal v) {
+        return v == null ? "0" : v.stripTrailingZeros().toPlainString();
     }
 }
 

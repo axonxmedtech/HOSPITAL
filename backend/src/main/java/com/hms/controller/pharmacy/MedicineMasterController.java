@@ -86,4 +86,10 @@ public class MedicineMasterController {
         return ResponseEntity.ok().build();
     }
 
+    /** Body: { "minStockLevel": 20 }. Alerts show once sellable stock falls below it; 0 = no alert. */
+    @PatchMapping("/medicines/{id}/stock-levels")
+    @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> updateStockLevels(@PathVariable Long id, @RequestBody Map<String, Integer> payload) {
+        return ResponseEntity.ok(service.updateStockLevels(id, payload.get("minStockLevel")));
+    }
 }

@@ -51,6 +51,9 @@ class HospitalAuthControllerIT {
     @MockBean
     SecurityContextHelper securityHelper;
 
+    @MockBean
+    com.hms.service.hospital.PharmacyInvoiceDetailsService invoiceDetailsService;
+
     @Test
     void updateOperationsSettings_withNoPrincipal_returns401() throws Exception {
         // Controller guards against null principal (no active session) before calling service

@@ -81,6 +81,13 @@ public class InventoryController {
         return ResponseEntity.ok(service.blockBatch(id));
     }
 
+    /** Body: { "reason": "Recall withdrawn" }. Puts a blocked batch back on sale. */
+    @PostMapping("/batches/{id}/unblock")
+    @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> unblockBatch(@PathVariable Long id, @RequestBody(required = false) java.util.Map<String, String> payload) {
+        return ResponseEntity.ok(service.unblockBatch(id, payload == null ? null : payload.get("reason")));
+    }
+
     @PostMapping("/batches/{id}/dispose")
     @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> disposeBatch(@PathVariable Long id, @RequestBody(required = false) java.util.Map<String, String> payload) {
@@ -91,7 +98,8 @@ public class InventoryController {
     @PostMapping("/supplier-return")
     @PreAuthorize("hasAnyRole('PHARMACIST', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> processSupplierReturn(@RequestBody java.util.Map<String, Object> payload) {
-        Long supplierId = Long.valueOf(payload.get("supplierId").toString());
+        Object supplier = payload.get("supplierId");
+        Long supplierId = supplier == null || supplier.toString().isBlank() ? null : Long.valueOf(supplier.toString());
         java.util.List<java.util.Map<String, Object>> items = (java.util.List<java.util.Map<String, Object>>) payload.get("items");
         return ResponseEntity.ok(service.processSupplierReturn(supplierId, items));
     }

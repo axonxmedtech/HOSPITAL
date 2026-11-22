@@ -1,6 +1,7 @@
 package com.hms.service.pdf;
 
 import com.hms.entity.*;
+import com.hms.entity.pharmacy.MedicineBatch;
 import com.hms.entity.pharmacy.PharmacySale;
 import com.hms.entity.pharmacy.PharmacySaleItem;
 import com.lowagie.text.*;
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Service;
 
 import java.awt.*;
 import java.io.ByteArrayInputStream;
+import java.math.BigDecimal;
 import java.io.ByteArrayOutputStream;
 import java.time.format.DateTimeFormatter;
 
@@ -444,134 +446,165 @@ public class BillingPdfService {
         return new ByteArrayInputStream(out.toByteArray());
     }
 
+    /**
+     * Pharmacy tax invoice. Carries what a pharmacy bill must show in India: the shop's name,
+     * address, GSTIN and drug licence number; a consecutive invoice number; per line the HSN code,
+     * batch, expiry, MRP, rate, discount and GST rate; the taxable value with CGST and SGST; and
+     * the amount in words. Prices include GST, so GST is shown as contained in the amount, not
+     * added on top. Bills saved before prices included GST print the way they were billed.
+     */
     public ByteArrayInputStream generatePharmacySaleReceiptPdf(Hospital hospital, Patient patient, PharmacySale sale) {
-        Document document = new Document(PageSize.A4, 36, 36, 48, 180);
+        Document document = new Document(PageSize.A4, 36, 36, 48, 120);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
+        Font small = FontFactory.getFont(FontFactory.HELVETICA, 8, Font.NORMAL, Color.BLACK);
+        Font smallBold = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8, Font.BOLD, Color.BLACK);
+        Font headWhite = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 7.5f, Font.BOLD, Color.WHITE);
 
         try {
             PdfWriter writer = PdfWriter.getInstance(document, out);
             helper.addPageBorder(writer);
             document.open();
 
-            // 1. Standard Header
-            helper.addStyledHeader(document, hospital, "PHARMACY INVOICE");
+            helper.addStyledHeader(document, hospital, "TAX INVOICE");
+            document.add(new Paragraph(pharmacyRegistrationLine(hospital), smallBold));
+            document.add(new Paragraph(" ", small));
 
-            // 2. Metadata Table
             PdfPTable metaTable = new PdfPTable(2);
             metaTable.setWidthPercentage(100);
-            metaTable.setSpacingBefore(10f);
-            metaTable.setSpacingAfter(15f);
-
+            metaTable.setSpacingAfter(10f);
             PdfPTable leftCol = new PdfPTable(2);
             leftCol.setWidths(new float[]{1.2f, 2f});
-            helper.addMetaRow(leftCol, "Invoice#", sale.getBillNumber());
-            helper.addMetaRow(leftCol, "Date", sale.getCreatedAt() != null ? sale.getCreatedAt().format(DateTimeFormatter.ofPattern("MMM dd, yyyy HH:mm")) : "-");
-            helper.addMetaRow(leftCol, "Patient ID", "-");
-            helper.addMetaRow(leftCol, "Sale Type", "WALK-IN");
-
+            helper.addMetaRow(leftCol, "Invoice No.", sale.getBillNumber());
+            helper.addMetaRow(leftCol, "Date", sale.getCreatedAt() != null
+                    ? sale.getCreatedAt().format(DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a")) : "-");
+            helper.addMetaRow(leftCol, "Sale Type", sale.getSaleType() != null ? sale.getSaleType() : "WALK-IN");
             PdfPTable rightCol = new PdfPTable(2);
             rightCol.setWidths(new float[]{1.2f, 2f});
-            helper.addMetaRow(rightCol, "Customer Name", sale.getPatientName() != null ? sale.getPatientName() : "Walk-in Patient");
-            helper.addMetaRow(rightCol, "Payment Method", sale.getPaymentMethod());
+            helper.addMetaRow(rightCol, "Customer", customerName(patient, sale));
+            helper.addMetaRow(rightCol, "Payment", sale.getPaymentMethod());
             helper.addMetaRow(rightCol, "Status", sale.getPaymentStatus());
-
             PdfPCell leftCell = new PdfPCell(leftCol);
             leftCell.setBorder(Rectangle.NO_BORDER);
             metaTable.addCell(leftCell);
-
             PdfPCell rightCell = new PdfPCell(rightCol);
             rightCell.setBorder(Rectangle.NO_BORDER);
             metaTable.addCell(rightCell);
-
             document.add(metaTable);
 
-            // 3. Line separator
-            Paragraph line = new Paragraph();
-            line.add(new LineSeparator(1f, 100, Color.LIGHT_GRAY, Element.ALIGN_CENTER, -2));
-            document.add(line);
-            document.add(new Paragraph("\n"));
-
-            // 4. Main Medicine Items Table
-            PdfPTable itemsTable = new PdfPTable(7);
-            itemsTable.setWidthPercentage(100);
-            itemsTable.setWidths(new float[]{0.5f, 3.5f, 1.5f, 1.2f, 1.2f, 1.2f, 1.5f});
-
-            helper.addTableHeaderCell(itemsTable, "Sr#");
-            helper.addTableHeaderCell(itemsTable, "Medicine / Batch");
-            helper.addTableHeaderCell(itemsTable, "Expiry");
-            helper.addTableHeaderCell(itemsTable, "Qty");
-            helper.addTableHeaderCell(itemsTable, "Price");
-            helper.addTableHeaderCell(itemsTable, "GST %");
-            helper.addTableHeaderCell(itemsTable, "Total");
-
+            boolean gstInclusive = isGstInclusive(sale);
+            PdfPTable items = new PdfPTable(10);
+            items.setWidthPercentage(100);
+            items.setWidths(new float[]{0.4f, 2.8f, 0.8f, 1.2f, 0.8f, 0.6f, 0.9f, 0.9f, 0.7f, 1.1f});
+            for (String h : new String[]{"#", "Medicine", "HSN", "Batch", "Exp", "Qty", "MRP", "Rate", "GST%", "Amount"}) {
+                helper.addTableHeaderCell(items, h, headWhite);
+            }
             int sr = 1;
             for (PharmacySaleItem item : sale.getItems()) {
-                helper.addTableCell(itemsTable, String.valueOf(sr++), false);
+                MedicineBatch b = item.getMedicineBatch();
+                String name = b != null && b.getMedicine() != null ? b.getMedicine().getMedicineName() : "Medicine #" + item.getMedicineId();
+                String hsn = b != null && b.getMedicine() != null && b.getMedicine().getHsnCode() != null ? b.getMedicine().getHsnCode() : "";
+                helper.addTableCell(items, String.valueOf(sr++), false, small);
+                helper.addTableCell(items, name, false, small);
+                helper.addTableCell(items, hsn, false, small);
+                helper.addTableCell(items, b != null ? b.getBatchNumber() : "-", false, small);
+                helper.addTableCell(items, b != null && b.getExpiryDate() != null
+                        ? b.getExpiryDate().format(DateTimeFormatter.ofPattern("MM/yy")) : "-", false, small);
+                helper.addTableCell(items, plain(item.getQuantity()), true, small);
+                helper.addTableCell(items, b != null && b.getMrp() != null ? money(b.getMrp()) : "-", true, small);
+                helper.addTableCell(items, money(item.getUnitPrice()), true, small);
+                helper.addTableCell(items, plain(item.getTaxPercentage()), true, small);
+                helper.addTableCell(items, money(item.getTotalAmount()), true, small);
+            }
+            document.add(items);
 
-                // Medicine Name and Batch
-                String medName = item.getMedicineBatch() != null && item.getMedicineBatch().getMedicine() != null
-                        ? item.getMedicineBatch().getMedicine().getMedicineName()
-                        : "Medicine #" + item.getMedicineId();
-                String batchNum = item.getMedicineBatch() != null ? item.getMedicineBatch().getBatchNumber() : "N/A";
-                helper.addTableCell(itemsTable, medName + "\n(Batch: " + batchNum + ")", false);
+            PdfPTable totals = new PdfPTable(2);
+            totals.setWidthPercentage(45);
+            totals.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            totals.setSpacingBefore(8f);
+            BigDecimal gst = nz(sale.getTaxAmount());
+            BigDecimal net = nz(sale.getNetAmount());
+            if (gstInclusive) {
+                helper.addSummaryRow(totals, "Gross (incl. GST):", "INR " + money(sale.getSubtotal()));
+                helper.addSummaryRow(totals, "Discount:", "- INR " + money(sale.getDiscountAmount()));
+                helper.addSummaryRow(totals, "Net Payable:", "INR " + money(net));
+                helper.addSummaryRow(totals, "Taxable Value:", "INR " + money(net.subtract(gst)));
+                BigDecimal cgst = gst.divide(BigDecimal.valueOf(2), 2, java.math.RoundingMode.HALF_UP);
+                helper.addSummaryRow(totals, "CGST (incl.):", "INR " + money(cgst));
+                helper.addSummaryRow(totals, "SGST (incl.):", "INR " + money(gst.subtract(cgst)));
+            } else {
+                helper.addSummaryRow(totals, "Sub Total:", "INR " + money(sale.getSubtotal()));
+                helper.addSummaryRow(totals, "GST (Tax):", "+ INR " + money(gst));
+                helper.addSummaryRow(totals, "Discount:", "- INR " + money(sale.getDiscountAmount()));
+                helper.addSummaryRow(totals, "Net Payable:", "INR " + money(net));
+            }
+            document.add(totals);
 
-                // Expiry Date
-                String expDate = item.getMedicineBatch() != null && item.getMedicineBatch().getExpiryDate() != null
-                        ? item.getMedicineBatch().getExpiryDate().toString()
-                        : "-";
-                helper.addTableCell(itemsTable, expDate, false);
-
-                // Qty, Unit Price, GST%, Total
-                helper.addTableCell(itemsTable, item.getQuantity() != null ? item.getQuantity().toString() : "0", true);
-                helper.addTableCell(itemsTable, item.getUnitPrice() != null ? String.format("%.2f", item.getUnitPrice()) : "0.00", true);
-                helper.addTableCell(itemsTable, item.getTaxPercentage() != null ? item.getTaxPercentage().toString() + "%" : "0%", true);
-                helper.addTableCell(itemsTable, item.getTotalAmount() != null ? "INR " + String.format("%.2f", item.getTotalAmount()) : "INR 0.00", true);
+            long rupees = net.setScale(0, java.math.RoundingMode.DOWN).longValue();
+            int paise = net.subtract(BigDecimal.valueOf(rupees)).movePointRight(2).setScale(0, java.math.RoundingMode.HALF_UP).intValue();
+            String words = "Rupees " + (rupees == 0 ? "Zero" : helper.convertNumberToWords(rupees))
+                    + (paise > 0 ? " and " + helper.convertNumberToWords(paise) + " Paise" : "") + " Only";
+            Paragraph inWords = new Paragraph("Amount in words: " + words, small);
+            inWords.setSpacingBefore(6f);
+            document.add(inWords);
+            if (gstInclusive) {
+                document.add(new Paragraph("Prices are inclusive of GST and do not exceed MRP.", small));
             }
 
-            document.add(itemsTable);
-            document.add(new Paragraph("\n"));
-
-            // 5. Total Calculations (Right Aligned - Fixed Position)
-            PdfPTable summaryTable = new PdfPTable(2);
-            summaryTable.setTotalWidth(200f);
-            summaryTable.setWidths(new float[]{1.5f, 1.5f});
-
-            // Sequence: subtotal, then GST is ADDED, then the discount is SUBTRACTED, then net.
-            helper.addSummaryRow(summaryTable, "Sub Total:", sale.getSubtotal() != null ? "INR " + String.format("%.2f", sale.getSubtotal()) : "INR 0.00");
-            helper.addSummaryRow(summaryTable, "GST (Tax):", sale.getTaxAmount() != null ? "+ INR " + String.format("%.2f", sale.getTaxAmount()) : "INR 0.00");
-            helper.addSummaryRow(summaryTable, "Discount:", sale.getDiscountAmount() != null ? "- INR " + String.format("%.2f", sale.getDiscountAmount()) : "INR 0.00");
-            helper.addSummaryRow(summaryTable, "Net Payable:", sale.getNetAmount() != null ? "INR " + String.format("%.2f", sale.getNetAmount()) : "INR 0.00");
-
-            summaryTable.writeSelectedRows(0, -1, 359, 175, writer.getDirectContent());
-
-            // 6. Signature section (Fixed Position)
             PdfPTable fTable = new PdfPTable(2);
             fTable.setTotalWidth(523f);
             fTable.setWidths(new float[]{3.5f, 2.5f});
-
-            // Empty left cell (bottom-left block removed)
-            PdfPCell remCell = new PdfPCell();
-            remCell.setBorder(Rectangle.NO_BORDER);
-            fTable.addCell(remCell);
-
-            // Sign line section
+            PdfPCell note = new PdfPCell(new Phrase("Medicines once sold are refunded only as per pharmacy policy.", small));
+            note.setBorder(Rectangle.NO_BORDER);
+            note.setVerticalAlignment(Element.ALIGN_BOTTOM);
+            fTable.addCell(note);
             PdfPCell sigCell = new PdfPCell();
             sigCell.setBorder(Rectangle.NO_BORDER);
             sigCell.setVerticalAlignment(Element.ALIGN_BOTTOM);
-            Paragraph sig = new Paragraph("\n\n______________________\nPharmacist Signature", PdfLayoutHelper.FOOTER_FONT);
+            Paragraph sig = new Paragraph("\n\n______________________\nRegistered Pharmacist", PdfLayoutHelper.FOOTER_FONT);
             sig.setAlignment(Element.ALIGN_RIGHT);
             sigCell.addElement(sig);
             fTable.addCell(sigCell);
-
             fTable.writeSelectedRows(0, -1, 36, 110, writer.getDirectContent());
 
             document.close();
-
         } catch (DocumentException e) {
             throw new RuntimeException("Error generating Pharmacy Invoice PDF", e);
         }
-
         return new ByteArrayInputStream(out.toByteArray());
+    }
+
+    private static String customerName(Patient patient, PharmacySale sale) {
+        if (patient != null && patient.getName() != null) {
+            return patient.getName();
+        }
+        return sale.getPatientName() != null ? sale.getPatientName() : "Walk-in Customer";
+    }
+
+    /** "GSTIN: … | Drug Lic. No.: …" — states plainly when a detail has not been entered yet. */
+    static String pharmacyRegistrationLine(Hospital hospital) {
+        String gstin = hospital != null && hospital.getGstin() != null && !hospital.getGstin().isBlank()
+                ? hospital.getGstin().trim() : "not entered";
+        String dl = hospital != null && hospital.getDrugLicenseNumber() != null && !hospital.getDrugLicenseNumber().isBlank()
+                ? hospital.getDrugLicenseNumber().trim() : "not entered";
+        return "GSTIN: " + gstin + "    |    Drug Lic. No.: " + dl;
+    }
+
+    /** New bills: net = gross - discount (GST inside). Older bills added GST on top of the subtotal. */
+    static boolean isGstInclusive(PharmacySale sale) {
+        BigDecimal expectedNet = nz(sale.getSubtotal()).subtract(nz(sale.getDiscountAmount()));
+        return expectedNet.compareTo(nz(sale.getNetAmount())) == 0;
+    }
+
+    private static BigDecimal nz(BigDecimal v) {
+        return v == null ? BigDecimal.ZERO : v;
+    }
+
+    private static String money(BigDecimal v) {
+        return String.format("%.2f", nz(v));
+    }
+
+    private static String plain(BigDecimal v) {
+        return nz(v).stripTrailingZeros().toPlainString();
     }
 
     /** One right-aligned "label | Rs | Ps" row in the totals block. */

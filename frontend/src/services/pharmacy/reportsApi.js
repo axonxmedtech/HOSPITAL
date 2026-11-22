@@ -1,12 +1,14 @@
 import apiClient from '../apiService';
 
+/** params: optional { from, to } ISO dates (both ends included); none = all time. */
 const reportsApi = {
-  getDashboardData: async () => {
-    const response = await apiClient.get('/pharmacy/reports/dashboard');
+  getDashboardData: async (params = {}) => {
+    const response = await apiClient.get('/pharmacy/reports/dashboard', { params });
     return response.data;
   },
-  exportLedgerCsv: async () => {
+  exportLedgerCsv: async (params = {}) => {
     const response = await apiClient.get('/pharmacy/reports/export', {
+      params,
       responseType: 'blob',
     });
     return response.data;

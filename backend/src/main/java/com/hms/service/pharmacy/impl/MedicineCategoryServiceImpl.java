@@ -27,6 +27,7 @@ public class MedicineCategoryServiceImpl implements MedicineCategoryService {
     public MedicineCategory createCategory(CategoryRequest request) {
         MedicineCategory category = new MedicineCategory();
         category.setHospitalId(securityHelper.getCurrentHospitalId());
+        refuseDuplicate(category.getHospitalId(), request.getCategoryName(), null);
         category.setCategoryName(request.getCategoryName());
         category.setDescription(request.getDescription());
         category.setIsActive(request.getIsActive() != null ? request.getIsActive() : true);
@@ -52,6 +53,7 @@ public class MedicineCategoryServiceImpl implements MedicineCategoryService {
     @Transactional
     public MedicineCategory updateCategory(Long id, CategoryRequest request) {
         MedicineCategory category = getCategoryById(id);
+        refuseDuplicate(category.getHospitalId(), request.getCategoryName(), category.getId());
         category.setCategoryName(request.getCategoryName());
         category.setDescription(request.getDescription());
         if (request.getIsActive() != null) category.setIsActive(request.getIsActive());
@@ -64,5 +66,11 @@ public class MedicineCategoryServiceImpl implements MedicineCategoryService {
         MedicineCategory category = getCategoryById(id);
         category.setIsActive(!category.getIsActive());
         return categoryRepository.save(category);
+    }
+
+    private void refuseDuplicate(Long hid, String name, Long exceptId) {
+        if (name != null && categoryRepository.nameTaken(hid, name, exceptId)) {
+            throw new IllegalArgumentException("A category named '" + name.trim() + "' already exists");
+        }
     }
 }

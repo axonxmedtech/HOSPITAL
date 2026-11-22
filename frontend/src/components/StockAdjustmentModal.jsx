@@ -12,8 +12,14 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, onAdjustmentComplete }) =
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!adjustmentQty || Number.isNaN(Number(adjustmentQty))) {
+    if (!adjustmentQty || Number.isNaN(Number(adjustmentQty)) || Number(adjustmentQty) === 0) {
       setError('Please enter a valid quantity.');
+      return;
+    }
+    if (remarks.trim().length < 3) {
+      setError(
+        'Give a reason for the correction (e.g. damaged, physical count). It is kept in the audit log.'
+      );
       return;
     }
 
@@ -24,7 +30,7 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, onAdjustmentComplete }) =
       await inventoryApi.adjustStock({
         batchId: item.id,
         quantity: parseFloat(adjustmentQty),
-        remarks: remarks,
+        remarks: remarks.trim(),
       });
       onAdjustmentComplete();
       onClose();
@@ -125,12 +131,14 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, onAdjustmentComplete }) =
                 htmlFor="fld-33"
                 className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2"
               >
-                Remarks / Reason
+                Reason (required)
               </label>
               <textarea
                 id="fld-33"
                 value={remarks}
                 onChange={(e) => setRemarks(e.target.value)}
+                required
+                minLength={3}
                 placeholder="Reason for adjustment (e.g., Damaged, Inventory mismatch...)"
                 className="w-full px-4 py-3 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all h-24 resize-none"
               ></textarea>

@@ -280,6 +280,13 @@ public final class TenantTables {
 
         // Audit trail.
         retain("audit_logs", Ownership.DIRECT);
+        // Invoice serials: kept with the bills they numbered (GST invoices must stay consecutive).
+        retain("pharmacy_invoice_sequences", Ownership.DIRECT);
+        // Customer refunds: money records, kept like the bills they refund.
+        retain("pharmacy_sale_returns", Ownership.DIRECT);
+        // Supplier payments and return notes: financial documents.
+        retain("purchase_payments", Ownership.DIRECT);
+        retain("supplier_return_notes", Ownership.DIRECT);
         retain("bed_status_audits", Ownership.DIRECT);
         retain("support_tickets", Ownership.DIRECT);
 

@@ -32,6 +32,7 @@ public class SupplierService {
         Supplier s = new Supplier();
         Long hid = securityHelper.getCurrentHospitalId();
         Long branchId = securityHelper.getCurrentBranchId();
+        refuseDuplicate(hid, branchId, req, null);
         s.setHospitalId(hid);
         s.setBranchId(branchId);
         s.setSupplierName(req.getSupplierName());
@@ -74,6 +75,7 @@ public class SupplierService {
     @Transactional
     public Supplier update(Long id, SupplierRequest req) {
         Supplier s = getById(id);
+        refuseDuplicate(s.getHospitalId(), s.getBranchId(), req, s.getId());
         s.setSupplierName(req.getSupplierName());
         s.setContactPerson(req.getContactPerson());
         s.setPhone(req.getPhone());
@@ -113,5 +115,15 @@ public class SupplierService {
             hid, branchId,
             "SUPPLIER", String.valueOf(id), null
         );
+    }
+
+    /** One supplier per name and per phone number, so purchases and payables don't split across copies. */
+    private void refuseDuplicate(Long hid, Long branchId, SupplierRequest req, Long exceptId) {
+        if (req.getSupplierName() != null && supplierRepository.nameTaken(hid, branchId, req.getSupplierName(), exceptId)) {
+            throw new IllegalArgumentException("A supplier named '" + req.getSupplierName().trim() + "' already exists");
+        }
+        if (req.getPhone() != null && supplierRepository.phoneTaken(hid, branchId, req.getPhone(), exceptId)) {
+            throw new IllegalArgumentException("Another supplier already uses phone " + req.getPhone());
+        }
     }
 }
