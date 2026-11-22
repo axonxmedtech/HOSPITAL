@@ -41,6 +41,8 @@ public class PharmacySaleService {
     @Autowired private com.hms.service.RealtimeNotifier notifier;
 
     /** What a counter may record as the way the customer paid. */
+    private static final String PHARMACY_SALE = "PHARMACY_SALE";
+
     static final java.util.Set<String> PAYMENT_METHODS = java.util.Set.of("CASH", "UPI", "CARD", "IPD_BILL");
 
     @Autowired
@@ -116,9 +118,9 @@ public class PharmacySaleService {
         // it has an id and a bill number to point back to.
         List<InventoryTransaction> stockMovements = new ArrayList<>();
         List<PharmacySaleItem> items = new ArrayList<>();
+        SaleContext ctx = new SaleContext(sale, hospitalId, branchId, userId, stockMovements);
         for (int i = 0; i < batches.size(); i++) {
-            items.add(sellLine(request.getItems().get(i).getQuantity(), batches.get(i), bill.lines().get(i),
-                    lines.get(i), sale, hospitalId, branchId, userId, stockMovements));
+            items.add(sellLine(batches.get(i), lines.get(i), bill.lines().get(i), ctx));
         }
         sale.setItems(items);
         PharmacySale savedSale = saleRepository.save(sale);
@@ -173,25 +175,31 @@ public class PharmacySaleService {
         return batch;
     }
 
+    /** The sale being built and who / where it is for, shared by every line. */
+    private record SaleContext(PharmacySale sale, Long hospitalId, Long branchId, Long userId,
+                               List<InventoryTransaction> stockMovements) {
+    }
+
     /** Deducts the stock of one line, records the movement, and returns the priced sale line. */
-    private PharmacySaleItem sellLine(BigDecimal qty, MedicineBatch batch, PharmacyBillCalculator.LineResult money,
-                                      PharmacyBillCalculator.Line line, PharmacySale sale, Long hospitalId,
-                                      Long branchId, Long userId, List<InventoryTransaction> stockMovements) {
+    private PharmacySaleItem sellLine(MedicineBatch batch, PharmacyBillCalculator.Line line,
+                                      PharmacyBillCalculator.LineResult money, SaleContext ctx) {
+        BigDecimal qty = line.quantity();
+        PharmacySale sale = ctx.sale();
         BigDecimal qtyBefore = batch.getCurrentQuantity();
         batch.setCurrentQuantity(qtyBefore.subtract(qty));
         batchRepository.save(batch);
 
         InventoryTransaction tx = new InventoryTransaction();
-        tx.setHospitalId(hospitalId);
-        tx.setBranchId(branchId);
+        tx.setHospitalId(ctx.hospitalId());
+        tx.setBranchId(ctx.branchId());
         tx.setMedicineBatchId(batch.getId());
         tx.setTransactionType("SALE");
         tx.setQuantity(qty.negate()); // Negative for sales
         tx.setQuantityBefore(qtyBefore);
         tx.setQuantityAfter(batch.getCurrentQuantity());
-        tx.setReferenceType("PHARMACY_SALE");
-        tx.setCreatedBy(userId);
-        stockMovements.add(tx);
+        tx.setReferenceType(PHARMACY_SALE);
+        tx.setCreatedBy(ctx.userId());
+        ctx.stockMovements().add(tx);
 
         PharmacySaleItem item = new PharmacySaleItem();
         item.setPharmacySale(sale);
@@ -241,6 +249,24 @@ public class PharmacySaleService {
         }
     }
 
+    /** The money itself, so reports can show refunds and the GST they take back. */
+    private void recordRefund(PharmacySale sale, PharmacySaleItem soldItem, Long batchId, BigDecimal qty,
+                              BigDecimal amount, Long hospitalId, Long userId) {
+        com.hms.entity.pharmacy.PharmacySaleReturn refund = new com.hms.entity.pharmacy.PharmacySaleReturn();
+        refund.setHospitalId(hospitalId);
+        refund.setBranchId(securityHelper.getCurrentBranchId());
+        refund.setSaleId(sale.getId());
+        refund.setSaleItemId(soldItem.getId());
+        refund.setMedicineBatchId(batchId);
+        refund.setQuantity(qty);
+        refund.setRefundAmount(amount);
+        BigDecimal rate = soldItem.getTaxPercentage() == null ? BigDecimal.ZERO : soldItem.getTaxPercentage();
+        refund.setGstAmount(amount.subtract(amount.multiply(BigDecimal.valueOf(100))
+                .divide(BigDecimal.valueOf(100).add(rate), 2, java.math.RoundingMode.HALF_UP)));
+        refund.setCreatedBy(userId);
+        saleReturnRepository.save(refund);
+    }
+
     /**
      * What the customer actually paid for one unit of this line: the line's share of the bill's
      * net amount (after discount, GST included), divided by the quantity. A refund is based on
@@ -269,17 +295,17 @@ public class PharmacySaleService {
     }
 
     public BigDecimal getTodaySalesTotal() {
-        LocalDateTime startOfDay = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0);
+        LocalDateTime startOfDay = LocalDateTime.now(java.time.ZoneId.systemDefault()).withHour(0).withMinute(0).withSecond(0);
         return saleRepository.sumSalesBetween(securityHelper.getCurrentHospitalId(),
-                securityHelper.getCurrentBranchId(), startOfDay, LocalDateTime.now());
+                securityHelper.getCurrentBranchId(), startOfDay, LocalDateTime.now(java.time.ZoneId.systemDefault()));
     }
 
     /** Today's sales count and total, for this branch when a branch is signed in. */
     public java.util.Map<String, Object> getDashboardStats() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         Long branchId = securityHelper.getCurrentBranchId();
-        LocalDateTime startOfDay = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0);
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime startOfDay = LocalDateTime.now(java.time.ZoneId.systemDefault()).withHour(0).withMinute(0).withSecond(0);
+        LocalDateTime now = LocalDateTime.now(java.time.ZoneId.systemDefault());
 
         java.util.Map<String, Object> stats = new java.util.HashMap<>();
         stats.put("todaySalesTotal", saleRepository.sumSalesBetween(hospitalId, branchId, startOfDay, now));
@@ -346,20 +372,7 @@ public class PharmacySaleService {
                     .setScale(2, java.math.RoundingMode.HALF_UP);
             refundTotal = refundTotal.add(refundValue);
 
-            // The money itself, so reports can show refunds and the GST they take back.
-            com.hms.entity.pharmacy.PharmacySaleReturn refund = new com.hms.entity.pharmacy.PharmacySaleReturn();
-            refund.setHospitalId(hospitalId);
-            refund.setBranchId(securityHelper.getCurrentBranchId());
-            refund.setSaleId(sale.getId());
-            refund.setSaleItemId(soldItem.getId());
-            refund.setMedicineBatchId(batchId);
-            refund.setQuantity(qtyToReturn);
-            refund.setRefundAmount(refundValue);
-            BigDecimal rate = soldItem.getTaxPercentage() == null ? BigDecimal.ZERO : soldItem.getTaxPercentage();
-            refund.setGstAmount(refundValue.subtract(refundValue.multiply(BigDecimal.valueOf(100))
-                    .divide(BigDecimal.valueOf(100).add(rate), 2, java.math.RoundingMode.HALF_UP)));
-            refund.setCreatedBy(userId);
-            saleReturnRepository.save(refund);
+            recordRefund(sale, soldItem, batchId, qtyToReturn, refundValue, hospitalId, userId);
 
             // Medicine that has been in a patient's possession does not go back on the shelf.
             //
@@ -380,7 +393,7 @@ public class PharmacySaleService {
             tx.setQuantity(BigDecimal.ZERO);
             tx.setQuantityBefore(batchToCheck.getCurrentQuantity());
             tx.setQuantityAfter(batchToCheck.getCurrentQuantity());
-            tx.setReferenceType("PHARMACY_SALE");
+            tx.setReferenceType(PHARMACY_SALE);
             tx.setReferenceId(sale.getId());
             tx.setRemarks("Patient return for Bill #" + sale.getBillNumber()
                     + " - refunded, not returned to saleable stock");
@@ -388,7 +401,7 @@ public class PharmacySaleService {
             transactionRepository.save(tx);
         }
 
-        auditTrail.record("PHARMACY_REFUND", "PHARMACY_SALE", sale.getBillNumber(),
+        auditTrail.write("PHARMACY_REFUND", PHARMACY_SALE, sale.getBillNumber(),
                 "Refunded ₹" + refundTotal.toPlainString() + " on bill " + sale.getBillNumber());
 
         java.util.Map<String, Object> result = new java.util.HashMap<>();

@@ -74,7 +74,7 @@ public class InventoryTransactionService {
         tx.setCreatedBy(securityHelper.getCurrentUserId());
 
         InventoryTransaction saved = transactionRepository.save(tx);
-        auditTrail.record("STOCK_ADJUSTED", "MEDICINE_BATCH", batch.getBatchNumber(),
+        auditTrail.write("STOCK_ADJUSTED", "MEDICINE_BATCH", batch.getBatchNumber(),
                 "Batch " + batch.getBatchNumber() + ": " + qtyBefore.toPlainString() + " → " + qtyAfter.toPlainString()
                         + " (" + (adjustmentQty.signum() > 0 ? "+" : "") + adjustmentQty.toPlainString() + ")", remarks.trim());
         try { webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}"); } catch (Exception e) {

@@ -252,7 +252,7 @@ class PatientReturnStockSafetyTest {
         assertThat(saved.getValue().getRefundAmount()).isEqualByComparingTo("100.00");
         assertThat(saved.getValue().getGstAmount()).isEqualByComparingTo("10.71");
         assertThat(saved.getValue().getQuantity()).isEqualByComparingTo("4");
-        org.mockito.Mockito.verify(auditTrail).record(org.mockito.ArgumentMatchers.eq("PHARMACY_REFUND"),
+        org.mockito.Mockito.verify(auditTrail).write(org.mockito.ArgumentMatchers.eq("PHARMACY_REFUND"),
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     }
 }

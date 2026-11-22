@@ -49,6 +49,7 @@ public class PurchaseService {
     private static final String POSTED = "POSTED";
     private static final String DRAFT = "DRAFT";
     private static final String CANCELLED = "CANCELLED";
+    private static final String PURCHASE_INVOICE = "PURCHASE_INVOICE";
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
     static final Set<String> PAYMENT_METHODS = Set.of("CASH", "UPI", "CARD", "BANK_TRANSFER", "CHEQUE");
 
@@ -298,7 +299,7 @@ public class PurchaseService {
         invoice.setCancelledAt(LocalDateTime.now(ZoneId.systemDefault()));
         invoice.setCancelledBy(securityHelper.getCurrentUserId());
         PurchaseInvoice saved = invoiceRepository.save(invoice);
-        auditTrail.record(wasPosted ? "PURCHASE_CANCELLED" : "PURCHASE_DRAFT_DISCARDED", "PURCHASE_INVOICE",
+        auditTrail.write(wasPosted ? "PURCHASE_CANCELLED" : "PURCHASE_DRAFT_DISCARDED", PURCHASE_INVOICE,
                 invoice.getInvoiceNumber(), "Purchase invoice " + invoice.getInvoiceNumber()
                         + (wasPosted ? " cancelled; its stock was taken back out" : " discarded (draft)"), reason.trim());
         broadcastRefresh(saved.getHospitalId());
@@ -307,7 +308,7 @@ public class PurchaseService {
 
     private void addToStock(PurchaseInvoice invoice) {
         Long hospitalId = invoice.getHospitalId();
-        auditTrail.record("PURCHASE_POSTED", "PURCHASE_INVOICE", invoice.getInvoiceNumber(),
+        auditTrail.write("PURCHASE_POSTED", PURCHASE_INVOICE, invoice.getInvoiceNumber(),
                 "Purchase invoice " + invoice.getInvoiceNumber() + " posted to stock: " + invoice.getItems().size()
                         + " line(s), total ₹" + (invoice.getTotalAmount() == null ? "0" : invoice.getTotalAmount().toPlainString()));
         for (PurchaseInvoiceItem item : invoice.getItems()) {
@@ -391,7 +392,7 @@ public class PurchaseService {
         tx.setQuantity(change);
         tx.setQuantityBefore(before);
         tx.setQuantityAfter(batch.getCurrentQuantity());
-        tx.setReferenceType("PURCHASE_INVOICE");
+        tx.setReferenceType(PURCHASE_INVOICE);
         tx.setReferenceId(invoice.getId());
         tx.setRemarks(remarks);
         tx.setCreatedBy(securityHelper.getCurrentUserId());
@@ -440,7 +441,7 @@ public class PurchaseService {
         invoice.setPaidAmount(newPaid);
         invoice.setPaymentStatus(newPaid.compareTo(invoice.getTotalAmount()) >= 0 ? "PAID" : "PARTIAL");
         PurchaseInvoice saved = invoiceRepository.save(invoice);
-        auditTrail.record("SUPPLIER_PAYMENT", "PURCHASE_INVOICE", invoice.getInvoiceNumber(),
+        auditTrail.write("SUPPLIER_PAYMENT", PURCHASE_INVOICE, invoice.getInvoiceNumber(),
                 "Paid ₹" + amt.toPlainString() + " (" + m + ") against invoice " + invoice.getInvoiceNumber()
                         + "; balance ₹" + invoice.getTotalAmount().subtract(newPaid).toPlainString());
         return saved;

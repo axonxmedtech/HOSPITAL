@@ -480,9 +480,7 @@ public class BillingPdfService {
             helper.addMetaRow(leftCol, "Sale Type", sale.getSaleType() != null ? sale.getSaleType() : "WALK-IN");
             PdfPTable rightCol = new PdfPTable(2);
             rightCol.setWidths(new float[]{1.2f, 2f});
-            String customer = patient != null && patient.getName() != null ? patient.getName()
-                    : sale.getPatientName() != null ? sale.getPatientName() : "Walk-in Customer";
-            helper.addMetaRow(rightCol, "Customer", customer);
+            helper.addMetaRow(rightCol, "Customer", customerName(patient, sale));
             helper.addMetaRow(rightCol, "Payment", sale.getPaymentMethod());
             helper.addMetaRow(rightCol, "Status", sale.getPaymentStatus());
             PdfPCell leftCell = new PdfPCell(leftCol);
@@ -573,6 +571,13 @@ public class BillingPdfService {
             throw new RuntimeException("Error generating Pharmacy Invoice PDF", e);
         }
         return new ByteArrayInputStream(out.toByteArray());
+    }
+
+    private static String customerName(Patient patient, PharmacySale sale) {
+        if (patient != null && patient.getName() != null) {
+            return patient.getName();
+        }
+        return sale.getPatientName() != null ? sale.getPatientName() : "Walk-in Customer";
     }
 
     /** "GSTIN: … | Drug Lic. No.: …" — states plainly when a detail has not been entered yet. */

@@ -17,6 +17,11 @@ import java.time.LocalDate;
 @Service
 public class MedicineBatchService {
 
+    private static final String BATCH_NOT_FOUND = "Batch not found";
+    private static final String AUDIT_ENTITY = "MEDICINE_BATCH";
+    private static final String BATCH = "Batch ";
+    private static final String RETURN_NOTE = "Return note ";
+
     @Autowired private com.hms.service.RealtimeNotifier notifier;
 
     @Autowired
@@ -159,11 +164,11 @@ public class MedicineBatchService {
     public MedicineBatch blockBatch(Long id) {
         Long hid = securityHelper.getCurrentHospitalId();
         MedicineBatch batch = repository.findByIdAndHospitalIdForUpdate(id, hid, securityHelper.getCurrentBranchId())
-                .orElseThrow(() -> new ResourceNotFoundException("Batch not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(BATCH_NOT_FOUND));
         batch.setStatus("BLOCKED");
         MedicineBatch saved = repository.save(batch);
-        auditTrail.record("BATCH_BLOCKED", "MEDICINE_BATCH", batch.getBatchNumber(),
-                "Batch " + batch.getBatchNumber() + " blocked from sale (" + plain(batch.getCurrentQuantity()) + " in stock)");
+        auditTrail.write("BATCH_BLOCKED", AUDIT_ENTITY, batch.getBatchNumber(),
+                BATCH + batch.getBatchNumber() + " blocked from sale (" + plain(batch.getCurrentQuantity()) + " in stock)");
         notifier.refresh(hid);
         return saved;
     }
@@ -176,15 +181,15 @@ public class MedicineBatchService {
         }
         Long hid = securityHelper.getCurrentHospitalId();
         MedicineBatch batch = repository.findByIdAndHospitalIdForUpdate(id, hid, securityHelper.getCurrentBranchId())
-                .orElseThrow(() -> new ResourceNotFoundException("Batch not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(BATCH_NOT_FOUND));
         if (!"BLOCKED".equalsIgnoreCase(batch.getStatus())) {
             throw new IllegalArgumentException("Only a blocked batch can be unblocked (this one is "
                     + (batch.getStatus() == null ? "active" : batch.getStatus().toLowerCase(java.util.Locale.ROOT)) + ")");
         }
         batch.setStatus("ACTIVE");
         MedicineBatch saved = repository.save(batch);
-        auditTrail.record("BATCH_UNBLOCKED", "MEDICINE_BATCH", batch.getBatchNumber(),
-                "Batch " + batch.getBatchNumber() + " put back on sale (" + plain(batch.getCurrentQuantity()) + " in stock)",
+        auditTrail.write("BATCH_UNBLOCKED", AUDIT_ENTITY, batch.getBatchNumber(),
+                BATCH + batch.getBatchNumber() + " put back on sale (" + plain(batch.getCurrentQuantity()) + " in stock)",
                 reason.trim());
         notifier.refresh(hid);
         return saved;
@@ -194,7 +199,7 @@ public class MedicineBatchService {
     public MedicineBatch disposeBatch(Long id, String remarks) {
         Long hid = securityHelper.getCurrentHospitalId();
         MedicineBatch batch = repository.findByIdAndHospitalIdForUpdate(id, hid, securityHelper.getCurrentBranchId())
-                .orElseThrow(() -> new ResourceNotFoundException("Batch not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(BATCH_NOT_FOUND));
         
         java.math.BigDecimal qtyBefore = batch.getCurrentQuantity();
         if (qtyBefore == null) qtyBefore = java.math.BigDecimal.ZERO;
@@ -219,8 +224,8 @@ public class MedicineBatchService {
 
         batch.setStatus("DISPOSED");
         MedicineBatch saved = repository.save(batch);
-        auditTrail.record("BATCH_DISPOSED", "MEDICINE_BATCH", batch.getBatchNumber(),
-                "Batch " + batch.getBatchNumber() + " disposed, " + plain(qtyBefore) + " units written off",
+        auditTrail.write("BATCH_DISPOSED", AUDIT_ENTITY, batch.getBatchNumber(),
+                BATCH + batch.getBatchNumber() + " disposed, " + plain(qtyBefore) + " units written off",
                 remarks != null ? remarks : "Disposed due to expiry");
         notifier.refresh(securityHelper.getCurrentHospitalId());
         return saved;
@@ -290,15 +295,15 @@ public class MedicineBatchService {
             tx.setQuantityBefore(qtyBefore);
             tx.setQuantityAfter(batch.getCurrentQuantity());
             tx.setReferenceType("SUPPLIER_RETURN");
-            tx.setRemarks("Return note " + note.getNoteNumber() + " to " + supplier.getSupplierName() + " @ rate " + rate);
+            tx.setRemarks(RETURN_NOTE + note.getNoteNumber() + " to " + supplier.getSupplierName() + " @ rate " + rate);
             tx.setCreatedBy(userId);
             transactionRepository.save(tx);
         }
         note.setTotalClaimed(totalClaimed);
         com.hms.entity.pharmacy.SupplierReturnNote saved = returnNoteRepository.save(note);
 
-        auditTrail.record("SUPPLIER_RETURN", "MEDICINE_BATCH", saved.getNoteNumber(),
-                "Return note " + saved.getNoteNumber() + " to " + supplier.getSupplierName() + ": " + items.size()
+        auditTrail.write("SUPPLIER_RETURN", AUDIT_ENTITY, saved.getNoteNumber(),
+                RETURN_NOTE + saved.getNoteNumber() + " to " + supplier.getSupplierName() + ": " + items.size()
                         + " line(s), claim ₹" + totalClaimed.toPlainString());
         notifier.refresh(hid);
 
@@ -306,7 +311,7 @@ public class MedicineBatchService {
         res.put("status", "SUCCESS");
         res.put("noteNumber", saved.getNoteNumber());
         res.put("totalClaimed", totalClaimed);
-        res.put("message", "Return note " + saved.getNoteNumber() + " issued to " + supplier.getSupplierName());
+        res.put("message", RETURN_NOTE + saved.getNoteNumber() + " issued to " + supplier.getSupplierName());
         return res;
     }
 

@@ -40,6 +40,8 @@ import java.util.Map;
 public class PharmacyReportsService {
 
     private static final String BRANCH_FILTER = " AND s.branchId = :branchId";
+    private static final String HOSPITAL_ID = "hospitalId";
+    private static final String BRANCH_ID = "branchId";
 
     @PersistenceContext
     private EntityManager em;
@@ -198,13 +200,13 @@ public class PharmacyReportsService {
                 + "FROM MedicineBatch b WHERE b.hospitalId = :hospitalId AND b.currentQuantity > 0"
                 + (branchId != null ? " AND b.branchId = :branchId" : "");
         TypedQuery<Object[]> query = em.createQuery(q, Object[].class)
-                .setParameter("hospitalId", hospitalId)
+                .setParameter(HOSPITAL_ID, hospitalId)
                 .setParameter("today", today)
                 .setParameter("d30", today.plusDays(30))
                 .setParameter("d60", today.plusDays(60))
                 .setParameter("d90", today.plusDays(90));
         if (branchId != null) {
-            query.setParameter("branchId", branchId);
+            query.setParameter(BRANCH_ID, branchId);
         }
         return query.getSingleResult();
     }
@@ -216,10 +218,10 @@ public class PharmacyReportsService {
                 + "WHERE b.hospitalId = :hospitalId AND b.currentQuantity > 0 AND b.expiryDate > :today"
                 + (branchId != null ? " AND b.branchId = :branchId" : "") + " GROUP BY c.categoryName";
         TypedQuery<Object[]> query = em.createQuery(q, Object[].class)
-                .setParameter("hospitalId", hospitalId)
+                .setParameter(HOSPITAL_ID, hospitalId)
                 .setParameter("today", today);
         if (branchId != null) {
-            query.setParameter("branchId", branchId);
+            query.setParameter(BRANCH_ID, branchId);
         }
         List<Map<String, Object>> out = new ArrayList<>();
         for (Object[] row : query.getResultList()) {
@@ -266,11 +268,11 @@ public class PharmacyReportsService {
     }
 
     private static <T> TypedQuery<T> scoped(TypedQuery<T> query, Long hospitalId, Long branchId, Range range) {
-        query.setParameter("hospitalId", hospitalId)
+        query.setParameter(HOSPITAL_ID, hospitalId)
                 .setParameter("start", range.start())
                 .setParameter("end", range.endExclusive());
         if (branchId != null) {
-            query.setParameter("branchId", branchId);
+            query.setParameter(BRANCH_ID, branchId);
         }
         return query;
     }

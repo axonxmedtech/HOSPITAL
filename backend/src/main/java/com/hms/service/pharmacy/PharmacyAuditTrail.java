@@ -21,11 +21,11 @@ public class PharmacyAuditTrail {
     private final AuditLogService auditLogService;
     private final SecurityContextHelper securityHelper;
 
-    public void record(String action, String entityType, String entityId, String details) {
-        record(action, entityType, entityId, details, null);
+    public void write(String action, String entityType, String entityId, String details) {
+        write(action, entityType, entityId, details, null);
     }
 
-    public void record(String action, String entityType, String entityId, String details, String reason) {
+    public void write(String action, String entityType, String entityId, String details, String reason) {
         try {
             auditLogService.logAction(action, details, securityHelper.getCurrentUserEmail(),
                     securityHelper.getCurrentHospitalId(), securityHelper.getCurrentBranchId(),
