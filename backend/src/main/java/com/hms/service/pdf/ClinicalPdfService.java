@@ -351,54 +351,18 @@ public class ClinicalPdfService {
             helper.addPremiumPatientHeader(document, hospital, p.doctor, patient, ipd.getIpdNumber(),
                     ipd.getAdmissionDatetime(), ds.getFinalDiagnosis(), "DISCHARGE SUMMARY");
 
-            PdfPTable facts = new PdfPTable(4);
-            facts.setWidthPercentage(100);
-            facts.setWidths(new float[]{1.3f, 2f, 1.3f, 2f});
-            facts.setSpacingBefore(8f);
-            dsFact(facts, "Admitted on", ipd.getAdmissionDatetime() == null ? "-" : ipd.getAdmissionDatetime().format(DS_DATE_TIME));
-            dsFact(facts, "Discharged on", ipd.getDischargeDatetime() == null ? "Planned (not yet discharged)"
-                    : ipd.getDischargeDatetime().format(DS_DATE_TIME));
-            dsFact(facts, "Ward / Bed", dash(p.ward) + " / " + dash(p.bed));
-            dsFact(facts, "Consultant", p.doctor == null ? "-" : PdfLayoutHelper.doctorTitle(p.doctor.getName()));
-            dsFact(facts, "Admission type", dash(ipd.getAdmissionType()));
-            dsFact(facts, "Discharge type", dischargeTypeText(ipd.getDischargeType())
-                    + (ipd.getDischargeNote() == null ? "" : " — " + ipd.getDischargeNote()));
-            dsFact(facts, "Condition", ds.getConditionAtDischarge() == null ? "-" : titleCase(ds.getConditionAtDischarge()));
-            dsFact(facts, "Provisional diagnosis", dash(ipd.getPrimaryDiagnosis()));
-            document.add(facts);
+            document.add(dsFacts(p));
 
             dsSection(document, "Final diagnosis", ds.getFinalDiagnosis());
             dsSection(document, "Course in hospital / treatment given", ds.getTreatmentGiven());
             dsSection(document, "Procedures", proceduresText(ds.getProceduresDone(), p.surgeries));
             dsSection(document, "Key investigations", ds.getInvestigations());
 
-            if (p.medicines != null && !p.medicines.isEmpty()) {
-                dsHeading(document, "Medicines to take at home");
-                PdfPTable meds = new PdfPTable(5);
-                meds.setWidthPercentage(100);
-                meds.setWidths(new float[]{2.6f, 1.2f, 1.4f, 1f, 2.4f});
-                for (String h : new String[]{"Medicine", "Dose", "Frequency", "Days", "Instructions"}) {
-                    helper.addTableHeaderCell(meds, h);
-                }
-                for (com.hms.dto.PlanDischargeRequest.DischargeMedication m : p.medicines) {
-                    helper.addTableCell(meds, m.getName(), false, PdfLayoutHelper.UNICODE_NORMAL_FONT);
-                    helper.addTableCell(meds, dash(m.getDose()), false, PdfLayoutHelper.UNICODE_NORMAL_FONT);
-                    helper.addTableCell(meds, dash(m.getFrequency()), false, PdfLayoutHelper.UNICODE_NORMAL_FONT);
-                    helper.addTableCell(meds, m.getDurationDays() == null ? "-" : String.valueOf(m.getDurationDays()), false);
-                    helper.addTableCell(meds, dash(m.getInstructions()), false, PdfLayoutHelper.UNICODE_NORMAL_FONT);
-                }
-                document.add(meds);
-            }
+            dsMedicines(document, p.medicines);
 
             dsSection(document, "Advice on discharge", ds.getAdvice());
             dsSection(document, "Other notes", ds.getDischargeNotes());
-            if (ds.getFollowUpDate() != null) {
-                java.time.LocalTime t = p.followUpTime != null ? p.followUpTime : ds.getFollowUpTime();
-                dsSection(document, "Follow-up", ds.getFollowUpDate().format(DS_DATE)
-                        + (t == null ? "" : " at " + t.format(DS_TIME))
-                        + (p.doctor == null ? "" : " with " + PdfLayoutHelper.doctorTitle(p.doctor.getName()))
-                        + ". Come earlier if symptoms return or get worse.");
-            }
+            dsSection(document, "Follow-up", followUpText(p));
 
             helper.addPremiumFooter(writer, hospital, patient, ipd.getIpdNumber(), "Treating Doctor's Signature");
             document.close();
@@ -458,6 +422,57 @@ public class ClinicalPdfService {
             case "HIGH_PROTEIN" -> "High protein";
             default -> titleCase(type);
         };
+    }
+
+    private PdfPTable dsFacts(DischargeSummaryPrint p) throws DocumentException {
+        IpdAdmission ipd = p.ipd;
+        com.hms.entity.DischargeSummary ds = p.summary;
+        PdfPTable facts = new PdfPTable(4);
+        facts.setWidthPercentage(100);
+        facts.setWidths(new float[]{1.3f, 2f, 1.3f, 2f});
+        facts.setSpacingBefore(8f);
+        dsFact(facts, "Admitted on", ipd.getAdmissionDatetime() == null ? "-" : ipd.getAdmissionDatetime().format(DS_DATE_TIME));
+        dsFact(facts, "Discharged on", ipd.getDischargeDatetime() == null ? "Planned (not yet discharged)"
+                : ipd.getDischargeDatetime().format(DS_DATE_TIME));
+        dsFact(facts, "Ward / Bed", dash(p.ward) + " / " + dash(p.bed));
+        dsFact(facts, "Consultant", p.doctor == null ? "-" : PdfLayoutHelper.doctorTitle(p.doctor.getName()));
+        dsFact(facts, "Admission type", dash(ipd.getAdmissionType()));
+        dsFact(facts, "Discharge type", dischargeTypeText(ipd.getDischargeType())
+                + (ipd.getDischargeNote() == null ? "" : " — " + ipd.getDischargeNote()));
+        dsFact(facts, "Condition", ds.getConditionAtDischarge() == null ? "-" : titleCase(ds.getConditionAtDischarge()));
+        dsFact(facts, "Provisional diagnosis", dash(ipd.getPrimaryDiagnosis()));
+        return facts;
+    }
+
+    private void dsMedicines(Document document, List<com.hms.dto.PlanDischargeRequest.DischargeMedication> medicines)
+            throws DocumentException {
+        if (medicines == null || medicines.isEmpty()) return;
+        dsHeading(document, "Medicines to take at home");
+        PdfPTable meds = new PdfPTable(5);
+        meds.setWidthPercentage(100);
+        meds.setWidths(new float[]{2.6f, 1.2f, 1.4f, 1f, 2.4f});
+        for (String h : new String[]{"Medicine", "Dose", "Frequency", "Days", "Instructions"}) {
+            helper.addTableHeaderCell(meds, h);
+        }
+        for (com.hms.dto.PlanDischargeRequest.DischargeMedication m : medicines) {
+            helper.addTableCell(meds, m.getName(), false, PdfLayoutHelper.UNICODE_NORMAL_FONT);
+            helper.addTableCell(meds, dash(m.getDose()), false, PdfLayoutHelper.UNICODE_NORMAL_FONT);
+            helper.addTableCell(meds, dash(m.getFrequency()), false, PdfLayoutHelper.UNICODE_NORMAL_FONT);
+            helper.addTableCell(meds, m.getDurationDays() == null ? "-" : String.valueOf(m.getDurationDays()), false);
+            helper.addTableCell(meds, dash(m.getInstructions()), false, PdfLayoutHelper.UNICODE_NORMAL_FONT);
+        }
+        document.add(meds);
+    }
+
+    /** "29 Nov 2026 at 10:15 AM with Dr. X. Come earlier ...", or null without a follow-up date. */
+    private static String followUpText(DischargeSummaryPrint p) {
+        com.hms.entity.DischargeSummary ds = p.summary;
+        if (ds.getFollowUpDate() == null) return null;
+        java.time.LocalTime t = p.followUpTime != null ? p.followUpTime : ds.getFollowUpTime();
+        return ds.getFollowUpDate().format(DS_DATE)
+                + (t == null ? "" : " at " + t.format(DS_TIME))
+                + (p.doctor == null ? "" : " with " + PdfLayoutHelper.doctorTitle(p.doctor.getName()))
+                + ". Come earlier if symptoms return or get worse.";
     }
 
     private void dsFact(PdfPTable table, String label, String value) {

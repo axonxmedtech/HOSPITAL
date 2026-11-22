@@ -155,27 +155,37 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
 
   const heldBed = beds.find((b) => Number(b.bedId) === Number(selectedBed) && b.reservedFor);
 
-  const handleSubmit = async () => {
-    if (!selectedWard || !selectedBed) {
-      toastError('Please select ward and bed');
-      return;
-    }
-    if (!opd && !selectedPatientId) {
-      toastError('Please select a patient for admission');
-      return;
-    }
-    if (!opd && !selectedDoctorId) {
-      toastError('Select the doctor the patient is admitted under');
-      return;
-    }
+  const advance = Number(advanceAmount) || 0;
 
-    const advance = Number(advanceAmount) || 0;
-    if (hasBilling && admissionType === 'ELECTIVE' && minAdvance > 0 && advance < minAdvance) {
-      toastError(`A planned admission needs an advance of at least ₹${minAdvance}`);
-      return;
+  /** The first problem with the form, or null when it can be sent. */
+  const formProblem = () => {
+    if (!selectedWard || !selectedBed) return 'Please select ward and bed';
+    if (!opd && !selectedPatientId) return 'Please select a patient for admission';
+    if (!opd && !selectedDoctorId) return 'Select the doctor the patient is admitted under';
+    if (hasBilling && admissionType === 'ELECTIVE' && minAdvance > 0 && advance < minAdvance)
+      return `A planned admission needs an advance of at least ₹${minAdvance}`;
+    if (advance > 0 && advanceMode === 'UPI' && !advanceReference.trim())
+      return 'Enter the UPI reference (UTR) for the advance';
+    return null;
+  };
+
+  /** Package, reservation and advance are sent only when they apply. */
+  const extras = () => {
+    const out = {};
+    if (hasBilling && packageId) out.packageId = Number(packageId);
+    if (useReservation && heldBed?.reservationId) out.reservationId = heldBed.reservationId;
+    if (hasBilling && advance > 0) {
+      out.advanceAmount = advance;
+      out.advanceMode = advanceMode;
+      out.advanceReference = advanceReference.trim() || null;
     }
-    if (advance > 0 && advanceMode === 'UPI' && !advanceReference.trim()) {
-      toastError('Enter the UPI reference (UTR) for the advance');
+    return out;
+  };
+
+  const handleSubmit = async () => {
+    const problem = formProblem();
+    if (problem) {
+      toastError(problem);
       return;
     }
 
@@ -189,17 +199,7 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
         bedId: selectedBed,
         admissionType,
         primaryDiagnosis,
-        ...(hasBilling && packageId ? { packageId: Number(packageId) } : {}),
-        ...(useReservation && heldBed?.reservationId
-          ? { reservationId: heldBed.reservationId }
-          : {}),
-        ...(hasBilling && advance > 0
-          ? {
-              advanceAmount: advance,
-              advanceMode,
-              advanceReference: advanceReference.trim() || null,
-            }
-          : {}),
+        ...extras(),
       };
       const res = await hospitalService.createIpdAdmission(payload);
       success('Patient admitted');
@@ -394,7 +394,7 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
                     type="checkbox"
                     checked={useReservation}
                     onChange={(e) => setUseReservation(e.target.checked)}
-                  />
+                  />{' '}
                   This is the reserved patient
                 </label>
               )}

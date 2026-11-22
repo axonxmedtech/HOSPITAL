@@ -80,7 +80,6 @@ class IpdDischargeSummaryApiTest {
     private Long doctorId;
     private Long wardId;
     private String receptionToken;
-    private String adminToken;
     private String doctorToken;
 
     private String uniq() { return Long.toString(System.nanoTime()); }
@@ -106,7 +105,6 @@ class IpdDischargeSummaryApiTest {
         wardId = wardRepository.save(w).getWardId();
 
         receptionToken = token("RECEPTIONIST", "rec-" + uniq() + "@example.test");
-        adminToken = token("HOSPITAL_ADMIN", "admin-" + uniq() + "@example.test");
         doctorToken = token("DOCTOR", d.getEmail());
     }
 

@@ -481,7 +481,7 @@ const IpdDetails = () => {
         which === 'orders'
           ? await hospitalService.downloadIpdPrescription(id)
           : await hospitalService.downloadIpdMedicinesList(id);
-      printBlob(blob);
+      await printBlob(blob);
     } catch (err) {
       toastError(extractApiError(err, 'Failed to load the print-out'));
     } finally {
@@ -496,7 +496,7 @@ const IpdDetails = () => {
     if (printingSummary) return;
     setPrintingSummary(true);
     try {
-      printBlob(await hospitalService.downloadDischargeSummary(id));
+      await printBlob(await hospitalService.downloadDischargeSummary(id));
     } catch (err) {
       toastError(extractApiError(err, 'Failed to load the discharge summary'));
     } finally {

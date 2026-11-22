@@ -16,12 +16,4 @@ public class BedResponse {
     private Long reservedPatientId;
     private java.time.LocalDateTime reservedUntil;
 
-    /** Copies a hold onto the response (no-op for null). */
-    public void applyHold(com.hms.entity.BedReservation hold) {
-        if (hold == null) return;
-        this.reservationId = hold.getPublicId();
-        this.reservedFor = hold.getPatientName();
-        this.reservedPatientId = hold.getPatientId();
-        this.reservedUntil = hold.getReservedUntil();
-    }
 }

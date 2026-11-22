@@ -46,6 +46,27 @@ export default function DietCard({ admissionId, canEdit = false, refreshKey = 0 
 
   const current = (orders || []).find((o) => !o.endedAt);
 
+  let currentView;
+  if (orders === null) {
+    currentView = <p className="text-sm text-gray-500">Loading…</p>;
+  } else if (current) {
+    currentView = (
+      <div className="text-sm">
+        <span
+          className={`font-semibold ${current.dietType === 'NBM' ? 'text-red-700' : 'text-gray-900'}`}
+        >
+          {dietLabel(current.dietType)}
+        </span>
+        {current.instructions && <span className="text-gray-700"> — {current.instructions}</span>}
+        <div className="text-xs text-gray-500">
+          since {new Date(current.startedAt).toLocaleString()}
+        </div>
+      </div>
+    );
+  } else {
+    currentView = <p className="text-sm text-gray-500">No diet set.</p>;
+  }
+
   const save = async () => {
     if (!form.dietType) return toastError('Select a diet');
     if (form.dietType === 'OTHER' && !form.instructions.trim())
@@ -85,23 +106,7 @@ export default function DietCard({ admissionId, canEdit = false, refreshKey = 0 
           </button>
         )}
       </div>
-      {orders === null ? (
-        <p className="text-sm text-gray-500">Loading…</p>
-      ) : current ? (
-        <div className="text-sm">
-          <span
-            className={`font-semibold ${current.dietType === 'NBM' ? 'text-red-700' : 'text-gray-900'}`}
-          >
-            {dietLabel(current.dietType)}
-          </span>
-          {current.instructions && <span className="text-gray-700"> — {current.instructions}</span>}
-          <div className="text-xs text-gray-500">
-            since {new Date(current.startedAt).toLocaleString()}
-          </div>
-        </div>
-      ) : (
-        <p className="text-sm text-gray-500">No diet set.</p>
-      )}
+      {currentView}
 
       {form && (
         <div className="mt-2 border rounded p-2 bg-gray-50 space-y-2">
@@ -184,7 +189,7 @@ export function DietSheetButton({ wardId = null, className = '' }) {
       onClick={async () => {
         setBusy(true);
         try {
-          printBlob(await hospitalService.downloadDietSheet(wardId));
+          await printBlob(await hospitalService.downloadDietSheet(wardId));
         } catch (err) {
           toastError(extractApiError(err, 'Could not load the diet sheet'));
         } finally {

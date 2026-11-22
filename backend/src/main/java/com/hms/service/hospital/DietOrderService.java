@@ -105,6 +105,20 @@ public class DietOrderService {
         return saved;
     }
 
+    /** null = the whole hospital (desk roles); an incharge sees only their own wards. */
+    private Set<Long> wardsVisibleToCaller() {
+        String role = access.role();
+        if ("NURSE_INCHARGE".equals(role)) return new HashSet<>(inchargeGuard.myWardIds());
+        if ("DOCTOR".equals(role) || "HOSPITAL_ADMIN".equals(role) || "RECEPTIONIST".equals(role)) return null;
+        throw new AccessDeniedException("Not allowed");
+    }
+
+    private static void putDiet(Map<String, Object> row, DietOrder d) {
+        row.put("dietType", d == null ? null : d.getDietType());
+        row.put("instructions", d == null ? null : d.getInstructions());
+        row.put("since", d == null ? null : d.getStartedAt());
+    }
+
     /**
      * The kitchen's list: every patient in a bed with their current diet, by ward and bed.
      * Reception, doctors and the admin see the whole hospital; an incharge their own wards.
@@ -112,19 +126,12 @@ public class DietOrderService {
     @Transactional(readOnly = true)
     public List<Map<String, Object>> dietSheet(Long wardIdFilter) {
         Long hospitalId = access.hospitalId();
-        String role = access.role();
-        Set<Long> allowedWards = null;
-        if ("NURSE_INCHARGE".equals(role)) {
-            allowedWards = new HashSet<>(inchargeGuard.myWardIds());
-        } else if (!"DOCTOR".equals(role) && !"HOSPITAL_ADMIN".equals(role) && !"RECEPTIONIST".equals(role)) {
-            throw new AccessDeniedException("Not allowed");
-        }
-        List<IpdAdmission> inBed = admissions.findByHospitalIdAndStatusIn(hospitalId, IpdAdmissionService.IN_HOSPITAL);
+        Set<Long> allowedWards = wardsVisibleToCaller();
         List<IpdAdmission> list = new ArrayList<>();
-        for (IpdAdmission a : inBed) {
-            if (wardIdFilter != null && !wardIdFilter.equals(a.getWardId())) continue;
-            if (allowedWards != null && !allowedWards.contains(a.getWardId())) continue;
-            list.add(a);
+        for (IpdAdmission a : admissions.findByHospitalIdAndStatusIn(hospitalId, IpdAdmissionService.IN_HOSPITAL)) {
+            boolean inFilter = wardIdFilter == null || wardIdFilter.equals(a.getWardId());
+            boolean allowed = allowedWards == null || allowedWards.contains(a.getWardId());
+            if (inFilter && allowed) list.add(a);
         }
         Map<Long, DietOrder> current = new HashMap<>();
         if (!list.isEmpty()) {
@@ -143,16 +150,13 @@ public class DietOrderService {
         }
         List<Map<String, Object>> rows = new ArrayList<>();
         for (IpdAdmission a : list) {
-            DietOrder d = current.get(a.getId());
             Map<String, Object> r = new LinkedHashMap<>();
             r.put("ipdId", a.getId());
             r.put("ipdNumber", a.getIpdNumber());
             r.put("ward", wardNames.getOrDefault(a.getWardId(), "-"));
             r.put("bed", bedCodes.getOrDefault(a.getBedId(), "-"));
             r.put("patientName", patientNames.getOrDefault(a.getPatientId(), "-"));
-            r.put("dietType", d == null ? null : d.getDietType());
-            r.put("instructions", d == null ? null : d.getInstructions());
-            r.put("since", d == null ? null : d.getStartedAt());
+            putDiet(r, current.get(a.getId()));
             rows.add(r);
         }
         rows.sort(Comparator.comparing((Map<String, Object> r) -> String.valueOf(r.get("ward")))

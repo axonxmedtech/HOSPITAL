@@ -39,23 +39,26 @@ final class DischargeSummaryRules {
         if (leavesAlive && condition == null) {
             throw new IllegalArgumentException("Select the patient's condition at discharge");
         }
-        List<DischargeMedication> meds = req.getDischargeMedications();
-        if (meds != null) {
-            if (meds.size() > MAX_MEDICINES) {
-                throw new IllegalArgumentException("A discharge summary can list at most " + MAX_MEDICINES + " medicines");
-            }
-            for (DischargeMedication m : meds) {
-                if (m == null || blank(m.getName())) {
-                    throw new IllegalArgumentException("Every medicine to take home needs a name");
-                }
-                if (m.getDurationDays() != null && (m.getDurationDays() < 1 || m.getDurationDays() > 365)) {
-                    throw new IllegalArgumentException("Duration for " + m.getName().trim() + " must be 1 to 365 days");
-                }
-            }
-        }
+        validateMedicines(req.getDischargeMedications());
         if (req.getFollowUpDate() != null
                 && req.getFollowUpDate().isBefore(java.time.LocalDate.now(java.time.ZoneId.systemDefault()))) {
             throw new IllegalArgumentException("The follow-up date cannot be in the past");
+        }
+    }
+
+    private static void validateMedicines(List<DischargeMedication> meds) {
+        if (meds == null) return;
+        if (meds.size() > MAX_MEDICINES) {
+            throw new IllegalArgumentException("A discharge summary can list at most " + MAX_MEDICINES + " medicines");
+        }
+        for (DischargeMedication m : meds) {
+            if (m == null || blank(m.getName())) {
+                throw new IllegalArgumentException("Every medicine to take home needs a name");
+            }
+            Integer days = m.getDurationDays();
+            if (days != null && (days < 1 || days > 365)) {
+                throw new IllegalArgumentException("Duration for " + m.getName().trim() + " must be 1 to 365 days");
+            }
         }
     }
 

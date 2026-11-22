@@ -37,13 +37,13 @@ export default function CancelAdmissionModal({ isOpen, paidAmount, isAdmin, onCl
   };
 
   return (
-    <div
-      className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 px-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="cancel-admission-title"
-    >
-      <div className="bg-white rounded-lg w-full max-w-md p-6 shadow-xl">
+    <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 px-4">
+      <dialog
+        open
+        aria-modal="true"
+        aria-labelledby="cancel-admission-title"
+        className="relative m-0 border-0 text-gray-900 bg-white rounded-lg w-full max-w-md p-6 shadow-xl"
+      >
         <h3 id="cancel-admission-title" className="text-lg font-semibold mb-2">
           Cancel admission
         </h3>
@@ -109,7 +109,7 @@ export default function CancelAdmissionModal({ isOpen, paidAmount, isAdmin, onCl
             </button>
           )}
         </div>
-      </div>
+      </dialog>
     </div>
   );
 }

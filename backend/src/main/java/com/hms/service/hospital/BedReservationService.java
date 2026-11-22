@@ -113,6 +113,32 @@ public class BedReservationService {
         if (!holdsOn(hospitalId, List.of(bed.getBedId())).isEmpty()) {
             throw new ConflictException("This bed is already reserved");
         }
+        Who who = whoFor(req, hospitalId);
+        LocalDateTime expected = req.expectedAt();
+        LocalDateTime until = holdUntil(expected, req.reservedUntil());
+        String notes = req.notes() == null || req.notes().isBlank() ? null : req.notes().trim();
+        if (notes != null && notes.length() > 500) throw new IllegalArgumentException("The note is too long");
+
+        BedReservation r = new BedReservation();
+        r.setHospitalId(hospitalId);
+        r.setWardId(bed.getWardId());
+        r.setBedId(bed.getBedId());
+        r.setPatientId(req.patientId());
+        r.setPatientName(who.name());
+        r.setPatientPhone(who.phone());
+        r.setExpectedAt(expected);
+        r.setReservedUntil(until);
+        r.setNotes(notes);
+        r.setCreatedBy(securityHelper.getCurrentUserRole() + " (" + securityHelper.getCurrentUserEmail() + ")");
+        BedReservation saved = reservations.save(r);
+        audit("BED_RESERVED", saved, "Bed " + bed.getBedCode() + " reserved for " + who.name() + " until " + until);
+        return saved;
+    }
+
+    private record Who(String name, String phone) {}
+
+    /** The registered patient's name and phone, or the name and phone typed at the desk. */
+    private Who whoFor(ReserveRequest req, Long hospitalId) {
         String name = req.patientName() == null ? "" : req.patientName().trim();
         String phone = req.patientPhone() == null || req.patientPhone().isBlank() ? null : req.patientPhone().trim();
         if (req.patientId() != null) {
@@ -124,30 +150,18 @@ public class BedReservationService {
         if (name.isEmpty()) throw new IllegalArgumentException("Enter who the bed is reserved for");
         if (name.length() > 150) throw new IllegalArgumentException("The name is too long");
         if (phone != null && phone.length() > 20) throw new IllegalArgumentException("The phone number is too long");
-        LocalDateTime expected = req.expectedAt();
+        return new Who(name, phone);
+    }
+
+    /** Checks the expected time and works out how long the bed is held (6 h after it by default). */
+    private static LocalDateTime holdUntil(LocalDateTime expected, LocalDateTime requested) {
         if (expected == null) throw new IllegalArgumentException("Enter when the patient is expected");
         if (expected.isBefore(now().minusHours(1))) throw new IllegalArgumentException("The expected time has already passed");
         if (expected.isAfter(now().plusDays(30))) throw new IllegalArgumentException("A bed can be reserved at most 30 days ahead");
-        LocalDateTime until = req.reservedUntil() != null ? req.reservedUntil() : expected.plusHours(DEFAULT_HOLD_HOURS);
+        LocalDateTime until = requested != null ? requested : expected.plusHours(DEFAULT_HOLD_HOURS);
         if (until.isBefore(expected)) throw new IllegalArgumentException("Hold the bed at least until the expected time");
         if (until.isAfter(expected.plusDays(2))) throw new IllegalArgumentException("Hold the bed for at most 2 days after the expected time");
-        String notes = req.notes() == null || req.notes().isBlank() ? null : req.notes().trim();
-        if (notes != null && notes.length() > 500) throw new IllegalArgumentException("The note is too long");
-
-        BedReservation r = new BedReservation();
-        r.setHospitalId(hospitalId);
-        r.setWardId(bed.getWardId());
-        r.setBedId(bed.getBedId());
-        r.setPatientId(req.patientId());
-        r.setPatientName(name);
-        r.setPatientPhone(phone);
-        r.setExpectedAt(expected);
-        r.setReservedUntil(until);
-        r.setNotes(notes);
-        r.setCreatedBy(securityHelper.getCurrentUserRole() + " (" + securityHelper.getCurrentUserEmail() + ")");
-        BedReservation saved = reservations.save(r);
-        audit("BED_RESERVED", saved, "Bed " + bed.getBedCode() + " reserved for " + name + " until " + until);
-        return saved;
+        return until;
     }
 
     @Transactional
@@ -190,6 +204,15 @@ public class BedReservationService {
         hold.setStatus(BedReservation.USED);
         hold.setIpdAdmissionId(ipdAdmissionId);
         reservations.save(hold);
+    }
+
+    /** Shows a hold in force on a bed list entry (nothing for null). */
+    public static void applyHold(com.hms.dto.BedResponse br, BedReservation hold) {
+        if (hold == null) return;
+        br.setReservationId(hold.getPublicId());
+        br.setReservedFor(hold.getPatientName());
+        br.setReservedPatientId(hold.getPatientId());
+        br.setReservedUntil(hold.getReservedUntil());
     }
 
     public static Map<String, Object> view(BedReservation r) {

@@ -40,13 +40,13 @@ const rupees = (n) => (n == null ? '—' : `₹${Number(n).toLocaleString('en-IN
 
 function Dialog({ title, children, onClose, onSubmit, saving, submitLabel }) {
   return (
-    <div
-      className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 px-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
-    >
-      <div className="bg-white rounded-lg w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 px-4">
+      <dialog
+        open
+        aria-modal="true"
+        aria-label={title}
+        className="relative m-0 border-0 text-gray-900 bg-white rounded-lg w-full max-w-md p-6 max-h-[90vh] overflow-y-auto"
+      >
         <h3 className="text-lg font-semibold mb-3">{title}</h3>
         {children}
         <div className="flex justify-end gap-3 mt-4">
@@ -62,7 +62,7 @@ function Dialog({ title, children, onClose, onSubmit, saving, submitLabel }) {
             {saving ? 'Saving…' : submitLabel}
           </button>
         </div>
-      </div>
+      </dialog>
     </div>
   );
 }
@@ -230,7 +230,7 @@ export default function InsurancePanel({ admissionId, canEdit = false, onChanged
                 {c.events.map((e) => (
                   <li key={e.id}>
                     {new Date(e.createdAt).toLocaleString()} ·{' '}
-                    {(CLAIM_STATUS[e.status] || {}).label || e.status}
+                    {CLAIM_STATUS[e.status]?.label || e.status}
                     {e.amount != null ? ` · ${rupees(e.amount)}` : ''}
                     {e.note ? ` · ${e.note}` : ''}
                   </li>
@@ -366,7 +366,7 @@ export default function InsurancePanel({ admissionId, canEdit = false, onChanged
           saving={saving}
           submitLabel="Post to bill"
           onSubmit={async () => {
-            if (!(Number(settle.amount) > 0))
+            if (!settle.amount || Number(settle.amount) <= 0)
               return toastError('Enter the amount the insurer paid');
             if (Number(settle.deduction) > 0 && !settle.deductionReason.trim())
               return toastError('Enter the reason for the deduction');

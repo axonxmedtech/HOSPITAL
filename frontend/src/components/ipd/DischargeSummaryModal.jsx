@@ -12,7 +12,15 @@ export const CONDITIONS = [
   { value: 'DETERIORATED', label: 'Deteriorated' },
 ];
 
+let medicineKey = 0;
+/** A stable key per medicine row, so removing one row never mixes up the others. */
+const nextKey = () => {
+  medicineKey += 1;
+  return `med-${medicineKey}`;
+};
+
 const blankMedicine = () => ({
+  key: nextKey(),
   name: '',
   dose: '',
   frequency: '',
@@ -34,6 +42,7 @@ const fromSummary = (summary, dischargeType, dischargeNote) => ({
   dischargeMedications: (summary?.dischargeMedications || []).map((m) => ({
     ...blankMedicine(),
     ...m,
+    key: nextKey(),
     durationDays: m.durationDays ?? '',
   })),
   followUpDate: summary?.followUpDate || '',
@@ -72,6 +81,7 @@ export default function DischargeSummaryModal({
   onSave,
 }) {
   const [f, setF] = useState(() => fromSummary(summary, dischargeType, dischargeNote));
+  const submitLabel = editing ? 'Save summary' : 'Plan Discharge';
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const set = (key) => (value) => setF((prev) => ({ ...prev, [key]: value }));
@@ -170,13 +180,13 @@ export default function DischargeSummaryModal({
   );
 
   return (
-    <div
-      className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 px-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="ds-title"
-    >
-      <div className="bg-white rounded-lg w-full max-w-3xl max-h-[92vh] overflow-y-auto p-6">
+    <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 px-4">
+      <dialog
+        open
+        aria-modal="true"
+        aria-labelledby="ds-title"
+        className="relative m-0 border-0 text-gray-900 bg-white rounded-lg w-full max-w-3xl max-h-[92vh] overflow-y-auto p-6"
+      >
         <h3 id="ds-title" className="text-lg font-semibold mb-1">
           {editing ? 'Edit discharge summary' : 'Plan discharge'}
         </h3>
@@ -277,7 +287,7 @@ export default function DischargeSummaryModal({
           ) : (
             <div className="space-y-2">
               {f.dischargeMedications.map((m, i) => (
-                <div key={i} className="grid grid-cols-12 gap-2 items-start">
+                <div key={m.key} className="grid grid-cols-12 gap-2 items-start">
                   <input
                     aria-label={`Medicine ${i + 1} name`}
                     value={m.name}
@@ -386,10 +396,10 @@ export default function DischargeSummaryModal({
             disabled={saving}
             className="px-3 py-1.5 bg-yellow-600 hover:bg-yellow-700 text-white rounded disabled:opacity-60"
           >
-            {saving ? 'Saving…' : editing ? 'Save summary' : 'Plan Discharge'}
+            {saving ? 'Saving…' : submitLabel}
           </button>
         </div>
-      </div>
+      </dialog>
     </div>
   );
 }

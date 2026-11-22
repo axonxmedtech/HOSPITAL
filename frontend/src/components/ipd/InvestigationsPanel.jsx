@@ -123,11 +123,9 @@ export default function InvestigationsPanel({ admissionId, canOrder = false, can
         </div>
       )}
 
-      {list === null ? (
-        <p className="text-sm text-gray-500">Loading…</p>
-      ) : list.length === 0 ? (
-        <p className="text-sm text-gray-500">No investigations ordered.</p>
-      ) : (
+      {list === null && <p className="text-sm text-gray-500">Loading…</p>}
+      {list?.length === 0 && <p className="text-sm text-gray-500">No investigations ordered.</p>}
+      {list?.length > 0 && (
         <ul className="space-y-2">
           {list.map((o) => {
             const st = STATUS[o.status] || STATUS.ORDERED;
@@ -207,13 +205,13 @@ export default function InvestigationsPanel({ admissionId, canOrder = false, can
       )}
 
       {resultFor && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 px-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Result for ${resultFor.testName}`}
-        >
-          <div className="bg-white rounded-lg w-full max-w-md p-6">
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 px-4">
+          <dialog
+            open
+            aria-modal="true"
+            aria-label={`Result for ${resultFor.testName}`}
+            className="relative m-0 border-0 text-gray-900 bg-white rounded-lg w-full max-w-md p-6"
+          >
             <h3 className="text-lg font-semibold mb-3">Result — {resultFor.testName}</h3>
             <textarea
               aria-label="Result"
@@ -251,18 +249,18 @@ export default function InvestigationsPanel({ admissionId, canOrder = false, can
                 Save result
               </button>
             </div>
-          </div>
+          </dialog>
         </div>
       )}
 
       {cancelFor && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 px-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Cancel ${cancelFor.testName}`}
-        >
-          <div className="bg-white rounded-lg w-full max-w-md p-6">
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 px-4">
+          <dialog
+            open
+            aria-modal="true"
+            aria-label={`Cancel ${cancelFor.testName}`}
+            className="relative m-0 border-0 text-gray-900 bg-white rounded-lg w-full max-w-md p-6"
+          >
             <h3 className="text-lg font-semibold mb-3">Cancel {cancelFor.testName}</h3>
             <label htmlFor="inv-cancel-reason" className="block text-sm font-medium mb-1">
               Reason *
@@ -303,7 +301,7 @@ export default function InvestigationsPanel({ admissionId, canOrder = false, can
                 Cancel test
               </button>
             </div>
-          </div>
+          </dialog>
         </div>
       )}
     </div>

@@ -55,30 +55,34 @@ public final class IpdChargePeriods {
 
     /** The days that have begun by {@code now}, oldest first (capped at {@link #MAX_PERIODS}). */
     public static List<Period> started(IpdAdmission a, LocalDateTime now) {
-        List<Period> out = new ArrayList<>();
         LocalDateTime admitAt = a.getAdmissionDatetime();
         if (admitAt == null) {
             // Legacy row with no admission time: only today can be placed.
             LocalDate today = now.toLocalDate();
-            out.add(new Period(1, today.atStartOfDay(), today.format(DateTimeFormatter.ISO_DATE)));
-            return out;
+            return List.of(new Period(1, today.atStartOfDay(), today.format(DateTimeFormatter.ISO_DATE)));
         }
-        if (hours24(a)) {
-            for (int k = 1; k <= MAX_PERIODS; k++) {
-                LocalDateTime start = admitAt.plusHours(24L * (k - 1));
-                if (k > 1 && now.isBefore(start.plusHours(grace(a)))) break;
-                out.add(new Period(k, start, "Day " + k));
-            }
-        } else {
-            LocalDate first = admitAt.toLocalDate();
-            for (int k = 1; k <= MAX_PERIODS; k++) {
-                LocalDate date = first.plusDays(k - 1L);
-                if (date.isAfter(now.toLocalDate())) break;
-                out.add(new Period(k, k == 1 ? admitAt : date.atStartOfDay(), date.format(DateTimeFormatter.ISO_DATE)));
-            }
+        return hours24(a) ? startedBy24Hours(admitAt, grace(a), now) : startedByDate(admitAt, now);
+    }
+
+    private static List<Period> startedBy24Hours(LocalDateTime admitAt, int grace, LocalDateTime now) {
+        List<Period> out = new ArrayList<>();
+        for (int k = 1; k <= MAX_PERIODS; k++) {
+            LocalDateTime start = admitAt.plusHours(24L * (k - 1));
+            if (k > 1 && now.isBefore(start.plusHours(grace))) break;
+            out.add(new Period(k, start, "Day " + k));
         }
-        // Keep the most recent days when a very old stay exceeds the cap.
-        return out.size() > MAX_PERIODS ? out.subList(out.size() - MAX_PERIODS, out.size()) : out;
+        return out;
+    }
+
+    private static List<Period> startedByDate(LocalDateTime admitAt, LocalDateTime now) {
+        List<Period> out = new ArrayList<>();
+        LocalDate first = admitAt.toLocalDate();
+        for (int k = 1; k <= MAX_PERIODS; k++) {
+            LocalDate date = first.plusDays(k - 1L);
+            if (date.isAfter(now.toLocalDate())) break;
+            out.add(new Period(k, k == 1 ? admitAt : date.atStartOfDay(), date.format(DateTimeFormatter.ISO_DATE)));
+        }
+        return out;
     }
 
     /** The day a moment falls in (1 = admission day). */
@@ -86,7 +90,9 @@ public final class IpdChargePeriods {
         LocalDateTime admitAt = a.getAdmissionDatetime();
         if (admitAt == null || at.isBefore(admitAt)) return 1;
         if (hours24(a)) {
-            return (int) (ChronoUnit.HOURS.between(admitAt, at) / 24) + 1;
+            // Zoned, so the hours between two wall-clock times are real elapsed hours.
+            java.time.ZoneId zone = java.time.ZoneId.systemDefault();
+            return (int) (ChronoUnit.HOURS.between(admitAt.atZone(zone), at.atZone(zone)) / 24) + 1;
         }
         return (int) ChronoUnit.DAYS.between(admitAt.toLocalDate(), at.toLocalDate()) + 1;
     }

@@ -78,7 +78,6 @@ class IpdCareApiTest {
     private Long doctorId;
     private Long wardId;
     private String receptionToken;
-    private String adminToken;
     private String doctorToken;
     private String nurseToken;
     private Long nurseUserId;
@@ -106,7 +105,6 @@ class IpdCareApiTest {
         wardId = wardRepository.save(w).getWardId();
 
         receptionToken = token("RECEPTIONIST", "rec-" + uniq() + "@example.test");
-        adminToken = token("HOSPITAL_ADMIN", "admin-" + uniq() + "@example.test");
         doctorToken = token("DOCTOR", d.getEmail());
         nurseToken = token("NURSE", "nurse-" + uniq() + "@example.test");
         nurseUserId = userRepository.findByEmail(lastNurseEmail).orElseThrow().getId();

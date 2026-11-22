@@ -14,13 +14,13 @@ const rupees = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 
 function Modal({ title, children, onClose, onSubmit, saving, submitLabel }) {
   return (
-    <div
-      className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 px-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
-    >
-      <div className="bg-white rounded-lg w-full max-w-md p-6 shadow-xl">
+    <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 px-4">
+      <dialog
+        open
+        aria-modal="true"
+        aria-label={title}
+        className="relative m-0 border-0 text-gray-900 bg-white rounded-lg w-full max-w-md p-6 shadow-xl"
+      >
         <h3 className="text-lg font-semibold mb-3">{title}</h3>
         {children}
         <div className="flex justify-end gap-3 mt-4">
@@ -36,7 +36,7 @@ function Modal({ title, children, onClose, onSubmit, saving, submitLabel }) {
             {saving ? 'Saving…' : submitLabel}
           </button>
         </div>
-      </div>
+      </dialog>
     </div>
   );
 }
@@ -51,6 +51,9 @@ export default function IpdMoneyPanel({ ipdId, data, isAdmin, canAct, onChanged 
   const billing = data?.billing || {};
   const admission = data?.admission || {};
   const advances = billing.advances || [];
+  const grace = admission.graceHours ? ` (+${admission.graceHours} h grace)` : '';
+  const ruleText =
+    admission.bedChargeRule === 'HOURS_24' ? `24 hours from admission${grace}` : 'calendar date';
   const unused = Math.max(
     0,
     -(Number(billing.balance || 0) - Number(billing.insuranceExpected || 0))
@@ -92,7 +95,7 @@ export default function IpdMoneyPanel({ ipdId, data, isAdmin, canAct, onChanged 
   const printReceipt = async (paymentId) => {
     setPrinting(paymentId);
     try {
-      printBlob(await hospitalService.downloadAdvanceReceipt(paymentId));
+      await printBlob(await hospitalService.downloadAdvanceReceipt(paymentId));
     } catch (err) {
       toastError(extractApiError(err, 'Could not load the receipt'));
     } finally {
@@ -115,7 +118,7 @@ export default function IpdMoneyPanel({ ipdId, data, isAdmin, canAct, onChanged 
       () => setAdvance(null),
       `Advance of ${rupees(amount)} recorded`
     );
-    if (result?.paymentId) printReceipt(result.paymentId);
+    if (result?.paymentId) await printReceipt(result.paymentId);
   };
 
   return (
@@ -152,13 +155,7 @@ export default function IpdMoneyPanel({ ipdId, data, isAdmin, canAct, onChanged 
           </>
         )}
       </div>
-      <div className="text-xs text-gray-500">
-        Bed days counted by{' '}
-        {admission.bedChargeRule === 'HOURS_24'
-          ? `24 hours from admission${admission.graceHours ? ` (+${admission.graceHours} h grace)` : ''}`
-          : 'calendar date'}
-        .
-      </div>
+      <div className="text-xs text-gray-500">Bed days counted by {ruleText}.</div>
 
       {Number(billing.insuranceExpected) > 0 && (
         <div className="text-indigo-800">
@@ -279,13 +276,13 @@ export default function IpdMoneyPanel({ ipdId, data, isAdmin, canAct, onChanged 
             The package covers bed, nursing and doctor visits for its days. Those charges already on
             the bill are credited back. Medicines and extra days are charged as usual.
           </p>
-          {!pkg.packages ? (
-            <p className="text-sm text-gray-500">Loading packages…</p>
-          ) : pkg.packages.length === 0 ? (
+          {!pkg.packages && <p className="text-sm text-gray-500">Loading packages…</p>}
+          {pkg.packages?.length === 0 && (
             <p className="text-sm text-gray-500">
               No packages yet. The admin can add them in Settings.
             </p>
-          ) : (
+          )}
+          {pkg.packages?.length > 0 && (
             <>
               <label htmlFor="apply-pkg" className="block text-sm font-medium mb-1">
                 Package

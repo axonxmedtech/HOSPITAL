@@ -40,6 +40,7 @@ public class DatabaseMigrationRunner {
     private static final String MAR_TABLE = "medication_administrations";
     private static final String HOSPITAL_SETTINGS_TABLE = "hospital_settings";
     private static final String INT_NULL = "INT NULL";
+    private static final String DECIMAL_10_2_NULL = "DECIMAL(10,2) NULL";
     private static final String BIGINT_NULL = "BIGINT NULL";
     private static final String BILLING_PAYMENTS_TABLE = "billing_payments";
     private static final String IPD_ADMISSION_TABLE = "ipd_admission";
@@ -210,14 +211,14 @@ public class DatabaseMigrationRunner {
         ensureCalendarEventsTable();
         ensureHospitalFormAccessTable();
         // Orders (drugs / IV fluids) captured alongside a nursing note; printed beside it.
-        addColumnIfMissing("nursing_notes", "orders", "TEXT NULL");
+        addColumnIfMissing("nursing_notes", "orders", TEXT_NULL);
         // Height (cm) captured with the OPD vitals, alongside weight.
         addColumnIfMissing("opd", "height", "DOUBLE NULL");
         // Per-hospital OPD vitals config + values of hospital-defined custom vitals.
         ensureHospitalVitalsTable();
-        addColumnIfMissing("opd", "custom_vitals", "TEXT NULL");
+        addColumnIfMissing("opd", "custom_vitals", TEXT_NULL);
         // Billing: discount / concession, cancellation, and a refund-aware payment ledger.
-        addColumnIfMissing(BILLING_TABLE, "discount_amount", "DECIMAL(10,2) NULL");
+        addColumnIfMissing(BILLING_TABLE, "discount_amount", DECIMAL_10_2_NULL);
         addColumnIfMissing(BILLING_TABLE, "discount_reason", VARCHAR_255_NULL);
         addColumnIfMissing(BILLING_TABLE, "discounted_by", VARCHAR_150_NULL);
         addColumnIfMissing(BILLING_TABLE, CANCEL_REASON, VARCHAR_255_NULL);
@@ -227,8 +228,8 @@ public class DatabaseMigrationRunner {
         addColumnIfMissing(BILLING_PAYMENTS_TABLE, "recorded_by", VARCHAR_150_NULL);
         addColumnIfMissing(BILLING_PAYMENTS_TABLE, "note", VARCHAR_255_NULL);
         // IPD discharge outcome (V29).
-        addColumnIfMissing("ipd_admission", "discharge_type", VARCHAR_20_NULL);
-        addColumnIfMissing("ipd_admission", "discharge_note", VARCHAR_500_NULL);
+        addColumnIfMissing(IPD_ADMISSION_TABLE, "discharge_type", VARCHAR_20_NULL);
+        addColumnIfMissing(IPD_ADMISSION_TABLE, "discharge_note", VARCHAR_500_NULL);
         // OPD visit cancellation (V30).
         addOpdCancelledStatus();
         addColumnIfMissing("opd", CANCEL_REASON, VARCHAR_255_NULL);
@@ -245,7 +246,7 @@ public class DatabaseMigrationRunner {
         addColumnIfMissing(MAR_TABLE, "quantity", INT_NULL);
         addColumnIfMissing(MAR_TABLE, "own_supply", "BIT(1) NULL");
         addColumnIfMissing(MAR_TABLE, "stock_source", VARCHAR_20_NULL);
-        addColumnIfMissing(MAR_TABLE, "charge_amount", "DECIMAL(10,2) NULL");
+        addColumnIfMissing(MAR_TABLE, "charge_amount", DECIMAL_10_2_NULL);
         addColumnIfMissing(MAR_TABLE, "billing_item_id", BIGINT_NULL);
         addColumnIfMissing(MAR_TABLE, "billing_medicine_id", BIGINT_NULL);
         addColumnIfMissing(MAR_TABLE, "stock_detail", "VARCHAR(1000) NULL");
@@ -667,16 +668,15 @@ public class DatabaseMigrationRunner {
         } catch (Exception e) { log.warn("DB migration skipped (pharmacy legal invoice): {}", e.getMessage()); }
     }
 
-    /** In-app help feedback (V34). Idempotent; mirrors setup/schema-full.sql. */
     /**
      * V40: cancellation columns on ipd_admission, and ipd_number unique per hospital rather than
      * across the platform. Idempotent; mirrors setup/schema-full.sql.
      */
     private void ensureIpdCancelAndHospitalNumbering() {
         try {
-            addColumnIfMissing(IPD_ADMISSION_TABLE, "cancel_reason", VARCHAR_255_NULL);
-            addColumnIfMissing(IPD_ADMISSION_TABLE, "cancelled_at", DATETIME_6_NULL);
-            addColumnIfMissing(IPD_ADMISSION_TABLE, "cancelled_by", VARCHAR_255_NULL);
+            addColumnIfMissing(IPD_ADMISSION_TABLE, CANCEL_REASON, VARCHAR_255_NULL);
+            addColumnIfMissing(IPD_ADMISSION_TABLE, CANCELLED_AT, DATETIME_6_NULL);
+            addColumnIfMissing(IPD_ADMISSION_TABLE, CANCELLED_BY, VARCHAR_255_NULL);
             java.util.List<String> globalUnique = jdbcTemplate.queryForList(
                 "SELECT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() " +
                 "AND TABLE_NAME = 'ipd_admission' AND NON_UNIQUE = 0 AND INDEX_NAME <> 'PRIMARY' " +
@@ -725,9 +725,9 @@ public class DatabaseMigrationRunner {
                     + "included_days INT NOT NULL, description VARCHAR(500) NULL, is_active TINYINT(1) NOT NULL DEFAULT 1, "
                     + "created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NULL, PRIMARY KEY (id), "
                     + "UNIQUE KEY uk_ipd_packages_hospital_name (hospital_id, name), KEY idx_ipd_packages_hospital (hospital_id) )");
-            addColumnIfMissing("wards", "nursing_charge", "DECIMAL(10,2) NULL");
-            addColumnIfMissing(IPD_ADMISSION_TABLE, "bed_charge_rule", "VARCHAR(20) NULL");
-            addColumnIfMissing(IPD_ADMISSION_TABLE, "grace_hours", "INT NULL");
+            addColumnIfMissing("wards", "nursing_charge", DECIMAL_10_2_NULL);
+            addColumnIfMissing(IPD_ADMISSION_TABLE, "bed_charge_rule", VARCHAR_20_NULL);
+            addColumnIfMissing(IPD_ADMISSION_TABLE, "grace_hours", INT_NULL);
             addColumnIfMissing(IPD_ADMISSION_TABLE, "package_id", BIGINT_NULL);
             addColumnIfMissing(IPD_ADMISSION_TABLE, "package_applied_at", DATETIME_6_NULL);
         } catch (Exception e) {
@@ -738,19 +738,19 @@ public class DatabaseMigrationRunner {
     /** V43: inpatient investigations on lab_orders, and diet_orders. Mirrors schema-full.sql. */
     private void ensureIpdInvestigationsAndDiet() {
         try {
-            addColumnIfMissing(LAB_ORDERS_TABLE, "patient_id", "BIGINT NULL");
-            addColumnIfMissing(LAB_ORDERS_TABLE, "opd_id", "BIGINT NULL");
+            addColumnIfMissing(LAB_ORDERS_TABLE, "patient_id", BIGINT_NULL);
+            addColumnIfMissing(LAB_ORDERS_TABLE, "opd_id", BIGINT_NULL);
             addColumnIfMissing(LAB_ORDERS_TABLE, "priority", "VARCHAR(10) NOT NULL DEFAULT 'ROUTINE'");
-            addColumnIfMissing(LAB_ORDERS_TABLE, "ipd_admission_id", "BIGINT NULL");
-            addColumnIfMissing(LAB_ORDERS_TABLE, "notes", "VARCHAR(500) NULL");
-            addColumnIfMissing(LAB_ORDERS_TABLE, "ordered_by", "VARCHAR(255) NULL");
-            addColumnIfMissing(LAB_ORDERS_TABLE, "sample_collected_at", "DATETIME(6) NULL");
-            addColumnIfMissing(LAB_ORDERS_TABLE, "sample_collected_by", "VARCHAR(255) NULL");
-            addColumnIfMissing(LAB_ORDERS_TABLE, "result_text", "TEXT NULL");
-            addColumnIfMissing(LAB_ORDERS_TABLE, "result_at", "DATETIME(6) NULL");
-            addColumnIfMissing(LAB_ORDERS_TABLE, "result_by", "VARCHAR(255) NULL");
-            addColumnIfMissing(LAB_ORDERS_TABLE, "cancel_reason", "VARCHAR(255) NULL");
-            addColumnIfMissing(LAB_ORDERS_TABLE, "cancelled_at", "DATETIME(6) NULL");
+            addColumnIfMissing(LAB_ORDERS_TABLE, "ipd_admission_id", BIGINT_NULL);
+            addColumnIfMissing(LAB_ORDERS_TABLE, "notes", VARCHAR_500_NULL);
+            addColumnIfMissing(LAB_ORDERS_TABLE, "ordered_by", VARCHAR_255_NULL);
+            addColumnIfMissing(LAB_ORDERS_TABLE, "sample_collected_at", DATETIME_6_NULL);
+            addColumnIfMissing(LAB_ORDERS_TABLE, "sample_collected_by", VARCHAR_255_NULL);
+            addColumnIfMissing(LAB_ORDERS_TABLE, "result_text", TEXT_NULL);
+            addColumnIfMissing(LAB_ORDERS_TABLE, "result_at", DATETIME_6_NULL);
+            addColumnIfMissing(LAB_ORDERS_TABLE, "result_by", VARCHAR_255_NULL);
+            addColumnIfMissing(LAB_ORDERS_TABLE, "cancel_reason", VARCHAR_255_NULL);
+            addColumnIfMissing(LAB_ORDERS_TABLE, "cancelled_at", DATETIME_6_NULL);
             jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS diet_orders ( id BIGINT NOT NULL AUTO_INCREMENT, "
                     + "public_id VARCHAR(36) NOT NULL, hospital_id BIGINT NOT NULL, ipd_admission_id BIGINT NOT NULL, "
                     + "diet_type VARCHAR(30) NOT NULL, instructions VARCHAR(500) NULL, ordered_by_doctor_id BIGINT NULL, "
@@ -784,6 +784,7 @@ public class DatabaseMigrationRunner {
         } catch (Exception e) { log.warn("DB migration skipped (hospital_sidebar_settings): {}", e.getMessage()); }
     }
 
+    /** In-app help feedback (V34). Idempotent; mirrors setup/schema-full.sql. */
     private void ensureHelpFeedbackTable() {
         try {
             jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS help_feedback (" +
@@ -2518,7 +2519,7 @@ public class DatabaseMigrationRunner {
         } catch (Exception e) {
             log.warn("DB migration skipped (surgery execution tables): {}", e.getMessage());
         }
-        addColumnIfMissing("surgeries", "operative_note", "TEXT NULL");
+        addColumnIfMissing("surgeries", "operative_note", TEXT_NULL);
         addColumnIfMissing("surgeries", "operative_note_by_user_id", BIGINT_NULL);
         addColumnIfMissing("surgeries", "operative_note_at", DATETIME_6_NULL);
     }

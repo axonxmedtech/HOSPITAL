@@ -43,32 +43,54 @@ public class IpdRoundsService {
         IpdAdmission a = access.requireReadable(ipdAdmissionId);
         Long hospitalId = a.getHospitalId();
         List<Map<String, Object>> out = new ArrayList<>();
+        out.addAll(roundEntries(a, hospitalId));
+        out.addAll(noteEntries(a, hospitalId));
+        out.sort(Comparator.comparing((Map<String, Object> m) -> (LocalDateTime) m.get("at"),
+                Comparator.nullsLast(Comparator.reverseOrder())));
+        return out;
+    }
 
-        List<MedicalRecord> records = medicalRecords.findByIpdAdmissionIdOrderByCreatedAtDesc(a.getId());
+    /** Rounds written on the case (follow-ups), with the doctor's name. */
+    private List<Map<String, Object>> roundEntries(IpdAdmission a, Long hospitalId) {
+        List<MedicalRecord> records = medicalRecords.findByIpdAdmissionIdOrderByCreatedAtDesc(a.getId()).stream()
+                // The placeholder record made to hang prescriptions and tests on is not a round.
+                .filter(r -> !INITIAL_RECORD.equals(r.getTreatmentNotes()) && Objects.equals(r.getHospitalId(), hospitalId))
+                .toList();
         Set<Long> doctorIds = new HashSet<>();
-        for (MedicalRecord r : records) if (r.getDoctorId() != null) doctorIds.add(r.getDoctorId());
+        records.stream().map(MedicalRecord::getDoctorId).filter(Objects::nonNull).forEach(doctorIds::add);
         Map<Long, String> doctorNames = new HashMap<>();
         if (!doctorIds.isEmpty()) {
             doctors.findByHospitalIdAndIdIn(hospitalId, doctorIds)
                     .forEach(d -> doctorNames.put(d.getId(), com.hms.util.DoctorNames.withTitle(d.getName())));
         }
+        List<Map<String, Object>> out = new ArrayList<>();
         for (MedicalRecord r : records) {
-            // The placeholder record made to hang prescriptions and tests on is not a round.
-            if (INITIAL_RECORD.equals(r.getTreatmentNotes())) continue;
-            if (!Objects.equals(r.getHospitalId(), hospitalId)) continue;
             out.add(entry(r.getCreatedAt(), doctorNames.get(r.getDoctorId()), r.getDiagnosis(), r.getTreatmentNotes(), "ROUND"));
         }
-        for (NursingNote n : notes.findByAdmissionAndCategory(a.getId(), "DOCTOR")) {
-            if (!Objects.equals(n.getHospitalId(), hospitalId)) continue;
-            String author = n.getNurseUserId() == null ? null
-                    : users.findByIdAndHospitalId(n.getNurseUserId(), hospitalId).map(u -> u.getName()).orElse(null);
-            String text = n.getNoteText();
-            if (n.getOrders() != null && !n.getOrders().isBlank()) text = (text == null ? "" : text + "\n") + "Orders: " + n.getOrders();
-            out.add(entry(n.getRecordedAt() != null ? n.getRecordedAt() : n.getCreatedAt(), author, null, text, "NOTE"));
-        }
-        out.sort(Comparator.comparing((Map<String, Object> m) -> (LocalDateTime) m.get("at"),
-                Comparator.nullsLast(Comparator.reverseOrder())));
         return out;
+    }
+
+    /** The older "Doctors Round Notes" (nursing notes of category DOCTOR). */
+    private List<Map<String, Object>> noteEntries(IpdAdmission a, Long hospitalId) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (NursingNote n : notes.findByAdmissionAndCategory(a.getId(), "DOCTOR")) {
+            if (Objects.equals(n.getHospitalId(), hospitalId)) {
+                out.add(entry(n.getRecordedAt() != null ? n.getRecordedAt() : n.getCreatedAt(), authorOf(n, hospitalId),
+                        null, noteText(n), "NOTE"));
+            }
+        }
+        return out;
+    }
+
+    private String authorOf(NursingNote n, Long hospitalId) {
+        return n.getNurseUserId() == null ? null
+                : users.findByIdAndHospitalId(n.getNurseUserId(), hospitalId).map(com.hms.entity.User::getName).orElse(null);
+    }
+
+    private static String noteText(NursingNote n) {
+        String text = n.getNoteText();
+        if (n.getOrders() != null && !n.getOrders().isBlank()) text = (text == null ? "" : text + "\n") + "Orders: " + n.getOrders();
+        return text;
     }
 
     private static Map<String, Object> entry(LocalDateTime at, String doctor, String diagnosis, String notes, String kind) {

@@ -79,7 +79,6 @@ class IpdInsuranceAndReservationApiTest {
     private Long doctorId;
     private Long wardId;
     private String receptionToken;
-    private String adminToken;
     private String doctorToken;
 
     private String uniq() { return Long.toString(System.nanoTime()); }
@@ -105,7 +104,6 @@ class IpdInsuranceAndReservationApiTest {
         wardId = wardRepository.save(w).getWardId();
 
         receptionToken = token("RECEPTIONIST", "rec-" + uniq() + "@example.test");
-        adminToken = token("HOSPITAL_ADMIN", "admin-" + uniq() + "@example.test");
         doctorToken = token("DOCTOR", d.getEmail());
     }
 
@@ -140,7 +138,7 @@ class IpdInsuranceAndReservationApiTest {
     }
 
     /** Admits through the real endpoint and returns the admission it created. */
-    private IpdAdmission admit(Long patientId, Long opdId, Long bedId) throws Exception {
+    private IpdAdmission admit(Long patientId, Long bedId) throws Exception {
         ResponseEntity<String> res = admitRaw(patientId, bedId, "");
         assertThat(res.getStatusCode().value()).as(res.getBody()).isEqualTo(200);
         JsonNode node = json.readTree(res.getBody());
@@ -188,7 +186,7 @@ class IpdInsuranceAndReservationApiTest {
         assertThat(other.getStatusCode().value()).isEqualTo(409);
         assertThat(other.getBody()).contains("reserved for " + expected.getName());
 
-        IpdAdmission ipd = admit(expected.getId(), null, bed);
+        IpdAdmission ipd = admit(expected.getId(), bed);
         assertThat(reservationRepository.findByPublicIdAndHospitalId(id, hospitalId).orElseThrow())
                 .satisfies(r -> {
                     assertThat(r.getStatus()).isEqualTo("USED");
@@ -214,7 +212,7 @@ class IpdInsuranceAndReservationApiTest {
     @Test
     void onlyAFreeBedCanBeReserved_andTheDeskCanCancel() throws Exception {
         Long bed = newBed();
-        admit(newPatient().getId(), null, bed);
+        admit(newPatient().getId(), bed);
         assertThat(post(receptionToken, "/hospital/beds/reservations", "{\"bedId\":" + bed + ",\"patientName\":\"X\",\"expectedAt\":\""
                 + LocalDateTime.now().plusHours(1).withNano(0) + "\"}").getStatusCode().value()).isEqualTo(409);
 
@@ -240,7 +238,7 @@ class IpdInsuranceAndReservationApiTest {
 
     @Test
     void theClaimFollowsTheInsurersSteps() throws Exception {
-        IpdAdmission ipd = admit(newPatient().getId(), null, newBed());
+        IpdAdmission ipd = admit(newPatient().getId(), newBed());
         String claim = openClaim(ipd.getId());
         assertThat(post(receptionToken, "/hospital/ipd/" + ipd.getId() + "/insurance", "{\"payerType\":\"TPA\",\"insurerName\":\"X\"}")
                 .getStatusCode().value()).as("one open claim per stay").isEqualTo(400);
@@ -260,7 +258,7 @@ class IpdInsuranceAndReservationApiTest {
 
     @Test
     void cashless_thePatientPaysTheirShare_andTheInsurerSettlesLater() throws Exception {
-        IpdAdmission ipd = admit(newPatient().getId(), null, newBed()); // bill: 1500 bed
+        IpdAdmission ipd = admit(newPatient().getId(), newBed()); // bill: 1500 bed
         String claim = openClaim(ipd.getId());
         step(claim, "{\"status\":\"PREAUTH_SUBMITTED\",\"amount\":1500}");
         step(claim, "{\"status\":\"PREAUTH_APPROVED\",\"amount\":1000}");
@@ -295,7 +293,7 @@ class IpdInsuranceAndReservationApiTest {
 
     @Test
     void withoutAnApprovalTheBillMustBeSettledAsUsual() throws Exception {
-        IpdAdmission ipd = admit(newPatient().getId(), null, newBed());
+        IpdAdmission ipd = admit(newPatient().getId(), newBed());
         String claim = openClaim(ipd.getId());
         step(claim, "{\"status\":\"PREAUTH_SUBMITTED\"}");
         assertThat(post(doctorToken, "/hospital/ipd/" + ipd.getId() + "/plan-discharge",

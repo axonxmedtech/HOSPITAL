@@ -35,6 +35,8 @@ public class IpdInvestigationService {
     static final String COMPLETED = "COMPLETED";
     static final String CANCELLED = "CANCELLED";
     private static final int MAX_TESTS = 20;
+    private static final String ROUTINE = "ROUTINE";
+    private static final String URGENT = "URGENT";
     private static final Logger logger = LoggerFactory.getLogger(IpdInvestigationService.class);
 
     private final LabOrderRepository labOrders;
@@ -69,19 +71,8 @@ public class IpdInvestigationService {
     @Transactional
     public List<Map<String, Object>> order(Long ipdAdmissionId, List<String> tests, String priority, String notes) {
         IpdAdmission a = access.requireOrderable(ipdAdmissionId);
-        List<String> names = new ArrayList<>();
-        if (tests != null) {
-            for (String t : tests) {
-                if (t != null && !t.isBlank()) names.add(t.trim());
-            }
-        }
-        if (names.isEmpty()) throw new IllegalArgumentException("Enter at least one test");
-        if (names.size() > MAX_TESTS) throw new IllegalArgumentException("Order at most " + MAX_TESTS + " tests at a time");
-        for (String n : names) {
-            if (n.length() > 200) throw new IllegalArgumentException("Test name is too long: " + n.substring(0, 40) + "…");
-        }
-        String p = priority == null || priority.isBlank() ? "ROUTINE" : priority.trim().toUpperCase(Locale.ROOT);
-        if (!"ROUTINE".equals(p) && !"URGENT".equals(p)) throw new IllegalArgumentException("Priority must be Routine or Urgent");
+        List<String> names = testNames(tests);
+        String p = priority(priority);
         String note = notes == null || notes.isBlank() ? null : notes.trim();
         if (note != null && note.length() > 500) throw new IllegalArgumentException("The note is too long");
 
@@ -100,13 +91,34 @@ public class IpdInvestigationService {
             o.setOrderedBy(access.actor());
             out.add(view(labOrders.save(o)));
         }
-        audit("IPD_INVESTIGATION_ORDERED", a, String.join(", ", names) + ("URGENT".equals(p) ? " (urgent)" : ""));
+        boolean urgent = URGENT.equals(p);
+        audit("IPD_INVESTIGATION_ORDERED", a, String.join(", ", names) + (urgent ? " (urgent)" : ""));
         nurseAssignments.findByIpdAdmissionIdAndIsActiveTrue(a.getId()).ifPresent(asg ->
                 notificationService.create(asg.getNurseUserId(), a.getHospitalId(), "INVESTIGATION_ORDERED",
-                        ("URGENT".equals(p) ? "Urgent: " : "") + "Investigation ordered",
+                        (urgent ? "Urgent: " : "") + "Investigation ordered",
                         String.join(", ", names) + " ordered for " + a.getIpdNumber() + ". Collect the sample.",
                         "IPD", a.getId()));
         return out;
+    }
+
+    /** The test names given, trimmed, blanks dropped; 1 to MAX_TESTS of them. */
+    private static List<String> testNames(List<String> tests) {
+        List<String> names = new ArrayList<>();
+        if (tests != null) {
+            tests.stream().filter(t -> t != null && !t.isBlank()).map(String::trim).forEach(names::add);
+        }
+        if (names.isEmpty()) throw new IllegalArgumentException("Enter at least one test");
+        if (names.size() > MAX_TESTS) throw new IllegalArgumentException("Order at most " + MAX_TESTS + " tests at a time");
+        names.stream().filter(n -> n.length() > 200).findFirst().ifPresent(n -> {
+            throw new IllegalArgumentException("Test name is too long: " + n.substring(0, 40) + "…");
+        });
+        return names;
+    }
+
+    private static String priority(String priority) {
+        String p = priority == null || priority.isBlank() ? ROUTINE : priority.trim().toUpperCase(Locale.ROOT);
+        if (!ROUTINE.equals(p) && !URGENT.equals(p)) throw new IllegalArgumentException("Priority must be Routine or Urgent");
+        return p;
     }
 
     @Transactional

@@ -28,6 +28,8 @@ public class BillingService {
     private static final String STATUS_CANCELLED = "CANCELLED";
     private static final String BILL_NOT_FOUND = "Bill not found";
     private static final String KIND_PAYMENT = "PAYMENT";
+    private static final String ROLE_ADMIN = "HOSPITAL_ADMIN";
+    private static final String AUDIT_CANCELLED = "BILLING_CANCELLED";
     /** Money taken on an IPD bill ahead of the charges; it may exceed what is owed so far. */
     public static final String KIND_ADVANCE = "ADVANCE";
     /** Money from an insurer / TPA settling a claim. */
@@ -535,7 +537,7 @@ public class BillingService {
     }
 
     private void requireAdmin(String message) {
-        if (!"HOSPITAL_ADMIN".equalsIgnoreCase(securityHelper.getCurrentUserRole())) {
+        if (!ROLE_ADMIN.equalsIgnoreCase(securityHelper.getCurrentUserRole())) {
             throw new org.springframework.security.access.AccessDeniedException(message);
         }
     }
@@ -751,8 +753,7 @@ public class BillingService {
         bill.setCancelledBy(currentActor());
         bill.setCancelledAt(java.time.LocalDateTime.now(java.time.ZoneId.systemDefault()));
         billingRepository.save(bill);
-        afterMoneyChange(bill, "BILLING_CANCELLED", "Cancelled bill " + bill.getCustomId() + ": " + reason.trim()
-                + (before.paid().signum() > 0 ? " (refunded " + before.paid() + ")" : "") + ".");
+        afterMoneyChange(bill, AUDIT_CANCELLED, cancelledNote(bill, ": " + reason.trim(), before.paid()));
         return moneyMap(bill, moneyFor(bill));
     }
 
@@ -776,7 +777,7 @@ public class BillingService {
         String why = "OPD visit cancelled: " + reason;
         BillMoney money = moneyFor(bill);
         if (money.paid().signum() > 0) {
-            if (!"HOSPITAL_ADMIN".equalsIgnoreCase(securityHelper.getCurrentUserRole())) {
+            if (!ROLE_ADMIN.equalsIgnoreCase(securityHelper.getCurrentUserRole())) {
                 return BILL_LABEL + bill.getCustomId() + " still holds the ₹" + money.paid().stripTrailingZeros().toPlainString()
                         + " collected. Ask the hospital admin to refund it from Billing.";
             }
@@ -791,8 +792,7 @@ public class BillingService {
         bill.setCancelledBy(currentActor());
         bill.setCancelledAt(java.time.LocalDateTime.now(java.time.ZoneId.systemDefault()));
         billingRepository.save(bill);
-        afterMoneyChange(bill, "BILLING_CANCELLED", "Cancelled bill " + bill.getCustomId() + " with its OPD visit"
-                + (money.paid().signum() > 0 ? " (refunded " + money.paid() + ")" : "") + ".");
+        afterMoneyChange(bill, AUDIT_CANCELLED, cancelledNote(bill, " with its OPD visit", money.paid()));
         return money.paid().signum() > 0
                 ? BILL_LABEL + bill.getCustomId() + " cancelled and ₹" + money.paid().stripTrailingZeros().toPlainString() + " refunded."
                 : BILL_LABEL + bill.getCustomId() + " cancelled.";
@@ -808,31 +808,41 @@ public class BillingService {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         String why = "IPD admission cancelled: " + reason;
         for (Billing found : bills) {
-            if (!java.util.Objects.equals(found.getHospitalId(), hospitalId)) continue;
-            Billing bill = billingRepository.findByIdAndHospitalIdForUpdate(found.getId(), hospitalId).orElse(null);
-            if (bill == null || STATUS_CANCELLED.equalsIgnoreCase(bill.getPaymentStatus())) continue;
-            BillMoney money = moneyFor(bill);
-            if (money.paid().signum() > 0) {
-                String amount = money.paid().stripTrailingZeros().toPlainString();
-                if (!"HOSPITAL_ADMIN".equalsIgnoreCase(securityHelper.getCurrentUserRole())) {
-                    throw new org.springframework.security.access.AccessDeniedException(BILL_LABEL + bill.getCustomId()
-                            + " holds \u20B9" + amount + " collected. Only the hospital admin can cancel this admission, "
-                            + "because the money has to be refunded.");
-                }
-                if (refundMode == null || refundMode.isBlank()) {
-                    throw new IllegalArgumentException("Choose how the \u20B9" + amount
-                            + " collected is refunded: Cash, Card or UPI.");
-                }
-                writeRefund(bill, money.paid(), normaliseMode(refundMode), why);
+            if (java.util.Objects.equals(found.getHospitalId(), hospitalId)) {
+                voidOneForCancelledAdmission(found.getId(), hospitalId, why, refundMode);
             }
-            bill.setPaymentStatus(STATUS_CANCELLED);
-            bill.setCancelReason(why.length() > 255 ? why.substring(0, 255) : why);
-            bill.setCancelledBy(currentActor());
-            bill.setCancelledAt(java.time.LocalDateTime.now(java.time.ZoneId.systemDefault()));
-            billingRepository.save(bill);
-            afterMoneyChange(bill, "BILLING_CANCELLED", "Cancelled bill " + bill.getCustomId() + " with its IPD admission"
-                    + (money.paid().signum() > 0 ? " (refunded " + money.paid() + ")" : "") + ".");
         }
+    }
+
+    private void voidOneForCancelledAdmission(Long billId, Long hospitalId, String why, String refundMode) {
+        Billing bill = billingRepository.findByIdAndHospitalIdForUpdate(billId, hospitalId).orElse(null);
+        if (bill == null || STATUS_CANCELLED.equalsIgnoreCase(bill.getPaymentStatus())) return;
+        BillMoney money = moneyFor(bill);
+        if (money.paid().signum() > 0) {
+            String amount = money.paid().stripTrailingZeros().toPlainString();
+            if (!ROLE_ADMIN.equalsIgnoreCase(securityHelper.getCurrentUserRole())) {
+                throw new org.springframework.security.access.AccessDeniedException(BILL_LABEL + bill.getCustomId()
+                        + " holds \u20B9" + amount + " collected. Only the hospital admin can cancel this admission, "
+                        + "because the money has to be refunded.");
+            }
+            if (refundMode == null || refundMode.isBlank()) {
+                throw new IllegalArgumentException("Choose how the \u20B9" + amount
+                        + " collected is refunded: Cash, Card or UPI.");
+            }
+            writeRefund(bill, money.paid(), normaliseMode(refundMode), why);
+        }
+        bill.setPaymentStatus(STATUS_CANCELLED);
+        bill.setCancelReason(why.length() > 255 ? why.substring(0, 255) : why);
+        bill.setCancelledBy(currentActor());
+        bill.setCancelledAt(java.time.LocalDateTime.now(java.time.ZoneId.systemDefault()));
+        billingRepository.save(bill);
+        afterMoneyChange(bill, AUDIT_CANCELLED, cancelledNote(bill, " with its IPD admission", money.paid()));
+    }
+
+    /** "Cancelled bill BIL-12 ... (refunded 500)." for the audit trail. */
+    private static String cancelledNote(Billing bill, String what, BigDecimal refunded) {
+        return "Cancelled bill " + bill.getCustomId() + what
+                + (refunded.signum() > 0 ? " (refunded " + refunded + ")" : "") + ".";
     }
 
     /**
@@ -933,7 +943,7 @@ public class BillingService {
         p.setMode(KIND_INSURANCE);
         p.setReference(reference == null || reference.isBlank() ? null : reference.trim());
         p.setKind(KIND_INSURANCE);
-        p.setNote(note == null ? null : (note.length() > 255 ? note.substring(0, 255) : note));
+        p.setNote(note == null || note.length() <= 255 ? note : note.substring(0, 255));
         p.setRecordedBy(currentActor());
         com.hms.entity.BillingPayment saved = billingPaymentRepository.save(p);
         BillMoney after = moneyFor(bill);
@@ -974,6 +984,12 @@ public class BillingService {
         r.setNote(reason.length() > 255 ? reason.substring(0, 255) : reason);
         r.setRecordedBy(currentActor());
         billingPaymentRepository.save(r);
+    }
+
+    /** How a ledger row shows on the collection report: ADVANCE, INSURANCE or PAYMENT. */
+    private static String collectionKind(com.hms.entity.BillingPayment p) {
+        if (KIND_ADVANCE.equals(p.getKind()) || KIND_INSURANCE.equals(p.getKind())) return p.getKind();
+        return KIND_PAYMENT;
     }
 
     /** Live bills of this hospital; a legacy bill hand-marked PAID with no ledger counts as settled. */
@@ -1039,7 +1055,7 @@ public class BillingService {
             t.put("billingType", b.getBillingType());
             t.put("patientName", patientName);
             t.put("mode", mode);
-            t.put("kind", isRefund ? "REFUND" : (KIND_ADVANCE.equals(p.getKind()) || KIND_INSURANCE.equals(p.getKind()) ? p.getKind() : KIND_PAYMENT));
+            t.put("kind", isRefund ? "REFUND" : collectionKind(p));
             t.put("amount", abs);
             t.put("reference", p.getReference());
             t.put("note", p.getNote());

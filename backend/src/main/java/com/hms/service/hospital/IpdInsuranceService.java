@@ -160,17 +160,9 @@ public class IpdInsuranceService {
             throw new IllegalArgumentException("A claim that is " + label(c.getStatus()) + " cannot become " + label(to));
         }
         BigDecimal amt = money(amount);
-        if (PREAUTH_APPROVED.equals(to)) {
-            if (amt == null || amt.signum() <= 0) throw new IllegalArgumentException("Enter the amount the insurer approved");
-            c.setApprovedAmount(amt);
-        } else if (amt != null && (PREAUTH_SUBMITTED.equals(to) || ENHANCEMENT_SUBMITTED.equals(to) || FINAL_SUBMITTED.equals(to))) {
-            c.setRequestedAmount(amt);
-        }
+        applyStepAmount(c, to, amt);
         if (claimNumber != null && !claimNumber.isBlank()) c.setClaimNumber(trim(claimNumber, 80));
-        String n = note == null || note.isBlank() ? null : trim(note, 500);
-        if ((QUERY.equals(to) || PREAUTH_REJECTED.equals(to) || CLAIM_REJECTED.equals(to)) && n == null) {
-            throw new IllegalArgumentException("Enter the insurer's query or reason");
-        }
+        String n = stepNote(to, note);
         c.setStatus(to);
         c.setUpdatedAt(now());
         IpdInsuranceClaim saved = claims.save(c);
@@ -179,6 +171,28 @@ public class IpdInsuranceService {
                 label(to) + (amt == null ? "" : " " + amt) + (n == null ? "" : ": " + n));
         return saved;
     }
+
+    /** An approval sets the approved amount (required); a submission may update the amount asked for. */
+    private static void applyStepAmount(IpdInsuranceClaim c, String to, BigDecimal amt) {
+        if (PREAUTH_APPROVED.equals(to)) {
+            if (amt == null || amt.signum() <= 0) throw new IllegalArgumentException("Enter the amount the insurer approved");
+            c.setApprovedAmount(amt);
+        } else if (amt != null && SUBMISSIONS.contains(to)) {
+            c.setRequestedAmount(amt);
+        }
+    }
+
+    /** A query or a rejection must say what the insurer said. */
+    private static String stepNote(String to, String note) {
+        String n = note == null || note.isBlank() ? null : trim(note, 500);
+        if (NEEDS_NOTE.contains(to) && n == null) {
+            throw new IllegalArgumentException("Enter the insurer's query or reason");
+        }
+        return n;
+    }
+
+    private static final Set<String> SUBMISSIONS = Set.of(PREAUTH_SUBMITTED, ENHANCEMENT_SUBMITTED, FINAL_SUBMITTED);
+    private static final Set<String> NEEDS_NOTE = Set.of(QUERY, PREAUTH_REJECTED, CLAIM_REJECTED);
 
     /**
      * The insurer paid: posts the amount to the admission's IPD bill as an INSURANCE payment and

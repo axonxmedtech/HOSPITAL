@@ -27,6 +27,7 @@ public class IpdAdmissionController {
 
     /** Attempts for the IPD-number clash. Two callers colliding is normal; more is a real fault. */
     private static final int ADMISSION_ATTEMPTS = 3;
+    private static final String REASON = "reason";
 
     @RequireModule("IPD")
     @PostMapping("/admit")
@@ -195,7 +196,7 @@ public class IpdAdmissionController {
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     public ResponseEntity<IpdAdmission> removePackage(@PathVariable("id") Long id,
                                                       @RequestBody(required = false) java.util.Map<String, String> body) {
-        return ResponseEntity.ok(ipdAdmissionService.removePackage(id, body == null ? null : body.get("reason")));
+        return ResponseEntity.ok(ipdAdmissionService.removePackage(id, body == null ? null : body.get(REASON)));
     }
 
     /** The printable discharge summary (once the doctor has planned the discharge). */
@@ -216,7 +217,7 @@ public class IpdAdmissionController {
     public ResponseEntity<?> cancelAdmission(@PathVariable("id") Long id,
                                              @RequestBody(required = false) java.util.Map<String, String> body) {
         java.util.Map<String, String> b = body == null ? java.util.Map.of() : body;
-        return ResponseEntity.ok(ipdAdmissionService.cancelAdmission(id, b.get("reason"), b.get("refundMode")));
+        return ResponseEntity.ok(ipdAdmissionService.cancelAdmission(id, b.get(REASON), b.get("refundMode")));
     }
 
     @RequireModule("IPD")
@@ -224,7 +225,7 @@ public class IpdAdmissionController {
     @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> cancelDischargePlan(@PathVariable("id") Long id,
                                                  @RequestBody(required = false) java.util.Map<String, String> body) {
-        return ResponseEntity.ok(ipdAdmissionService.cancelDischargePlan(id, body == null ? null : body.get("reason")));
+        return ResponseEntity.ok(ipdAdmissionService.cancelDischargePlan(id, body == null ? null : body.get(REASON)));
     }
 
     @RequireModule("IPD")

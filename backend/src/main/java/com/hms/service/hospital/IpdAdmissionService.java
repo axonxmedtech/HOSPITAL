@@ -30,6 +30,10 @@ public class IpdAdmissionService {
     private static final String STATUS_DISCHARGE_PLANNED = "DISCHARGE_PLANNED";
     private static final String STATUS_DISCHARGED = "DISCHARGED";
     private static final String STATUS_CANCELLED = "CANCELLED";
+    private static final String ELECTIVE = "ELECTIVE";
+    private static final String MODULE_BILLING = "BILLING";
+    private static final String PATIENT_NOT_FOUND = "Patient not found";
+    private static final String BALANCE = "balance";
 
     private static final Logger logger = LoggerFactory.getLogger(IpdAdmissionService.class);
 
@@ -197,7 +201,7 @@ public class IpdAdmissionService {
         Long directDoctorId = req.getDoctorId();
         Long wardId = req.getWardId();
         Long bedId = req.getBedId();
-        String admissionType = req.getAdmissionType() == null || req.getAdmissionType().isBlank() ? null : req.getAdmissionType();
+        String admissionType = req.getAdmissionType() == null || req.getAdmissionType().isBlank() ? ELECTIVE : req.getAdmissionType();
         String primaryDiagnosis = req.getPrimaryDiagnosis();
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found in context");
@@ -212,7 +216,7 @@ public class IpdAdmissionService {
         boolean billing = hasBilling(hospital);
         com.hms.entity.IpdBillingSetting rules = ipdBillingSettingsService.forHospital(hospitalId);
         com.hms.entity.IpdPackage pkg = req.getPackageId() == null ? null : ipdPackageService.requireActive(req.getPackageId());
-        assertAdmissionMoney(req, rules, billing, pkg, admissionType == null ? "ELECTIVE" : admissionType);
+        assertAdmissionMoney(req, rules, billing, pkg, admissionType);
 
         Opd opd = resolveAdmissionOpd(opdId, hospitalId);
         com.hms.entity.Patient patient = resolveAdmissionPatient(opd, directPatientId, hospitalId);
@@ -254,19 +258,14 @@ public class IpdAdmissionService {
         ipd.setDoctorId(doctorId);
         ipd.setHospitalId(hospitalId);
         ipd.setSourceOpdId(opd != null ? opd.getId() : null);
-        ipd.setAdmissionType(admissionType != null ? admissionType : "ELECTIVE");
+        ipd.setAdmissionType(admissionType);
         ipd.setStatus(STATUS_ADMITTED);
         ipd.setAdmissionDatetime(LocalDateTime.now());
         ipd.setWardId(wardId);
         ipd.setBedId(bedId);
         ipd.setPrimaryDiagnosis(primaryDiagnosis != null ? primaryDiagnosis : "");
         ipd.setAdmittedByUserId(securityHelper.getCurrentUserId());
-        ipd.setBedChargeRule(rules.getBedChargeRule());
-        ipd.setGraceHours(rules.getGraceHours());
-        if (pkg != null) {
-            ipd.setPackageId(pkg.getId());
-            ipd.setPackageAppliedAt(ipd.getAdmissionDatetime());
-        }
+        applyStayTerms(ipd, rules, pkg);
 
         IpdAdmission saved = ipdAdmissionRepository.save(ipd);
         bedReservationService.markUsed(hold, saved.getId());
@@ -299,9 +298,8 @@ public class IpdAdmissionService {
         patientAssignmentService.onAdmission(saved);
 
         closeOpdForAdmission(opd);
-        Billing admissionBill = billing ? createAdmissionBill(saved, opd, ward, hospitalId, pkg) : null;
-        if (admissionBill != null && req.getAdvanceAmount() != null && req.getAdvanceAmount().signum() > 0) {
-            billingService.recordAdvance(admissionBill.getId(), req.getAdvanceAmount(), req.getAdvanceMode(), req.getAdvanceReference());
+        if (billing) {
+            openAdmissionBill(saved, opd, ward, pkg, req);
         }
 
         logger.info("Created IPD admission {} for OPD {}", saved.getIpdNumber(), opdId);
@@ -362,7 +360,7 @@ public class IpdAdmissionService {
             patientId = opdPatientId;
         }
         com.hms.entity.Patient patient = patientRepository.findByIdAndHospitalIdForUpdate(patientId, hospitalId)
-                .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(PATIENT_NOT_FOUND));
         if (!Boolean.TRUE.equals(patient.getIsActive())) {
             throw new IllegalArgumentException("Selected patient is inactive");
         }
@@ -421,14 +419,34 @@ public class IpdAdmissionService {
             return;
         }
         java.math.BigDecimal min = rules.getMinAdvance();
-        if (min != null && min.signum() > 0 && "ELECTIVE".equalsIgnoreCase(admissionType) && advance.compareTo(min) < 0) {
+        if (min != null && min.signum() > 0 && ELECTIVE.equalsIgnoreCase(admissionType) && advance.compareTo(min) < 0) {
             throw new IllegalArgumentException("A planned admission needs an advance of at least \u20B9"
                     + min.stripTrailingZeros().toPlainString() + ". Emergency admissions are not held up.");
         }
     }
 
+    /** The bed-charge rule in force now, and the package, fixed on the admission. */
+    private static void applyStayTerms(IpdAdmission ipd, com.hms.entity.IpdBillingSetting rules, com.hms.entity.IpdPackage pkg) {
+        ipd.setBedChargeRule(rules.getBedChargeRule());
+        ipd.setGraceHours(rules.getGraceHours());
+        if (pkg != null) {
+            ipd.setPackageId(pkg.getId());
+            ipd.setPackageAppliedAt(ipd.getAdmissionDatetime());
+        }
+    }
+
+    /** Opens the IPD bill and records the advance taken at the desk, if any. */
+    private void openAdmissionBill(IpdAdmission saved, Opd opd, com.hms.entity.Ward ward, com.hms.entity.IpdPackage pkg,
+                                   com.hms.dto.CreateIpdAdmissionRequest req) {
+        Billing bill = createAdmissionBill(saved, opd, ward, saved.getHospitalId(), pkg);
+        java.math.BigDecimal advance = req.getAdvanceAmount();
+        if (advance != null && advance.signum() > 0) {
+            billingService.recordAdvance(bill.getId(), advance, req.getAdvanceMode(), req.getAdvanceReference());
+        }
+    }
+
     private static boolean hasBilling(com.hms.entity.Hospital hospital) {
-        return hospital != null && hospital.getModules() != null && hospital.getModules().contains("BILLING");
+        return hospital != null && hospital.getModules() != null && hospital.getModules().contains(MODULE_BILLING);
     }
 
     /** Whether this hospital bills (the caller's own hospital; used by the round and bed paths). */
@@ -950,7 +968,7 @@ public class IpdAdmissionService {
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found in context");
 
         com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId).orElse(null);
-        boolean hasBillingModule = hospital != null && hospital.getModules() != null && hospital.getModules().contains("BILLING");
+        boolean hasBillingModule = hasBilling(hospital);
 
         // Resolve billing record once (not per-item) to avoid N+1 queries
         Billing ipdBill = null;
@@ -1305,17 +1323,10 @@ public class IpdAdmissionService {
                 dischargeType != null && !dischargeType.isBlank() ? dischargeType : ipd.getDischargeType());
         String note = dischargeNoteFor(type, dischargeNote, ipd.getDischargeNote());
         Long hospitalId = ipd.getHospitalId();
-        if (!isFrontDesk(hospitalId)) {
-            throw new org.springframework.security.access.AccessDeniedException("Only receptionists (or doctors under Solo / Both mode) can confirm discharge");
-        }
-        if (!IpdClinicalState.isActive(ipd)) {
-            throw new IllegalArgumentException("Cannot discharge non-admitted patient");
-        }
-        // Open surgery / ventilator checks come before any write.
-        ipdClinicalState.assertDischargeAllowed(ipd, type);
+        assertDischargeable(ipd, type);
 
         com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId).orElse(null);
-        boolean hasBillingModule = hospital != null && hospital.getModules() != null && hospital.getModules().contains("BILLING");
+        boolean hasBillingModule = hasBilling(hospital);
         // Bring bed-day charges up to date first, so the balance checked below is the final one.
         if (hasBillingModule) {
             billingSchedulerService.catchUpAdmission(ipd);
@@ -1332,12 +1343,7 @@ public class IpdAdmissionService {
         }
 
         if (hasBillingModule && bills != null) {
-            for (Billing b : bills) {
-                if (!STATUS_CANCELLED.equalsIgnoreCase(b.getPaymentStatus()) && java.util.Objects.equals(b.getHospitalId(), hospitalId)) {
-                    billingService.refundUnusedAdvance(b, refundMode, "Unused advance returned at discharge (" + ipd.getIpdNumber() + ")",
-                            "IPD".equalsIgnoreCase(b.getBillingType()) ? insurerShare : java.math.BigDecimal.ZERO);
-                }
-            }
+            returnUnusedAdvances(ipd, bills, insurerShare, refundMode);
         }
         completeActivePrescriptions(ipdId);
         ipdClinicalState.closeOutForDischarge(ipd, type);
@@ -1363,6 +1369,31 @@ public class IpdAdmissionService {
         releaseBedHistory(ipd, now);
         auditDischarge(ipd, type);
         return ipd;
+    }
+
+    /** Who may discharge, and whether this patient can leave this way — checked before any write. */
+    private void assertDischargeable(IpdAdmission ipd, String type) {
+        if (!isFrontDesk(ipd.getHospitalId())) {
+            throw new org.springframework.security.access.AccessDeniedException("Only receptionists (or doctors under Solo / Both mode) can confirm discharge");
+        }
+        if (!IpdClinicalState.isActive(ipd)) {
+            throw new IllegalArgumentException("Cannot discharge non-admitted patient");
+        }
+        // Open surgery / ventilator checks come before any write.
+        ipdClinicalState.assertDischargeAllowed(ipd, type);
+    }
+
+    /** Returns any advance beyond the patient's share (the insurer's approved share excluded). */
+    private void returnUnusedAdvances(IpdAdmission ipd, java.util.List<Billing> bills, java.math.BigDecimal insurerShare,
+                                      String refundMode) {
+        String reason = "Unused advance returned at discharge (" + ipd.getIpdNumber() + ")";
+        for (Billing b : bills) {
+            if (STATUS_CANCELLED.equalsIgnoreCase(b.getPaymentStatus()) || !java.util.Objects.equals(b.getHospitalId(), ipd.getHospitalId())) {
+                continue;
+            }
+            billingService.refundUnusedAdvance(b, refundMode, reason,
+                    "IPD".equalsIgnoreCase(b.getBillingType()) ? insurerShare : java.math.BigDecimal.ZERO);
+        }
     }
 
     /** The discharge note: required for a death or a referral, kept from the plan when not given. */
@@ -1398,21 +1429,21 @@ public class IpdAdmissionService {
         java.util.List<java.util.Map<String, Object>> owing = new java.util.ArrayList<>();
         java.math.BigDecimal share = insurerShare == null ? java.math.BigDecimal.ZERO : insurerShare;
         for (java.util.Map<String, Object> o : billingService.outstandingBillsForPatient(ipd.getPatientId(), ipd.getHospitalId())) {
-            java.math.BigDecimal balance = (java.math.BigDecimal) o.get("balance");
-            if (thisStay.contains((Long) o.get("billingId")) && share.signum() > 0) {
+            java.math.BigDecimal balance = (java.math.BigDecimal) o.get(BALANCE);
+            if (thisStay.contains(o.get("billingId")) && share.signum() > 0) {
                 java.math.BigDecimal covered = share.min(balance);
                 share = share.subtract(covered);
                 balance = balance.subtract(covered);
                 if (balance.signum() <= 0) continue;
                 o = new java.util.HashMap<>(o);
-                o.put("balance", balance);
+                o.put(BALANCE, balance);
             }
             owing.add(o);
         }
         if (owing.isEmpty()) return;
         String detail = owing.stream()
                 .map(o -> o.get("customId") + " (" + o.get("billingType") + ") \u20B9"
-                        + ((java.math.BigDecimal) o.get("balance")).stripTrailingZeros().toPlainString())
+                        + ((java.math.BigDecimal) o.get(BALANCE)).stripTrailingZeros().toPlainString())
                 .collect(java.util.stream.Collectors.joining(", "));
         throw new IllegalArgumentException("Outstanding balance must be settled before discharge: " + detail);
     }
@@ -1623,7 +1654,7 @@ public class IpdAdmissionService {
 
         java.util.Set<java.time.LocalTime> taken = new java.util.HashSet<>();
         for (com.hms.entity.Appointment a : appointmentRepository.findByDoctorIdAndAppointmentDateAndIsActiveTrue(ipd.getDoctorId(), date)) {
-            if (!"CANCELLED".equalsIgnoreCase(a.getStatus()) && a.getAppointmentTime() != null) taken.add(a.getAppointmentTime());
+            if (!STATUS_CANCELLED.equalsIgnoreCase(a.getStatus()) && a.getAppointmentTime() != null) taken.add(a.getAppointmentTime());
         }
         java.time.LocalTime time = ds.getFollowUpTime() != null ? ds.getFollowUpTime() : java.time.LocalTime.of(10, 0);
         for (int step = 0; step < 8 && taken.contains(time); step++) {
@@ -1665,7 +1696,7 @@ public class IpdAdmissionService {
         com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId)
                 .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
         com.hms.entity.Patient patient = patientRepository.findByIdAndHospitalId(ipd.getPatientId(), hospitalId)
-                .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(PATIENT_NOT_FOUND));
         com.hms.service.pdf.DischargeSummaryPrint print = new com.hms.service.pdf.DischargeSummaryPrint();
         print.ipd = ipd;
         print.summary = ds;
@@ -1731,7 +1762,7 @@ public class IpdAdmissionService {
         IpdAdmission ipd = bill.getIpdAdmissionId() == null ? null
                 : ipdAdmissionRepository.findByIdAndHospitalId(bill.getIpdAdmissionId(), hospitalId).orElse(null);
         com.hms.entity.Patient patient = patientRepository.findByIdAndHospitalId(bill.getPatientId(), hospitalId)
-                .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(PATIENT_NOT_FOUND));
         com.hms.entity.Hospital hospital = hospitalRepository.findById(hospitalId).orElse(null);
         java.math.BigDecimal total = billingService.advancesOf(bill.getId()).stream()
                 .filter(a -> a.getId() <= p.getId())
@@ -1798,26 +1829,7 @@ public class IpdAdmissionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Package not found"));
         Billing bill = liveIpdBill(ipd);
         if (bill != null) {
-            java.math.BigDecimal price = java.math.BigDecimal.ZERO;
-            java.math.BigDecimal adjustment = java.math.BigDecimal.ZERO;
-            boolean hasBedPrice = false;
-            for (com.hms.entity.BillingItem it : billingItemRepository.findByBillingId(bill.getId())) {
-                String d = it.getDescription() == null ? "" : it.getDescription();
-                java.math.BigDecimal amt = it.getAmount() == null ? java.math.BigDecimal.ZERO : it.getAmount();
-                if (d.startsWith("Package: ") || d.startsWith("Package removed: ")) price = price.add(amt);
-                if (d.startsWith(PACKAGE_ADJUSTMENT) || d.startsWith("Package adjustment reversed")) adjustment = adjustment.add(amt);
-                if (IpdChargePeriods.BED_PRICE.equals(d)) hasBedPrice = true;
-            }
-            if (price.signum() != 0) addBillLine(bill, "Package removed: " + pkg.getName(), price.negate());
-            if (adjustment.signum() != 0) addBillLine(bill, "Package adjustment reversed", adjustment.negate());
-            if (!hasBedPrice) {
-                Long wardId = ipdBedHistoryRepository.findByIpdAdmissionIdOrderByAssignedAtAsc(ipd.getId()).stream()
-                        .findFirst().map(com.hms.entity.IpdBedHistory::getWardId).orElse(ipd.getWardId());
-                wardRepository.findByWardIdAndHospitalId(wardId, ipd.getHospitalId())
-                        .map(com.hms.entity.Ward::getBedPrice).filter(bp -> bp.signum() > 0)
-                        .ifPresent(bp -> addBillLine(bill, IpdChargePeriods.BED_PRICE, bp));
-            }
-            billingService.recalculateTotal(bill.getId());
+            reversePackageLines(ipd, bill, pkg);
         }
         ipd.setPackageId(null);
         ipd.setPackageAppliedAt(null);
@@ -1825,6 +1837,33 @@ public class IpdAdmissionService {
         auditIpd(ipd, "IPD_PACKAGE_REMOVED", "Package " + pkg.getName() + " removed from " + ipd.getIpdNumber() + ": " + reason.trim());
         return ipd;
     }
+
+    /** Opposite lines for the package price and its adjustment; day 1's bed charge back if missing. */
+    private void reversePackageLines(IpdAdmission ipd, Billing bill, com.hms.entity.IpdPackage pkg) {
+        java.math.BigDecimal price = java.math.BigDecimal.ZERO;
+        java.math.BigDecimal adjustment = java.math.BigDecimal.ZERO;
+        boolean hasBedPrice = false;
+        for (com.hms.entity.BillingItem it : billingItemRepository.findByBillingId(bill.getId())) {
+            String d = it.getDescription() == null ? "" : it.getDescription();
+            java.math.BigDecimal amt = it.getAmount() == null ? java.math.BigDecimal.ZERO : it.getAmount();
+            if (d.startsWith("Package: ") || d.startsWith(PACKAGE_REMOVED)) price = price.add(amt);
+            if (d.startsWith(PACKAGE_ADJUSTMENT) || d.startsWith(PACKAGE_ADJUSTMENT_REVERSED)) adjustment = adjustment.add(amt);
+            hasBedPrice |= IpdChargePeriods.BED_PRICE.equals(d);
+        }
+        if (price.signum() != 0) addBillLine(bill, PACKAGE_REMOVED + pkg.getName(), price.negate());
+        if (adjustment.signum() != 0) addBillLine(bill, PACKAGE_ADJUSTMENT_REVERSED, adjustment.negate());
+        if (!hasBedPrice) {
+            Long wardId = ipdBedHistoryRepository.findByIpdAdmissionIdOrderByAssignedAtAsc(ipd.getId()).stream()
+                    .findFirst().map(com.hms.entity.IpdBedHistory::getWardId).orElse(ipd.getWardId());
+            wardRepository.findByWardIdAndHospitalId(wardId, ipd.getHospitalId())
+                    .map(com.hms.entity.Ward::getBedPrice).filter(bp -> bp.signum() > 0)
+                    .ifPresent(bp -> addBillLine(bill, IpdChargePeriods.BED_PRICE, bp));
+        }
+        billingService.recalculateTotal(bill.getId());
+    }
+
+    private static final String PACKAGE_REMOVED = "Package removed: ";
+    private static final String PACKAGE_ADJUSTMENT_REVERSED = "Package adjustment reversed";
 
     private void auditIpd(IpdAdmission ipd, String action, String details) {
         try {

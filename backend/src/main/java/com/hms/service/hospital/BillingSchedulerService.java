@@ -124,16 +124,8 @@ public class BillingSchedulerService {
 
         boolean added = false;
         for (IpdChargePeriods.Period day : IpdChargePeriods.started(admission, now)) {
-            if (day.number() <= covered) continue;
-            Ward ward = wardAt(history, day.start(), admission.getWardId());
-            if (day.number() > 1 || admission.getAdmissionDatetime() == null) {
-                String bedLine = admission.getAdmissionDatetime() == null
-                        ? "Daily Bed Charge - " + day.label() : IpdChargePeriods.bedLine(admission, day);
-                added |= addOnce(bill, charged, bedLine, ward == null ? null : ward.getBedPrice());
-            }
-            if (admission.getAdmissionDatetime() != null) {
-                added |= addOnce(bill, charged, IpdChargePeriods.nursingLine(admission, day),
-                        ward == null ? null : ward.getNursingCharge());
+            if (day.number() > covered) {
+                added |= chargeDay(admission, bill, charged, day, wardAt(history, day.start(), admission.getWardId()));
             }
         }
 
@@ -143,6 +135,22 @@ public class BillingSchedulerService {
         if (added) {
             billingService.recalculateTotal(bill.getId());
         }
+    }
+
+    /** One day's bed (from day 2) and nursing charges, at the ward the patient was in. */
+    private boolean chargeDay(IpdAdmission admission, Billing bill, java.util.Set<String> charged,
+                              IpdChargePeriods.Period day, Ward ward) {
+        boolean legacy = admission.getAdmissionDatetime() == null;
+        BigDecimal bedPrice = ward == null ? null : ward.getBedPrice();
+        BigDecimal nursing = ward == null ? null : ward.getNursingCharge();
+        boolean added = false;
+        if (legacy) {
+            added = addOnce(bill, charged, "Daily Bed Charge - " + day.label(), bedPrice);
+        } else {
+            if (day.number() > 1) added = addOnce(bill, charged, IpdChargePeriods.bedLine(admission, day), bedPrice);
+            added |= addOnce(bill, charged, IpdChargePeriods.nursingLine(admission, day), nursing);
+        }
+        return added;
     }
 
     /** Days the admission's package covers; 0 without one. */

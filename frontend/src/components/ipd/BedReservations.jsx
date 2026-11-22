@@ -59,13 +59,13 @@ export function ReserveBedModal({ bed, wardName, onClose, onDone }) {
   };
 
   return (
-    <div
-      className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 px-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Reserve ${bed.bedCode}`}
-    >
-      <div className="bg-white rounded-lg w-full max-w-md p-6">
+    <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 px-4">
+      <dialog
+        open
+        aria-modal="true"
+        aria-label={`Reserve ${bed.bedCode}`}
+        className="relative m-0 border-0 text-gray-900 bg-white rounded-lg w-full max-w-md p-6"
+      >
         <h3 className="text-lg font-semibold mb-1">Reserve {bed.bedCode}</h3>
         <p className="text-xs text-gray-500 mb-4">
           {wardName}. Only this patient can be admitted into the bed until the hold ends (6 hours
@@ -141,7 +141,7 @@ export function ReserveBedModal({ bed, wardName, onClose, onDone }) {
             {saving ? 'Saving…' : 'Reserve bed'}
           </button>
         </div>
-      </div>
+      </dialog>
     </div>
   );
 }

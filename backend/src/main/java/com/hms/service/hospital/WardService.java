@@ -43,10 +43,8 @@ public class WardService {
     private final BedRepository bedRepository;
     private final SecurityContextHelper securityHelper;
     private final HospitalWebSocketHandler webSocketHandler;
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private BedReservationService bedReservationService;
-
     private final WardWriteService wardWrites;
+    private final BedReservationService bedReservationService;
     private final com.hms.repository.IcuWardRepository icuWardRepository;
     private final com.hms.repository.BedStatusAuditRepository bedStatusAuditRepository;
 
@@ -55,7 +53,9 @@ public class WardService {
                        HospitalWebSocketHandler webSocketHandler,
                        WardWriteService wardWrites,
                        com.hms.repository.IcuWardRepository icuWardRepository,
-                       com.hms.repository.BedStatusAuditRepository bedStatusAuditRepository) {
+                       com.hms.repository.BedStatusAuditRepository bedStatusAuditRepository,
+                       BedReservationService bedReservationService) {
+        this.bedReservationService = bedReservationService;
         this.bedStatusAuditRepository = bedStatusAuditRepository;
         this.wardRepository = wardRepository;
         this.bedRepository = bedRepository;
@@ -167,15 +167,15 @@ public class WardService {
                 since.put((Long) row[0], (java.time.LocalDateTime) row[1]);
             }
         }
-        java.util.Map<Long, com.hms.entity.BedReservation> holds = bedReservationService == null ? java.util.Map.of()
-                : bedReservationService.holdsOn(hospitalId, beds.stream().map(com.hms.entity.Bed::getBedId).toList());
+        java.util.Map<Long, com.hms.entity.BedReservation> holds =
+                bedReservationService.holdsOn(hospitalId, beds.stream().map(com.hms.entity.Bed::getBedId).toList());
         return beds.stream().map(b -> {
                     BedResponse br = new BedResponse();
                     br.setBedId(b.getBedId());
                     br.setBedCode(b.getBedCode());
                     br.setStatus(b.getStatus());
                     br.setStatusSince(since.get(b.getBedId()));
-                    br.applyHold(holds.get(b.getBedId()));
+                    BedReservationService.applyHold(br, holds.get(b.getBedId()));
                     return br;
                 }).collect(Collectors.toList());
     }
