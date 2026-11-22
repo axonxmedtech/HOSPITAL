@@ -20,6 +20,10 @@ public class CreateWardRequest {
     @PositiveOrZero(message = "bedPrice must be >= 0")
     private BigDecimal bedPrice;
 
+    /** Nursing charge per day; optional, 0 or empty = none. */
+    @PositiveOrZero(message = "nursingCharge must be >= 0")
+    private BigDecimal nursingCharge;
+
     @NotNull(message = "totalBeds is required")
     @Min(value = 0, message = "totalBeds must be >= 0")
     private Integer totalBeds;

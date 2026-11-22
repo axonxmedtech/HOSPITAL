@@ -325,6 +325,208 @@ public class ClinicalPdfService {
         return new ByteArrayInputStream(out.toByteArray());
     }
 
+    private static final java.time.format.DateTimeFormatter DS_DATE_TIME =
+            java.time.format.DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a", java.util.Locale.ENGLISH);
+    private static final java.time.format.DateTimeFormatter DS_DATE =
+            java.time.format.DateTimeFormatter.ofPattern("dd MMM yyyy", java.util.Locale.ENGLISH);
+    private static final java.time.format.DateTimeFormatter DS_TIME =
+            java.time.format.DateTimeFormatter.ofPattern("hh:mm a", java.util.Locale.ENGLISH);
+
+    /**
+     * The discharge summary handed to the patient: admission details, diagnosis, course in
+     * hospital, surgeries, investigations, condition at discharge, medicines to take home,
+     * advice and follow-up, with the treating doctor's signature. Text sections use the
+     * Unicode font so summaries written in Marathi or Hindi print correctly.
+     */
+    public ByteArrayInputStream generateDischargeSummaryPdf(Hospital hospital, Patient patient, DischargeSummaryPrint p) {
+        Document document = new Document(PageSize.A4, 36, 36, 36, 140);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try {
+            PdfWriter writer = PdfWriter.getInstance(document, out);
+            helper.addPageBorder(writer);
+            document.open();
+
+            IpdAdmission ipd = p.ipd;
+            com.hms.entity.DischargeSummary ds = p.summary;
+            helper.addPremiumPatientHeader(document, hospital, p.doctor, patient, ipd.getIpdNumber(),
+                    ipd.getAdmissionDatetime(), ds.getFinalDiagnosis(), "DISCHARGE SUMMARY");
+
+            PdfPTable facts = new PdfPTable(4);
+            facts.setWidthPercentage(100);
+            facts.setWidths(new float[]{1.3f, 2f, 1.3f, 2f});
+            facts.setSpacingBefore(8f);
+            dsFact(facts, "Admitted on", ipd.getAdmissionDatetime() == null ? "-" : ipd.getAdmissionDatetime().format(DS_DATE_TIME));
+            dsFact(facts, "Discharged on", ipd.getDischargeDatetime() == null ? "Planned (not yet discharged)"
+                    : ipd.getDischargeDatetime().format(DS_DATE_TIME));
+            dsFact(facts, "Ward / Bed", dash(p.ward) + " / " + dash(p.bed));
+            dsFact(facts, "Consultant", p.doctor == null ? "-" : PdfLayoutHelper.doctorTitle(p.doctor.getName()));
+            dsFact(facts, "Admission type", dash(ipd.getAdmissionType()));
+            dsFact(facts, "Discharge type", dischargeTypeText(ipd.getDischargeType())
+                    + (ipd.getDischargeNote() == null ? "" : " — " + ipd.getDischargeNote()));
+            dsFact(facts, "Condition", ds.getConditionAtDischarge() == null ? "-" : titleCase(ds.getConditionAtDischarge()));
+            dsFact(facts, "Provisional diagnosis", dash(ipd.getPrimaryDiagnosis()));
+            document.add(facts);
+
+            dsSection(document, "Final diagnosis", ds.getFinalDiagnosis());
+            dsSection(document, "Course in hospital / treatment given", ds.getTreatmentGiven());
+            dsSection(document, "Procedures", proceduresText(ds.getProceduresDone(), p.surgeries));
+            dsSection(document, "Key investigations", ds.getInvestigations());
+
+            if (p.medicines != null && !p.medicines.isEmpty()) {
+                dsHeading(document, "Medicines to take at home");
+                PdfPTable meds = new PdfPTable(5);
+                meds.setWidthPercentage(100);
+                meds.setWidths(new float[]{2.6f, 1.2f, 1.4f, 1f, 2.4f});
+                for (String h : new String[]{"Medicine", "Dose", "Frequency", "Days", "Instructions"}) {
+                    helper.addTableHeaderCell(meds, h);
+                }
+                for (com.hms.dto.PlanDischargeRequest.DischargeMedication m : p.medicines) {
+                    helper.addTableCell(meds, m.getName(), false, PdfLayoutHelper.UNICODE_NORMAL_FONT);
+                    helper.addTableCell(meds, dash(m.getDose()), false, PdfLayoutHelper.UNICODE_NORMAL_FONT);
+                    helper.addTableCell(meds, dash(m.getFrequency()), false, PdfLayoutHelper.UNICODE_NORMAL_FONT);
+                    helper.addTableCell(meds, m.getDurationDays() == null ? "-" : String.valueOf(m.getDurationDays()), false);
+                    helper.addTableCell(meds, dash(m.getInstructions()), false, PdfLayoutHelper.UNICODE_NORMAL_FONT);
+                }
+                document.add(meds);
+            }
+
+            dsSection(document, "Advice on discharge", ds.getAdvice());
+            dsSection(document, "Other notes", ds.getDischargeNotes());
+            if (ds.getFollowUpDate() != null) {
+                java.time.LocalTime t = p.followUpTime != null ? p.followUpTime : ds.getFollowUpTime();
+                dsSection(document, "Follow-up", ds.getFollowUpDate().format(DS_DATE)
+                        + (t == null ? "" : " at " + t.format(DS_TIME))
+                        + (p.doctor == null ? "" : " with " + PdfLayoutHelper.doctorTitle(p.doctor.getName()))
+                        + ". Come earlier if symptoms return or get worse.");
+            }
+
+            helper.addPremiumFooter(writer, hospital, patient, ipd.getIpdNumber(), "Treating Doctor's Signature");
+            document.close();
+        } catch (DocumentException e) {
+            throw new IllegalStateException("Error generating the discharge summary PDF", e);
+        }
+        return new ByteArrayInputStream(out.toByteArray());
+    }
+
+    /** The kitchen's diet sheet: every patient in a bed with their current diet, by ward and bed. */
+    public ByteArrayInputStream generateDietSheetPdf(Hospital hospital, List<java.util.Map<String, Object>> rows) {
+        Document document = new Document(PageSize.A4, 36, 36, 36, 36);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try {
+            PdfWriter writer = PdfWriter.getInstance(document, out);
+            helper.addPageBorder(writer);
+            document.open();
+            helper.addStyledHeader(document, hospital, "DIET SHEET");
+            Paragraph when = new Paragraph("Printed " + java.time.LocalDateTime.now(java.time.ZoneId.systemDefault()).format(DS_DATE_TIME)
+                    + " · " + rows.size() + " patient" + (rows.size() == 1 ? "" : "s"), PdfLayoutHelper.LABEL_FONT);
+            when.setSpacingAfter(8f);
+            document.add(when);
+            PdfPTable t = new PdfPTable(5);
+            t.setWidthPercentage(100);
+            t.setWidths(new float[]{1.6f, 1f, 2.2f, 1.6f, 3f});
+            for (String h : new String[]{"Ward", "Bed", "Patient", "Diet", "Instructions"}) {
+                helper.addTableHeaderCell(t, h);
+            }
+            for (java.util.Map<String, Object> r : rows) {
+                helper.addTableCell(t, String.valueOf(r.get("ward")), false, PdfLayoutHelper.UNICODE_NORMAL_FONT);
+                helper.addTableCell(t, String.valueOf(r.get("bed")), false, PdfLayoutHelper.UNICODE_NORMAL_FONT);
+                helper.addTableCell(t, r.get("patientName") + " (" + r.get("ipdNumber") + ")", false, PdfLayoutHelper.UNICODE_NORMAL_FONT);
+                Object diet = r.get("dietType");
+                helper.addTableCell(t, diet == null ? "Not set" : dietLabel(String.valueOf(diet)), false, PdfLayoutHelper.UNICODE_BOLD_FONT);
+                helper.addTableCell(t, dash(r.get("instructions") == null ? null : String.valueOf(r.get("instructions"))), false,
+                        PdfLayoutHelper.UNICODE_NORMAL_FONT);
+            }
+            if (rows.isEmpty()) {
+                PdfPCell none = new PdfPCell(new Phrase("No patients in a bed.", PdfLayoutHelper.UNICODE_NORMAL_FONT));
+                none.setColspan(5);
+                none.setPadding(8f);
+                t.addCell(none);
+            }
+            document.add(t);
+            document.close();
+        } catch (DocumentException e) {
+            throw new IllegalStateException("Error generating the diet sheet PDF", e);
+        }
+        return new ByteArrayInputStream(out.toByteArray());
+    }
+
+    private static String dietLabel(String type) {
+        return switch (type) {
+            case "NBM" -> "Nil by mouth (NBM)";
+            case "CLEAR_LIQUID" -> "Clear liquid";
+            case "LOW_SALT" -> "Low salt";
+            case "HIGH_PROTEIN" -> "High protein";
+            default -> titleCase(type);
+        };
+    }
+
+    private void dsFact(PdfPTable table, String label, String value) {
+        PdfPCell l = new PdfPCell(new Phrase(label, PdfLayoutHelper.LABEL_FONT));
+        l.setBorder(Rectangle.NO_BORDER);
+        l.setPadding(3f);
+        table.addCell(l);
+        PdfPCell v = new PdfPCell(new Phrase(value, PdfLayoutHelper.UNICODE_BOLD_FONT));
+        v.setBorder(Rectangle.NO_BORDER);
+        v.setPadding(3f);
+        table.addCell(v);
+    }
+
+    private void dsHeading(Document document, String title) throws DocumentException {
+        Paragraph h = new Paragraph(title.toUpperCase(java.util.Locale.ROOT), PdfLayoutHelper.UNICODE_NAVY_BOLD_FONT);
+        h.setSpacingBefore(10f);
+        h.setSpacingAfter(3f);
+        document.add(h);
+    }
+
+    /**
+     * A titled block of text; skipped entirely when there is nothing to say. Heading and text are
+     * one paragraph kept together, so a heading is never left alone at the foot of a page.
+     */
+    private void dsSection(Document document, String title, String text) throws DocumentException {
+        if (text == null || text.isBlank()) return;
+        Paragraph block = new Paragraph();
+        block.setLeading(14f);
+        block.setSpacingBefore(10f);
+        block.setKeepTogether(true);
+        block.add(new Chunk(title.toUpperCase(java.util.Locale.ROOT), PdfLayoutHelper.UNICODE_NAVY_BOLD_FONT));
+        block.add(Chunk.NEWLINE);
+        block.add(new Phrase(text.trim(), PdfLayoutHelper.UNICODE_NORMAL_FONT));
+        document.add(block);
+    }
+
+    private static String proceduresText(String written, List<com.hms.entity.Surgery> surgeries) {
+        StringBuilder b = new StringBuilder();
+        if (surgeries != null) {
+            for (com.hms.entity.Surgery s : surgeries) {
+                b.append("• ").append(s.getProcedureName());
+                if (s.getCompletedAt() != null) b.append(" (").append(s.getCompletedAt().format(DS_DATE)).append(")");
+                if (s.getSurgeonName() != null && !s.getSurgeonName().isBlank()) b.append(" — ").append(s.getSurgeonName());
+                b.append('\n');
+            }
+        }
+        if (written != null && !written.isBlank()) b.append(written.trim());
+        return b.toString().trim();
+    }
+
+    private static String dischargeTypeText(String type) {
+        if (type == null) return "Normal";
+        return switch (type) {
+            case "LAMA" -> "LAMA (left against medical advice)";
+            case "REFERRED" -> "Referred";
+            case "EXPIRED" -> "Expired";
+            case "ABSCONDED" -> "Absconded";
+            default -> "Normal";
+        };
+    }
+
+    private static String titleCase(String s) {
+        return s.isEmpty() ? s : s.charAt(0) + s.substring(1).toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private static String dash(String s) {
+        return s == null || s.isBlank() ? "-" : s;
+    }
+
     public ByteArrayInputStream generateCasePaperPdf(
             Hospital hospital,
             Doctor doctor,

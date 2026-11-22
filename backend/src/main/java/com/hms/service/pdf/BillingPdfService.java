@@ -446,6 +446,74 @@ public class BillingPdfService {
         return new ByteArrayInputStream(out.toByteArray());
     }
 
+    private static final DateTimeFormatter ADVANCE_TIME =
+            DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a", java.util.Locale.ENGLISH);
+
+    /**
+     * Receipt for one advance (deposit) on an IPD bill: the amount in figures and words, how it
+     * was paid, the admission it is for and the total advance so far. Numbered ADV-&lt;id&gt;.
+     */
+    public ByteArrayInputStream generateAdvanceReceiptPdf(Hospital hospital, Patient patient, IpdAdmission ipd,
+                                                          Billing bill, BillingPayment payment, BigDecimal totalSoFar) {
+        Document document = new Document(PageSize.A4, 36, 36, 36, 36);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        Font label = FontFactory.getFont(FontFactory.HELVETICA, 9, Font.NORMAL, Color.GRAY);
+        Font value = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, Font.BOLD, Color.BLACK);
+        try {
+            PdfWriter writer = PdfWriter.getInstance(document, out);
+            helper.addPageBorder(writer);
+            document.open();
+            helper.addStyledHeader(document, hospital, "ADVANCE RECEIPT");
+
+            PdfPTable t = new PdfPTable(4);
+            t.setWidthPercentage(100);
+            t.setWidths(new float[]{1.3f, 2.2f, 1.3f, 2.2f});
+            t.setSpacingBefore(8f);
+            advanceRow(t, label, value, "Receipt No.", "ADV-" + payment.getId());
+            advanceRow(t, label, value, "Date", payment.getCreatedAt() == null ? "-" : payment.getCreatedAt().format(ADVANCE_TIME));
+            advanceRow(t, label, value, "Patient", patient.getName());
+            advanceRow(t, label, value, "IPD No.", ipd == null ? "-" : ipd.getIpdNumber());
+            advanceRow(t, label, value, "Bill No.", bill.getCustomId() == null ? "-" : bill.getCustomId());
+            advanceRow(t, label, value, "Paid by", payment.getMode()
+                    + (payment.getReference() == null ? "" : " (" + payment.getReference() + ")"));
+            document.add(t);
+
+            long rupees = payment.getAmount().setScale(0, java.math.RoundingMode.HALF_UP).longValue();
+            Paragraph amount = new Paragraph();
+            amount.setSpacingBefore(12f);
+            amount.add(new Chunk("Received with thanks Rs. " + payment.getAmount().stripTrailingZeros().toPlainString(),
+                    FontFactory.getFont(FontFactory.HELVETICA_BOLD, 13, Font.BOLD, Color.BLACK)));
+            document.add(amount);
+            document.add(new Paragraph("Rupees " + (rupees == 0 ? "Zero" : helper.convertNumberToWords(rupees))
+                    + " Only, as advance towards the inpatient bill.", FontFactory.getFont(FontFactory.HELVETICA, 10)));
+            Paragraph total = new Paragraph("Total advance received for this admission: Rs. "
+                    + totalSoFar.stripTrailingZeros().toPlainString()
+                    + ". Any unused advance is returned at discharge.", label);
+            total.setSpacingBefore(6f);
+            document.add(total);
+
+            Paragraph sign = new Paragraph("Received by: " + (payment.getRecordedBy() == null ? "-" : payment.getRecordedBy())
+                    + "        Signature: ____________________", label);
+            sign.setSpacingBefore(24f);
+            document.add(sign);
+            document.close();
+        } catch (DocumentException e) {
+            throw new IllegalStateException("Error generating the advance receipt PDF", e);
+        }
+        return new ByteArrayInputStream(out.toByteArray());
+    }
+
+    private static void advanceRow(PdfPTable t, Font label, Font value, String l, String v) {
+        PdfPCell a = new PdfPCell(new Phrase(l, label));
+        a.setBorder(Rectangle.NO_BORDER);
+        a.setPadding(3f);
+        t.addCell(a);
+        PdfPCell b = new PdfPCell(new Phrase(v == null ? "-" : v, value));
+        b.setBorder(Rectangle.NO_BORDER);
+        b.setPadding(3f);
+        t.addCell(b);
+    }
+
     /**
      * Pharmacy tax invoice. Carries what a pharmacy bill must show in India: the shop's name,
      * address, GSTIN and drug licence number; a consecutive invoice number; per line the HSN code,

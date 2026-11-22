@@ -43,6 +43,9 @@ public class WardService {
     private final BedRepository bedRepository;
     private final SecurityContextHelper securityHelper;
     private final HospitalWebSocketHandler webSocketHandler;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private BedReservationService bedReservationService;
+
     private final WardWriteService wardWrites;
     private final com.hms.repository.IcuWardRepository icuWardRepository;
     private final com.hms.repository.BedStatusAuditRepository bedStatusAuditRepository;
@@ -76,6 +79,7 @@ public class WardService {
         ward.setHospitalId(hospitalId);
         ward.setWardName(req.getWardName());
         ward.setBedPrice(req.getBedPrice());
+        ward.setNursingCharge(req.getNursingCharge());
         ward.setTotalBeds(req.getTotalBeds());
         ward.setFloorNumber(req.getFloorNumber());
         Ward saved = wardRepository.save(ward);
@@ -163,12 +167,15 @@ public class WardService {
                 since.put((Long) row[0], (java.time.LocalDateTime) row[1]);
             }
         }
+        java.util.Map<Long, com.hms.entity.BedReservation> holds = bedReservationService == null ? java.util.Map.of()
+                : bedReservationService.holdsOn(hospitalId, beds.stream().map(com.hms.entity.Bed::getBedId).toList());
         return beds.stream().map(b -> {
                     BedResponse br = new BedResponse();
                     br.setBedId(b.getBedId());
                     br.setBedCode(b.getBedCode());
                     br.setStatus(b.getStatus());
                     br.setStatusSince(since.get(b.getBedId()));
+                    br.applyHold(holds.get(b.getBedId()));
                     return br;
                 }).collect(Collectors.toList());
     }
@@ -210,6 +217,7 @@ public class WardService {
         r.setWardId(w.getWardId());
         r.setWardName(w.getWardName());
         r.setBedPrice(w.getBedPrice());
+        r.setNursingCharge(w.getNursingCharge());
         r.setTotalBeds(w.getTotalBeds());
         r.setFloorNumber(w.getFloorNumber());
         r.setInchargeNurseId(w.getInchargeNurseId());

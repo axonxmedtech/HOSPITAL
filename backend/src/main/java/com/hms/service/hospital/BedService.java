@@ -43,6 +43,9 @@ public class BedService {
         return r;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private BedReservationService bedReservationService;
+
     public List<BedResponse> getAvailableBeds(Long wardId) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         List<Bed> list;
@@ -51,13 +54,17 @@ public class BedService {
         } else {
             list = bedRepository.findByHospitalId(hospitalId);
         }
-        return list.stream()
-                .filter(b -> b.getStatus() != null && b.getStatus().equalsIgnoreCase("available"))
+        List<Bed> free = list.stream()
+                .filter(b -> b.getStatus() != null && b.getStatus().equalsIgnoreCase("available")).toList();
+        java.util.Map<Long, com.hms.entity.BedReservation> holds = bedReservationService == null ? java.util.Map.of()
+                : bedReservationService.holdsOn(hospitalId, free.stream().map(Bed::getBedId).toList());
+        return free.stream()
                 .map(b -> {
                     BedResponse br = new BedResponse();
                     br.setBedId(b.getBedId());
                     br.setBedCode(b.getBedCode());
                     br.setStatus(b.getStatus());
+                    br.applyHold(holds.get(b.getBedId()));
                     return br;
                 }).collect(Collectors.toList());
     }

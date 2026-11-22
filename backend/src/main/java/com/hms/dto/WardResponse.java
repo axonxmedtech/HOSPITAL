@@ -8,6 +8,7 @@ public class WardResponse {
     private Long wardId;
     private String wardName;
     private BigDecimal bedPrice;
+    private BigDecimal nursingCharge;
     private Integer totalBeds;
     private Integer floorNumber;
     private Long inchargeNurseId;

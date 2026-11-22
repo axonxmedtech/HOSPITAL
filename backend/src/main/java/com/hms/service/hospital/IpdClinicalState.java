@@ -93,6 +93,11 @@ public class IpdClinicalState {
         return surgeryRepository.findByIpdAdmissionIdAndStatusIn(ipdAdmissionId, open);
     }
 
+    /** Surgeries done during this admission, for the discharge summary. */
+    public List<Surgery> completedSurgeries(Long ipdAdmissionId) {
+        return surgeryRepository.findByIpdAdmissionIdAndStatusIn(ipdAdmissionId, Set.of(SurgeryStatus.COMPLETED.name(), SurgeryStatus.CLOSED.name()));
+    }
+
     /** The ventilation status in force now (INVASIVE / NIV / OFF), or null if never recorded. */
     public String ventilationStatus(Long ipdAdmissionId, Long hospitalId) {
         Set<Long> superseded = new HashSet<>(ventilatorRepository.findSupersededIds(ipdAdmissionId, hospitalId));
@@ -142,16 +147,21 @@ public class IpdClinicalState {
         }
     }
 
-    /** Ends what cannot outlive the admission: running infusions, and not-yet-started surgeries. */
-    public void closeOutForDischarge(IpdAdmission ipd, String dischargeType) {
+    /** Stops every infusion still running on this admission, with the reason given. */
+    public void stopRunningInfusions(IpdAdmission ipd, String reason) {
         LocalDateTime now = LocalDateTime.now(java.time.ZoneId.systemDefault());
         for (IcuInfusion inf : infusionRepository
                 .findByIpdAdmissionIdAndHospitalIdAndIsActiveTrueAndStoppedAtIsNullOrderByStartedAtDesc(
                         ipd.getId(), ipd.getHospitalId())) {
             inf.setStoppedAt(now.isBefore(inf.getStartedAt()) ? inf.getStartedAt() : now);
-            inf.setStopReason("Patient discharged (" + dischargeType + ")");
+            inf.setStopReason(reason);
             infusionRepository.save(inf);
         }
+    }
+
+    /** Ends what cannot outlive the admission: running infusions, and not-yet-started surgeries. */
+    public void closeOutForDischarge(IpdAdmission ipd, String dischargeType) {
+        stopRunningInfusions(ipd, "Patient discharged (" + dischargeType + ")");
         if (dischargeAllowedWithDues(dischargeType)) {
             for (Surgery s : openSurgeries(ipd.getId())) {
                 surgeryService.cancel(s.getPublicId(), "OTHER",
