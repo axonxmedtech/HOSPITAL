@@ -64,6 +64,10 @@ public class PurchaseRequest {
         @Pattern(regexp = "^[A-Za-z0-9 /_\\-]*$", message = "Batch number contains invalid characters")
         private String batchNumber;
 
+        /** HSN code for the tax invoice, e.g. 3004. Optional; saved on the medicine when it has none. */
+        @jakarta.validation.constraints.Pattern(regexp = "^\\d{4,8}$|^$", message = "HSN code must be 4 to 8 digits")
+        private String hsnCode;
+
         private LocalDate expiryDate;
 
         @NotNull(message = "Quantity is required")

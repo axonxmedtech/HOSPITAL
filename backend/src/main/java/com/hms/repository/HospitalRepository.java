@@ -44,15 +44,6 @@ public interface HospitalRepository extends JpaRepository<Hospital, Long> {
             + "WHERE h.id = :id AND h.isActive = true")
     boolean isActiveTenant(@Param("id") Long id);
 
-    /**
-     * A single, durable global row used only to serialize legacy global IPD number allocation.
-     * The current IPD number contract is global rather than tenant-local, so locking the caller's
-     * hospital would still permit two different hospitals to allocate the same number.
-     */
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT h FROM Hospital h WHERE h.id = (SELECT MIN(h2.id) FROM Hospital h2)")
-    Optional<Hospital> findGlobalIpdNumberLock();
-
     /** Locks one hospital row, so plan-limit checks for that hospital run one at a time. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT h FROM Hospital h WHERE h.id = :id")

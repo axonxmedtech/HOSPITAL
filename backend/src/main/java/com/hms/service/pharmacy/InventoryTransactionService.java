@@ -7,7 +7,6 @@ import com.hms.repository.pharmacy.MedicineBatchRepository;
 import com.hms.security.HospitalWebSocketHandler;
 import com.hms.security.SecurityContextHelper;
 import com.hms.exception.ResourceNotFoundException;
-import com.hms.exception.UnauthorizedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,10 +34,19 @@ public class InventoryTransactionService {
     @Autowired
     private HospitalWebSocketHandler webSocketHandler;
 
+    @Autowired
+    private PharmacyAuditTrail auditTrail;
+
     @Transactional
     public InventoryTransaction recordAdjustment(Long batchId, BigDecimal adjustmentQty, String remarks) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
-        
+        if (adjustmentQty == null || adjustmentQty.signum() == 0) {
+            throw new IllegalArgumentException("Enter how many units to add or remove");
+        }
+        if (remarks == null || remarks.trim().length() < 3) {
+            throw new IllegalArgumentException("Give a reason for the stock correction (e.g. damaged, physical count)");
+        }
+
         // Use Pessimistic Locking to prevent race conditions during manual adjustment
         MedicineBatch batch = batchRepository.findByIdAndHospitalIdForUpdate(batchId, hospitalId, securityHelper.getCurrentBranchId())
                 .orElseThrow(() -> new ResourceNotFoundException("Medicine batch not found or unauthorized"));
@@ -55,6 +63,7 @@ public class InventoryTransactionService {
 
         InventoryTransaction tx = new InventoryTransaction();
         tx.setHospitalId(hospitalId);
+        tx.setBranchId(securityHelper.getCurrentBranchId());
         tx.setMedicineBatchId(batchId);
         tx.setTransactionType("ADJUSTMENT");
         tx.setQuantity(adjustmentQty);
@@ -65,28 +74,25 @@ public class InventoryTransactionService {
         tx.setCreatedBy(securityHelper.getCurrentUserId());
 
         InventoryTransaction saved = transactionRepository.save(tx);
+        auditTrail.write("STOCK_ADJUSTED", "MEDICINE_BATCH", batch.getBatchNumber(),
+                "Batch " + batch.getBatchNumber() + ": " + qtyBefore.toPlainString() + " → " + qtyAfter.toPlainString()
+                        + " (" + (adjustmentQty.signum() > 0 ? "+" : "") + adjustmentQty.toPlainString() + ")", remarks.trim());
         try { webSocketHandler.broadcast(hospitalId, "{\"type\":\"REFRESH_DATA\"}"); } catch (Exception e) {
             logger.warn("Failed to broadcast WebSocket refresh after inventory adjustment", e);
         }
         return saved;
     }
 
+    /** One batch's stock ledger; a branch login sees only its own batches. */
     public Page<InventoryTransaction> getTransactionHistory(Long batchId, Pageable pageable) {
-        // Verify hospital access
-        Long hospitalId = securityHelper.getCurrentHospitalId();
-        MedicineBatch batch = batchRepository.findById(batchId)
+        batchRepository.findScoped(batchId, securityHelper.getCurrentHospitalId(), securityHelper.getCurrentBranchId())
                 .orElseThrow(() -> new ResourceNotFoundException("Medicine batch not found"));
-        
-        if (!batch.getHospitalId().equals(hospitalId)) {
-            throw new UnauthorizedException("Unauthorized access to medicine batch");
-        }
-
         return transactionRepository.findByMedicineBatchIdOrderByCreatedAtDesc(batchId, pageable);
     }
 
     public Page<InventoryTransaction> getReturnsHistory(Pageable pageable) {
-        Long hospitalId = securityHelper.getCurrentHospitalId();
-        return transactionRepository.findByHospitalIdAndTransactionTypeOrderByCreatedAtDesc(hospitalId, "RETURN", pageable);
+        return transactionRepository.findScopedByType(securityHelper.getCurrentHospitalId(),
+                securityHelper.getCurrentBranchId(), "RETURN", pageable);
     }
 }
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ReservationsList, ReserveBedModal, holdLabel } from '../../components/ipd/BedReservations';
 import { useConfirm } from '../../context/ConfirmContext';
 import { useToast } from '../../context/ToastContext';
 import useLiveRefresh from '../../hooks/useLiveRefresh';
@@ -41,6 +42,8 @@ export default function BedCleaningView() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('cleaning');
   const [busyBed, setBusyBed] = useState(null);
+  const [reservations, setReservations] = useState([]);
+  const [reserving, setReserving] = useState(null); // { bed, wardName }
 
   const load = useCallback(
     async (silent = false) => {
@@ -70,6 +73,7 @@ export default function BedCleaningView() {
           }))
         );
         setWards(withBeds);
+        setReservations((await wardService.getReservations().catch(() => [])) || []);
       } catch (e) {
         if (!silent) toastError(extractApiError(e, 'Could not load beds'));
       } finally {
@@ -158,6 +162,8 @@ export default function BedCleaningView() {
         ))}
       </div>
 
+      <ReservationsList reservations={reservations} onChanged={() => load(true)} />
+
       {loading && <div className="text-sm text-gray-500">Loading beds…</div>}
       {!loading && visible.length === 0 && (
         <div className="bg-white border border-gray-200 rounded-xl p-8 text-center text-sm text-gray-500">
@@ -193,6 +199,16 @@ export default function BedCleaningView() {
                       {key === 'cleaning' ? `waiting ${since}` : `for ${since}`}
                     </span>
                   )}
+                  {b.reservedFor && <span className="text-xs text-sky-700">{holdLabel(b)}</span>}
+                  {key === 'available' && !b.reservedFor && (
+                    <button
+                      type="button"
+                      onClick={() => setReserving({ bed: b, wardName: w.name })}
+                      className="ml-auto px-3 py-1.5 text-sm font-semibold rounded-lg border border-sky-300 text-sky-700 hover:bg-sky-50"
+                    >
+                      Reserve
+                    </button>
+                  )}
                   {key === 'cleaning' && (
                     <button
                       type="button"
@@ -209,6 +225,17 @@ export default function BedCleaningView() {
           </ul>
         </section>
       ))}
+      {reserving && (
+        <ReserveBedModal
+          bed={reserving.bed}
+          wardName={reserving.wardName}
+          onClose={() => setReserving(null)}
+          onDone={async () => {
+            setReserving(null);
+            await load(true);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -10,6 +10,14 @@ const medicinesApi = {
     return response.data;
   },
 
+  // Low-stock level: an alert shows once sellable stock falls below it (0 = no alert)
+  setStockLevel: async (id, minStockLevel) => {
+    const response = await apiClient.patch(`/pharmacy/medicines/${id}/stock-levels`, {
+      minStockLevel,
+    });
+    return response.data;
+  },
+
   // Get medicine by ID
   getById: async (id) => {
     const response = await apiClient.get(`/pharmacy/medicines/${id}`);

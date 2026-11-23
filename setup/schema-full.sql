@@ -184,6 +184,15 @@ CREATE TABLE `discharge_summary` (
   `follow_up_date` date DEFAULT NULL,
   `ipd_admission_id` bigint NOT NULL,
   `treatment_given` text,
+  `condition_at_discharge` varchar(30) DEFAULT NULL,
+  `procedures_done` text,
+  `investigations` text,
+  `advice` text,
+  `discharge_medications` text,
+  `follow_up_time` time DEFAULT NULL,
+  `follow_up_appointment_id` bigint DEFAULT NULL,
+  `prepared_by_doctor_id` bigint DEFAULT NULL,
+  `updated_at` datetime(6) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `UK_5poa40gpt44a152gibdlfe6sb` (`ipd_admission_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -247,6 +256,8 @@ CREATE TABLE `hospitals` (
   `opd_timings` varchar(100) DEFAULT NULL,
   `parent_organization` varchar(200) DEFAULT NULL,
   `phone` varchar(20) DEFAULT NULL,
+  `gstin` varchar(15) DEFAULT NULL,
+  `drug_license_number` varchar(120) DEFAULT NULL,
   `plan` varchar(20) DEFAULT NULL,
   `public_id` varchar(255) NOT NULL,
   `subscription_status` varchar(20) NOT NULL DEFAULT 'ACTIVE',
@@ -312,8 +323,15 @@ CREATE TABLE `ipd_admission` (
   `source_opd_id` bigint DEFAULT NULL,
   `status` varchar(255) NOT NULL,
   `ward_id` bigint NOT NULL,
+  `cancel_reason` varchar(255) DEFAULT NULL,
+  `cancelled_at` datetime(6) DEFAULT NULL,
+  `cancelled_by` varchar(255) DEFAULT NULL,
+  `bed_charge_rule` varchar(20) DEFAULT NULL,
+  `grace_hours` int DEFAULT NULL,
+  `package_id` bigint DEFAULT NULL,
+  `package_applied_at` datetime(6) DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `UK_3p2j5aiaxya8xnh9epblbmlhp` (`ipd_number`)
+  UNIQUE KEY `uk_ipd_admission_hospital_ipd_number` (`hospital_id`,`ipd_number`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -328,11 +346,25 @@ CREATE TABLE `lab_orders` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `created_at` datetime(6) NOT NULL,
   `hospital_id` bigint NOT NULL,
-  `medical_record_id` bigint NOT NULL,
+  `medical_record_id` bigint DEFAULT NULL,
+  `patient_id` bigint DEFAULT NULL,
+  `opd_id` bigint DEFAULT NULL,
+  `priority` varchar(10) NOT NULL DEFAULT 'ROUTINE',
   `public_id` varchar(255) NOT NULL,
   `status` varchar(50) NOT NULL,
   `test_name` varchar(255) NOT NULL,
+  `ipd_admission_id` bigint DEFAULT NULL,
+  `notes` varchar(500) DEFAULT NULL,
+  `ordered_by` varchar(255) DEFAULT NULL,
+  `sample_collected_at` datetime(6) DEFAULT NULL,
+  `sample_collected_by` varchar(255) DEFAULT NULL,
+  `result_text` text,
+  `result_at` datetime(6) DEFAULT NULL,
+  `result_by` varchar(255) DEFAULT NULL,
+  `cancel_reason` varchar(255) DEFAULT NULL,
+  `cancelled_at` datetime(6) DEFAULT NULL,
   PRIMARY KEY (`id`),
+  KEY `idx_lab_orders_ipd` (`hospital_id`,`ipd_admission_id`),
   UNIQUE KEY `UK_9d9924cas2rwvtgkan0mtkmq` (`public_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -473,6 +505,7 @@ CREATE TABLE `medicine_master` (
   `schedule_type` varchar(20) DEFAULT NULL,
   `dosage_form` varchar(100) DEFAULT NULL,
   `strength` varchar(100) DEFAULT NULL,
+  `hsn_code` varchar(10) DEFAULT NULL,
   `unit_of_measure` varchar(50) DEFAULT NULL,
   `reorder_level` int DEFAULT '0',
   `min_stock_level` int DEFAULT '0',
@@ -670,7 +703,7 @@ CREATE TABLE `pharmacy_sales` (
   `posting_status` varchar(50) DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `invoice_number` (`invoice_number`)
+  UNIQUE KEY `uk_pharmacy_sales_hospital_invoice` (`hospital_id`,`invoice_number`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -763,6 +796,10 @@ CREATE TABLE `purchase_invoices` (
   `total_amount` decimal(38,2) DEFAULT NULL,
   `payment_status` varchar(50) DEFAULT NULL,
   `posting_status` varchar(50) DEFAULT NULL,
+  `paid_amount` decimal(12,2) DEFAULT 0,
+  `cancel_reason` varchar(255) DEFAULT NULL,
+  `cancelled_at` datetime(6) DEFAULT NULL,
+  `cancelled_by` bigint DEFAULT NULL,
   `created_by` bigint DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -954,6 +991,7 @@ CREATE TABLE `wards` (
   `hospital_id` bigint NOT NULL,
   `total_beds` int NOT NULL,
   `ward_name` varchar(255) NOT NULL,
+  `nursing_charge` decimal(10,2) DEFAULT NULL,
   PRIMARY KEY (`ward_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -2411,7 +2449,192 @@ CREATE TABLE IF NOT EXISTS `hospital_sidebar_settings` (
   CONSTRAINT `fk_hospital_sidebar_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospitals` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
--- V37: patient access log — who opened, printed or downloaded a patient's record. Append-only,
+-- V38: pharmacy legal invoice — GSTIN / drug licence on the facility, HSN per medicine, and a
+-- consecutive invoice series per facility (or branch) per financial year.
+CREATE TABLE IF NOT EXISTS `pharmacy_invoice_sequences` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `series` varchar(20) NOT NULL,
+  `last_number` bigint NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_pharmacy_invoice_series` (`hospital_id`,`series`)
+);
+-- V38: customer refunds — money returned and the GST in it (append-only).
+CREATE TABLE IF NOT EXISTS `pharmacy_sale_returns` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `branch_id` bigint DEFAULT NULL,
+  `sale_id` bigint NOT NULL,
+  `sale_item_id` bigint NOT NULL,
+  `medicine_batch_id` bigint NOT NULL,
+  `quantity` decimal(12,2) NOT NULL,
+  `refund_amount` decimal(12,2) NOT NULL,
+  `gst_amount` decimal(12,2) NOT NULL,
+  `created_by` bigint DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_psr_hospital_date` (`hospital_id`,`created_at`),
+  KEY `idx_psr_sale` (`sale_id`)
+);
+-- V38: supplier payments and numbered supplier return notes.
+CREATE TABLE IF NOT EXISTS `purchase_payments` (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    hospital_id BIGINT NOT NULL,
+    branch_id BIGINT NULL,
+    purchase_invoice_id BIGINT NOT NULL,
+    amount DECIMAL(12,2) NOT NULL,
+    method VARCHAR(20) NOT NULL,
+    reference VARCHAR(60) NULL,
+    paid_on DATE NOT NULL,
+    created_by BIGINT NULL,
+    created_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    KEY idx_pp_invoice (purchase_invoice_id)
+);
+
+CREATE TABLE IF NOT EXISTS `supplier_return_notes` (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    hospital_id BIGINT NOT NULL,
+    branch_id BIGINT NULL,
+    note_number VARCHAR(20) NOT NULL,
+    supplier_id BIGINT NOT NULL,
+    total_claimed DECIMAL(12,2) NOT NULL,
+    reason VARCHAR(255) NULL,
+    created_by BIGINT NULL,
+    created_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_supplier_return_note_number (hospital_id, note_number)
+);
+
+CREATE TABLE IF NOT EXISTS `supplier_return_note_items` (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    note_id BIGINT NOT NULL,
+    medicine_batch_id BIGINT NOT NULL,
+    batch_number VARCHAR(60) NULL,
+    medicine_name VARCHAR(200) NULL,
+    quantity DECIMAL(12,2) NOT NULL,
+    rate DECIMAL(12,2) NOT NULL,
+    amount DECIMAL(12,2) NOT NULL,
+    PRIMARY KEY (id),
+    KEY idx_srni_note (note_id)
+);
+
+--
+-- IPD billing (V42): per-hospital rules, and fixed-price packages
+--
+CREATE TABLE IF NOT EXISTS `ipd_billing_settings` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `min_advance` decimal(10,2) DEFAULT NULL,
+  `bed_charge_rule` varchar(20) NOT NULL DEFAULT 'CALENDAR_DAY',
+  `grace_hours` int NOT NULL DEFAULT 0,
+  `doctor_visit_fee` decimal(10,2) DEFAULT NULL,
+  `updated_at` datetime(6) DEFAULT NULL,
+  `updated_by` varchar(255) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_ipd_billing_settings_hospital` (`hospital_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `ipd_packages` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `name` varchar(120) NOT NULL,
+  `price` decimal(10,2) NOT NULL,
+  `included_days` int NOT NULL,
+  `description` varchar(500) DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `created_at` datetime(6) NOT NULL,
+  `updated_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_ipd_packages_hospital_name` (`hospital_id`,`name`),
+  KEY `idx_ipd_packages_hospital` (`hospital_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Diet orders (V43): the diet set for an inpatient; history kept (ended_at)
+--
+CREATE TABLE IF NOT EXISTS `diet_orders` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `public_id` varchar(36) NOT NULL,
+  `hospital_id` bigint NOT NULL,
+  `ipd_admission_id` bigint NOT NULL,
+  `diet_type` varchar(30) NOT NULL,
+  `instructions` varchar(500) DEFAULT NULL,
+  `ordered_by_doctor_id` bigint DEFAULT NULL,
+  `ordered_by` varchar(255) DEFAULT NULL,
+  `started_at` datetime(6) NOT NULL,
+  `ended_at` datetime(6) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_diet_orders_public_id` (`public_id`),
+  KEY `idx_diet_orders_admission` (`hospital_id`,`ipd_admission_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Insurance / TPA claims and bed reservations (V44)
+--
+CREATE TABLE IF NOT EXISTS `ipd_insurance_claims` (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    public_id VARCHAR(36) NOT NULL,
+    hospital_id BIGINT NOT NULL,
+    ipd_admission_id BIGINT NOT NULL,
+    payer_type VARCHAR(20) NOT NULL,
+    insurer_name VARCHAR(150) NOT NULL,
+    tpa_name VARCHAR(150) NULL,
+    policy_number VARCHAR(80) NULL,
+    member_id VARCHAR(80) NULL,
+    claim_number VARCHAR(80) NULL,
+    status VARCHAR(30) NOT NULL,
+    requested_amount DECIMAL(12,2) NULL,
+    approved_amount DECIMAL(12,2) NULL,
+    settled_amount DECIMAL(12,2) NULL,
+    deduction_amount DECIMAL(12,2) NULL,
+    deduction_reason VARCHAR(255) NULL,
+    created_by VARCHAR(255) NULL,
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ipd_insurance_claims_public_id (public_id),
+    KEY idx_ipd_insurance_claims_admission (hospital_id, ipd_admission_id),
+    KEY idx_ipd_insurance_claims_status (hospital_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `ipd_insurance_claim_events` (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    hospital_id BIGINT NOT NULL,
+    claim_id BIGINT NOT NULL,
+    status VARCHAR(30) NOT NULL,
+    amount DECIMAL(12,2) NULL,
+    note VARCHAR(500) NULL,
+    created_by VARCHAR(255) NULL,
+    created_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    KEY idx_ipd_claim_events_claim (hospital_id, claim_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `bed_reservations` (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    public_id VARCHAR(36) NOT NULL,
+    hospital_id BIGINT NOT NULL,
+    ward_id BIGINT NOT NULL,
+    bed_id BIGINT NOT NULL,
+    patient_id BIGINT NULL,
+    patient_name VARCHAR(150) NOT NULL,
+    patient_phone VARCHAR(20) NULL,
+    expected_at DATETIME(6) NOT NULL,
+    reserved_until DATETIME(6) NOT NULL,
+    notes VARCHAR(500) NULL,
+    status VARCHAR(20) NOT NULL,
+    ipd_admission_id BIGINT NULL,
+    cancel_reason VARCHAR(255) NULL,
+    created_by VARCHAR(255) NULL,
+    created_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_bed_reservations_public_id (public_id),
+    KEY idx_bed_reservations_bed (hospital_id, bed_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+
+-- V45: patient access log — who opened, printed or downloaded a patient's record. Append-only,
 -- retained when a facility is purged (like audit_logs).
 CREATE TABLE IF NOT EXISTS `patient_access_logs` (
   `id` bigint NOT NULL AUTO_INCREMENT,

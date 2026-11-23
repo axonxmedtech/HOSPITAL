@@ -109,6 +109,7 @@ public class WardWriteService {
 
         if (req.getWardName() != null) w.setWardName(req.getWardName());
         if (req.getBedPrice() != null) w.setBedPrice(req.getBedPrice());
+        if (req.getNursingCharge() != null) w.setNursingCharge(req.getNursingCharge());
         if (req.getFloorNumber() != null) w.setFloorNumber(req.getFloorNumber());
 
         // Bed count is editable: resize the ward's bed list to match. Done after the rename

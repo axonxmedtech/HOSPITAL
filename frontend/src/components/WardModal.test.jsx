@@ -48,6 +48,7 @@ describe('WardModal — General Ward', () => {
     expect(WardService.createWard).toHaveBeenCalledWith({
       wardName: 'General Ward A',
       bedPrice: 1500,
+      nursingCharge: 0,
       totalBeds: 10,
       floorNumber: 2,
     });
@@ -86,8 +87,23 @@ describe('WardModal — General Ward', () => {
     expect(WardService.updateWard).toHaveBeenCalledWith(5, {
       wardName: 'Recovery Ward',
       bedPrice: 2500,
+      nursingCharge: 0,
       totalBeds: 8,
       floorNumber: 1,
     });
+  });
+
+  it('sends the nursing charge per day when one is entered', async () => {
+    render(<WardModal open initial={null} onClose={vi.fn()} onSaved={vi.fn()} />);
+    fillRequired();
+    fireEvent.change(screen.getByLabelText('Nursing Charge per Day (optional)'), {
+      target: { value: '300' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /save/i }));
+    await waitFor(() =>
+      expect(WardService.createWard).toHaveBeenCalledWith(
+        expect.objectContaining({ nursingCharge: 300 })
+      )
+    );
   });
 });

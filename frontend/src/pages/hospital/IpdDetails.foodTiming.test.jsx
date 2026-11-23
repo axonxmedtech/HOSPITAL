@@ -47,6 +47,9 @@ vi.mock('../../services/formAccessService', () => ({
 
 const hospitalService = {
   getIpdDetails: vi.fn(),
+  getIpdRounds: vi.fn().mockResolvedValue([]),
+  getIpdDiet: vi.fn().mockResolvedValue([]),
+  getIpdInvestigations: vi.fn().mockResolvedValue([]),
   addIpdPrescription: vi.fn(),
   searchMedicines: vi.fn(),
   getInventoryMedicines: vi.fn().mockResolvedValue([]),

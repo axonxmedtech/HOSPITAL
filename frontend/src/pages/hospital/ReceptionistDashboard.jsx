@@ -14,6 +14,8 @@ import EmptyState from '../../components/EmptyState';
 import FollowUpPanel from '../../components/FollowUpPanel';
 import HistoryDrawer from '../../components/HistoryDrawer';
 import HospitalInventoryTab from '../../components/HospitalInventoryTab';
+import { DietSheetButton } from '../../components/ipd/DietCard';
+import OpenClaimsView from '../../components/ipd/OpenClaimsView';
 import IpdAdmitModal from '../../components/IpdAdmitModal';
 import LowStockBanner from '../../components/LowStockBanner';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
@@ -454,8 +456,8 @@ const ReceptionistDashboard = () => {
           setTotalPages(opdsData.totalPages || 1);
           setTotalElements(opdsData.totalElements || (opdsArray ? opdsArray.length : 0));
         } else if (activeTab === 'ipd') {
-          if (ipdSubTab === 'history') {
-            // IpdHistoryView loads its own server-filtered, paged list.
+          if (ipdSubTab === 'history' || ipdSubTab === 'claims') {
+            // IpdHistoryView and OpenClaimsView load their own lists.
             setOpds([]);
           } else if (ipdSubTab === 'current') {
             // IPD tab: fetch role-based admitted IPD admissions
@@ -1643,7 +1645,7 @@ const ReceptionistDashboard = () => {
                 activeTab === 'queue' ||
                 activeTab === 'hospital-inventory' ||
                 activeTab === 'icu' || // the ICU view has its own search (in ICU history)
-                (activeTab === 'ipd' && ipdSubTab === 'history')
+                (activeTab === 'ipd' && (ipdSubTab === 'history' || ipdSubTab === 'claims'))
                   ? null
                   : (e) => setSearchInput(e.target.value)
               }
@@ -1850,29 +1852,33 @@ const ReceptionistDashboard = () => {
                     />
                   </div>
                 ) : activeTab === 'ipd' ? (
-                  <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
-                    {[
-                      { value: 'current', label: 'Current Patients' },
-                      { value: 'requested', label: 'Requested Patients' },
-                      { value: 'history', label: 'Discharged / History' },
-                    ].map((sub) => (
-                      <button
-                        key={sub.value}
-                        type="button"
-                        onClick={() => {
-                          setIpdSubTab(sub.value);
-                          setPage(0);
-                          setSearchInput('');
-                        }}
-                        className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
-                          ipdSubTab === sub.value
-                            ? 'bg-white text-primary-600 shadow-sm border border-gray-100 font-semibold'
-                            : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
-                        }`}
-                      >
-                        {sub.label}
-                      </button>
-                    ))}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <DietSheetButton />
+                    <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
+                      {[
+                        { value: 'current', label: 'Current Patients' },
+                        { value: 'requested', label: 'Requested Patients' },
+                        { value: 'history', label: 'Discharged / History' },
+                        { value: 'claims', label: 'Insurance Claims' },
+                      ].map((sub) => (
+                        <button
+                          key={sub.value}
+                          type="button"
+                          onClick={() => {
+                            setIpdSubTab(sub.value);
+                            setPage(0);
+                            setSearchInput('');
+                          }}
+                          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
+                            ipdSubTab === sub.value
+                              ? 'bg-white text-primary-600 shadow-sm border border-gray-100 font-semibold'
+                              : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
+                          }`}
+                        >
+                          {sub.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 ) : null
               }
@@ -2006,8 +2012,10 @@ const ReceptionistDashboard = () => {
                   />
                 ))}
               {activeTab === 'ipd' && ipdSubTab === 'history' && <IpdHistoryView />}
+              {activeTab === 'ipd' && ipdSubTab === 'claims' && <OpenClaimsView />}
               {activeTab === 'ipd' &&
                 ipdSubTab !== 'history' &&
+                ipdSubTab !== 'claims' &&
                 (ipdSubTab === 'current' ? (
                   opds.length > 0 ? (
                     <div className="p-4 overflow-x-auto">

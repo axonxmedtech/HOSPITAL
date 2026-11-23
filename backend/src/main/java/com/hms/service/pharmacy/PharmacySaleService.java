@@ -40,49 +40,88 @@ public class PharmacySaleService {
 
     @Autowired private com.hms.service.RealtimeNotifier notifier;
 
+    /** What a counter may record as the way the customer paid. */
+    private static final String PHARMACY_SALE = "PHARMACY_SALE";
+
+    static final java.util.Set<String> PAYMENT_METHODS = java.util.Set.of("CASH", "UPI", "CARD", "IPD_BILL");
+
+    @Autowired
+    private PharmacyInvoiceNumberService invoiceNumberService;
+
+    @Autowired
+    private com.hms.repository.pharmacy.PharmacySaleReturnRepository saleReturnRepository;
+
+    @Autowired
+    private PharmacyAuditTrail auditTrail;
+
+    /**
+     * Records a counter sale. The browser says WHAT is sold (batch, quantity) and the bill
+     * discount; every amount is worked out here from the batch's selling price, which includes
+     * GST and never exceeds the MRP. Amounts sent by the browser are ignored, so a bill can never
+     * be saved at a price the shelf does not carry, and the customer never pays above MRP.
+     */
     @Transactional
     public PharmacySale createSale(PharmacySaleRequest request) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
+        Long branchId = securityHelper.getCurrentBranchId();
         Long userId = securityHelper.getCurrentUserId();
+
+        if (request.getItems() == null || request.getItems().isEmpty()) {
+            throw new IllegalArgumentException("Add at least one medicine to the bill");
+        }
+        String paymentMethod = request.getPaymentMethod() == null ? "CASH"
+                : request.getPaymentMethod().trim().toUpperCase(java.util.Locale.ROOT);
+        if (!PAYMENT_METHODS.contains(paymentMethod)) {
+            throw new IllegalArgumentException("Payment method must be Cash, UPI or Card");
+        }
+
+        // 1. Lock and check every batch first, so the bill is priced from what is really on the shelf.
+        List<MedicineBatch> batches = new ArrayList<>();
+        List<PharmacyBillCalculator.Line> lines = new ArrayList<>();
+        for (PharmacySaleRequest.SaleItemRequest itemReq : request.getItems()) {
+            MedicineBatch batch = lockSellableBatch(itemReq, hospitalId, branchId);
+            batches.add(batch);
+            lines.add(new PharmacyBillCalculator.Line(itemReq.getQuantity(), batch.getSellingPrice(), gstRateOf(batch)));
+        }
+        PharmacyBillCalculator.Bill bill = PharmacyBillCalculator.calculate(lines, request.getDiscountAmount());
 
         PharmacySale sale = new PharmacySale();
         sale.setHospitalId(hospitalId);
-        sale.setBranchId(securityHelper.getCurrentBranchId());
+        sale.setBranchId(branchId);
+        sale.setBillNumber(invoiceNumberService.next(hospitalId, branchId));
         sale.setPatientId(request.getPatientId());
         sale.setPatientName(request.getPatientName());
-        sale.setSubtotal(request.getSubtotal());
-        sale.setTaxAmount(request.getTaxAmount());
-        sale.setTaxAmountRaw(request.getTaxAmount());
-        sale.setDiscountAmount(request.getDiscountAmount());
-        sale.setNetAmount(request.getNetAmount());
-        sale.setNetAmountRaw(request.getNetAmount());
-        sale.setPaymentMethod(request.getPaymentMethod());
-        sale.setPaymentStatus("PAID"); // Default for now
+        // subtotal = shelf value (GST included, before discount); tax = GST contained in the net.
+        sale.setSubtotal(bill.gross());
+        sale.setDiscountAmount(bill.discount());
+        sale.setTaxAmount(bill.gst());
+        sale.setTaxAmountRaw(bill.gst());
+        sale.setNetAmount(bill.net());
+        sale.setNetAmountRaw(bill.net());
+        sale.setPaymentMethod(paymentMethod);
+        sale.setPaymentStatus("PAID");
         sale.setPostingStatus("POSTED");
-        sale.setIsIpdBill(request.getIsIpdBill());
+        sale.setIsIpdBill("IPD_BILL".equals(paymentMethod));
         sale.setIpdAdmissionId(request.getIpdAdmissionId());
         sale.setPrescriptionId(request.getPrescriptionId());
         sale.setDoctorId(request.getDoctorId());
-        
-        String resolvedSaleType = "WALK-IN";
+        String saleType = "WALK-IN";
         if (request.getPrescriptionId() != null) {
-            resolvedSaleType = "PRESCRIPTION";
-        } else if (request.getIsIpdBill() != null && request.getIsIpdBill()) {
-            resolvedSaleType = "IPD";
+            saleType = "PRESCRIPTION";
+        } else if (Boolean.TRUE.equals(sale.getIsIpdBill())) {
+            saleType = "IPD";
         }
-        sale.setSaleType(resolvedSaleType);
+        sale.setSaleType(saleType);
         sale.setPharmacistId(userId);
 
-        // The stock transactions are built here but persisted after the sale is saved: until
-        // then the sale has no id and no bill number, so a transaction written now records
-        // referenceId=null and "Sale Bill #null" and the stock movement cannot be traced
-        // back to the sale that caused it.
+        // 2. Deduct stock and build the lines. The stock movements are saved after the sale, once
+        // it has an id and a bill number to point back to.
         List<InventoryTransaction> stockMovements = new ArrayList<>();
         List<PharmacySaleItem> items = new ArrayList<>();
-        for (PharmacySaleRequest.SaleItemRequest itemReq : request.getItems()) {
-            items.add(processSaleItem(itemReq, sale, hospitalId, userId, stockMovements));
+        SaleContext ctx = new SaleContext(sale, hospitalId, branchId, userId, stockMovements);
+        for (int i = 0; i < batches.size(); i++) {
+            items.add(sellLine(batches.get(i), lines.get(i), bill.lines().get(i), ctx));
         }
-
         sale.setItems(items);
         PharmacySale savedSale = saleRepository.save(sale);
 
@@ -92,9 +131,8 @@ public class PharmacySaleService {
         }
         transactionRepository.saveAll(stockMovements);
 
-        // Auto-complete the prescription status to DISPENSED for all consultation records
         if (request.getPrescriptionId() != null) {
-            markPrescriptionsDispensed(request.getPrescriptionId());
+            markPrescriptionsDispensed(request.getPrescriptionId(), hospitalId);
         }
 
         // A sale deducts stock. A second pharmacist at the same counter must see the new quantity
@@ -104,76 +142,147 @@ public class PharmacySaleService {
     }
 
     /**
-     * Validates a single sale line, deducts the batch under a pessimistic lock,
-     * records the inventory transaction, and returns the sale item. Extracted
-     * from createSale to keep that method's complexity manageable.
+     * The batch, locked, after checking it may be sold: it belongs to this pharmacy (and branch),
+     * it is not blocked or disposed, it has not expired, and it holds enough stock.
      */
-    private PharmacySaleItem processSaleItem(PharmacySaleRequest.SaleItemRequest itemReq, PharmacySale sale, Long hospitalId, Long userId,
-                                             List<InventoryTransaction> stockMovements) {
-        // Validation: Prevent negative or zero quantity theft
-        if (itemReq.getQuantity().compareTo(BigDecimal.ZERO) <= 0) {
+    private MedicineBatch lockSellableBatch(PharmacySaleRequest.SaleItemRequest itemReq, Long hospitalId, Long branchId) {
+        if (itemReq.getQuantity() == null || itemReq.getQuantity().compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Sale quantity must be positive");
         }
-        if (itemReq.getTaxPercentage() != null && (itemReq.getTaxPercentage().compareTo(BigDecimal.ZERO) < 0 || itemReq.getTaxPercentage().compareTo(BigDecimal.valueOf(100)) > 0)) {
-            throw new IllegalArgumentException("Tax percentage must be between 0% and 100%");
+        if (itemReq.getMedicineBatchId() == null) {
+            throw new IllegalArgumentException("Choose the batch to sell from");
         }
-
-        // 1. Fetch and update batch with Pessimistic Lock (Prevents Race Conditions)
-        // Also prevents IDOR by including hospitalId in query
-        MedicineBatch batch = batchRepository.findByIdAndHospitalIdForUpdate(itemReq.getMedicineBatchId(), hospitalId, securityHelper.getCurrentBranchId())
+        MedicineBatch batch = batchRepository.findByIdAndHospitalIdForUpdate(itemReq.getMedicineBatchId(), hospitalId, branchId)
                 .orElseThrow(() -> new ResourceNotFoundException("Batch not found or unauthorized: " + itemReq.getMedicineBatchId()));
-
+        String label = batchLabel(batch);
+        if (batch.getStatus() != null && !"ACTIVE".equalsIgnoreCase(batch.getStatus())) {
+            throw new IllegalArgumentException(label + " is " + batch.getStatus().toLowerCase(java.util.Locale.ROOT)
+                    + " and cannot be sold");
+        }
+        if (batch.getExpiryDate() != null
+                && !batch.getExpiryDate().isAfter(java.time.LocalDate.now(java.time.ZoneId.systemDefault()))) {
+            throw new IllegalArgumentException(label + " expired on " + batch.getExpiryDate() + " and cannot be sold");
+        }
+        if (batch.getSellingPrice() == null || batch.getSellingPrice().signum() <= 0) {
+            throw new IllegalArgumentException(label + " has no selling price");
+        }
+        if (batch.getMrp() != null && batch.getSellingPrice().compareTo(batch.getMrp()) > 0) {
+            throw new IllegalArgumentException(label + ": selling price is above MRP");
+        }
         if (batch.getCurrentQuantity().compareTo(itemReq.getQuantity()) < 0) {
             throw new IllegalArgumentException("Insufficient stock for batch: " + batch.getBatchNumber());
         }
+        return batch;
+    }
 
+    /** The sale being built and who / where it is for, shared by every line. */
+    private record SaleContext(PharmacySale sale, Long hospitalId, Long branchId, Long userId,
+                               List<InventoryTransaction> stockMovements) {
+    }
+
+    /** Deducts the stock of one line, records the movement, and returns the priced sale line. */
+    private PharmacySaleItem sellLine(MedicineBatch batch, PharmacyBillCalculator.Line line,
+                                      PharmacyBillCalculator.LineResult money, SaleContext ctx) {
+        BigDecimal qty = line.quantity();
+        PharmacySale sale = ctx.sale();
         BigDecimal qtyBefore = batch.getCurrentQuantity();
-        batch.setCurrentQuantity(qtyBefore.subtract(itemReq.getQuantity()));
+        batch.setCurrentQuantity(qtyBefore.subtract(qty));
         batchRepository.save(batch);
 
-        // 2. Record Inventory Transaction
         InventoryTransaction tx = new InventoryTransaction();
-        tx.setHospitalId(hospitalId);
-        tx.setBranchId(securityHelper.getCurrentBranchId());
+        tx.setHospitalId(ctx.hospitalId());
+        tx.setBranchId(ctx.branchId());
         tx.setMedicineBatchId(batch.getId());
         tx.setTransactionType("SALE");
-        tx.setQuantity(itemReq.getQuantity().negate()); // Negative for sales
+        tx.setQuantity(qty.negate()); // Negative for sales
         tx.setQuantityBefore(qtyBefore);
         tx.setQuantityAfter(batch.getCurrentQuantity());
-        tx.setReferenceType("PHARMACY_SALE");
-        tx.setCreatedBy(userId);
-        // referenceId and remarks are backfilled by createSale once the sale has an id.
-        stockMovements.add(tx);
+        tx.setReferenceType(PHARMACY_SALE);
+        tx.setCreatedBy(ctx.userId());
+        ctx.stockMovements().add(tx);
 
-        // 3. Create Sale Item
         PharmacySaleItem item = new PharmacySaleItem();
         item.setPharmacySale(sale);
-        item.setMedicineId(itemReq.getMedicineId());
-        item.setMedicineBatchId(itemReq.getMedicineBatchId());
-        item.setQuantity(itemReq.getQuantity());
-        item.setQuantityRaw(itemReq.getQuantity());
-        item.setUnitPrice(itemReq.getUnitPrice());
-        item.setTaxPercentage(itemReq.getTaxPercentage());
-        item.setTaxPercentageRaw(itemReq.getTaxPercentage());
-        item.setTaxAmount(itemReq.getTaxAmount());
-        item.setDiscountPercentage(itemReq.getDiscountPercentage());
-        item.setDiscountAmount(itemReq.getDiscountAmount());
-        item.setTotalAmount(itemReq.getTotalAmount());
-        item.setTotalAmountRaw(itemReq.getTotalAmount());
+        item.setMedicineId(batch.getMedicineId());
+        item.setMedicineBatchId(batch.getId());
+        item.setQuantity(qty);
+        item.setQuantityRaw(qty);
+        item.setUnitPrice(line.unitPrice());
+        item.setTaxPercentage(line.gstPercentage());
+        item.setTaxPercentageRaw(line.gstPercentage());
+        item.setTaxAmount(money.gst());
+        item.setDiscountAmount(money.discount());
+        item.setDiscountPercentage(money.gross().signum() == 0 ? BigDecimal.ZERO
+                : money.discount().multiply(BigDecimal.valueOf(100)).divide(money.gross(), 2, java.math.RoundingMode.HALF_UP));
+        item.setTotalAmount(money.net());
+        item.setTotalAmountRaw(money.net());
         return item;
     }
 
-    /** Best-effort: a prescription update failure must not crash the sale transaction. */
-    private void markPrescriptionsDispensed(Long prescriptionId) {
-        try {
-            List<com.hms.entity.Prescription> rxList = prescriptionRepository.findByMedicalRecordId(prescriptionId);
-            for (com.hms.entity.Prescription rx : rxList) {
-                rx.setStatus("DISPENSED");
-                prescriptionRepository.save(rx);
-            }
-        } catch (Exception e) {
-            // Ensure prescription update failure does not crash the sale transaction
+    private static BigDecimal gstRateOf(MedicineBatch batch) {
+        if (batch.getGstPercentage() != null) {
+            return batch.getGstPercentage();
         }
+        if (batch.getMedicine() != null && batch.getMedicine().getGstPercentage() != null) {
+            return batch.getMedicine().getGstPercentage();
+        }
+        return BigDecimal.ZERO;
+    }
+
+    private static String batchLabel(MedicineBatch batch) {
+        String name = batch.getMedicine() != null ? batch.getMedicine().getMedicineName() : null;
+        return (name != null ? name + " " : "") + "batch " + batch.getBatchNumber();
+    }
+
+    /**
+     * Marks the consultation's prescriptions as dispensed, but only a consultation of this same
+     * facility: the id comes from the browser, and another facility's prescriptions must never
+     * change because of a sale here.
+     */
+    private void markPrescriptionsDispensed(Long medicalRecordId, Long hospitalId) {
+        for (com.hms.entity.Prescription rx : prescriptionRepository.findByMedicalRecordId(medicalRecordId)) {
+            if (!hospitalId.equals(rx.getHospitalId())) {
+                continue;
+            }
+            rx.setStatus("DISPENSED");
+            prescriptionRepository.save(rx);
+        }
+    }
+
+    /** The money itself, so reports can show refunds and the GST they take back. */
+    private void recordRefund(PharmacySale sale, PharmacySaleItem soldItem, Long batchId, BigDecimal qty,
+                              BigDecimal amount, Long hospitalId, Long userId) {
+        com.hms.entity.pharmacy.PharmacySaleReturn refund = new com.hms.entity.pharmacy.PharmacySaleReturn();
+        refund.setHospitalId(hospitalId);
+        refund.setBranchId(securityHelper.getCurrentBranchId());
+        refund.setSaleId(sale.getId());
+        refund.setSaleItemId(soldItem.getId());
+        refund.setMedicineBatchId(batchId);
+        refund.setQuantity(qty);
+        refund.setRefundAmount(amount);
+        BigDecimal rate = soldItem.getTaxPercentage() == null ? BigDecimal.ZERO : soldItem.getTaxPercentage();
+        refund.setGstAmount(amount.subtract(amount.multiply(BigDecimal.valueOf(100))
+                .divide(BigDecimal.valueOf(100).add(rate), 2, java.math.RoundingMode.HALF_UP)));
+        refund.setCreatedBy(userId);
+        saleReturnRepository.save(refund);
+    }
+
+    /**
+     * What the customer actually paid for one unit of this line: the line's share of the bill's
+     * net amount (after discount, GST included), divided by the quantity. A refund is based on
+     * this, never on the shelf price, so it can never be more than was paid. It also holds for
+     * bills saved before prices included GST, whose line totals did not add up to the net.
+     */
+    static BigDecimal paidPerUnit(PharmacySale sale, PharmacySaleItem line) {
+        BigDecimal lineTotal = line.getTotalAmount() == null ? BigDecimal.ZERO : line.getTotalAmount();
+        BigDecimal linesTotal = sale.getItems().stream()
+                .map(i -> i.getTotalAmount() == null ? BigDecimal.ZERO : i.getTotalAmount())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal net = sale.getNetAmount() == null ? linesTotal : sale.getNetAmount();
+        if (linesTotal.signum() == 0 || line.getQuantity() == null || line.getQuantity().signum() == 0) {
+            return BigDecimal.ZERO;
+        }
+        return lineTotal.multiply(net).divide(linesTotal.multiply(line.getQuantity()), 6, java.math.RoundingMode.HALF_UP);
     }
 
     public Page<PharmacySale> getSalesHistory(Pageable pageable) {
@@ -186,27 +295,21 @@ public class PharmacySaleService {
     }
 
     public BigDecimal getTodaySalesTotal() {
-        Long hospitalId = securityHelper.getCurrentHospitalId();
-        LocalDateTime startOfDay = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0);
-        
-        // Use a custom query for efficiency
-        return saleRepository.getSumOfSalesBetween(hospitalId, startOfDay, LocalDateTime.now());
+        LocalDateTime startOfDay = LocalDateTime.now(java.time.ZoneId.systemDefault()).withHour(0).withMinute(0).withSecond(0);
+        return saleRepository.sumSalesBetween(securityHelper.getCurrentHospitalId(),
+                securityHelper.getCurrentBranchId(), startOfDay, LocalDateTime.now(java.time.ZoneId.systemDefault()));
     }
 
+    /** Today's sales count and total, for this branch when a branch is signed in. */
     public java.util.Map<String, Object> getDashboardStats() {
         Long hospitalId = securityHelper.getCurrentHospitalId();
-        LocalDateTime startOfDay = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0);
-        LocalDateTime now = LocalDateTime.now();
-
-        BigDecimal todayTotal = saleRepository.getSumOfSalesBetween(hospitalId, startOfDay, now);
-        if (todayTotal == null) todayTotal = BigDecimal.ZERO;
-
-        long todayCount = saleRepository.countByHospitalIdAndCreatedAtBetween(hospitalId, startOfDay, now);
+        Long branchId = securityHelper.getCurrentBranchId();
+        LocalDateTime startOfDay = LocalDateTime.now(java.time.ZoneId.systemDefault()).withHour(0).withMinute(0).withSecond(0);
+        LocalDateTime now = LocalDateTime.now(java.time.ZoneId.systemDefault());
 
         java.util.Map<String, Object> stats = new java.util.HashMap<>();
-        stats.put("todaySalesTotal", todayTotal);
-        stats.put("todaySalesCount", todayCount);
-        
+        stats.put("todaySalesTotal", saleRepository.sumSalesBetween(hospitalId, branchId, startOfDay, now));
+        stats.put("todaySalesCount", saleRepository.countSalesBetween(hospitalId, branchId, startOfDay, now));
         return stats;
     }
 
@@ -265,9 +368,11 @@ public class PharmacySaleService {
                     "' because the batch has already expired on " + batchToCheck.getExpiryDate() + "!");
             }
 
-            // Calculate refund fraction (sellingPrice * qtyToReturn)
-            BigDecimal refundValue = soldItem.getUnitPrice().multiply(qtyToReturn);
+            BigDecimal refundValue = paidPerUnit(sale, soldItem).multiply(qtyToReturn)
+                    .setScale(2, java.math.RoundingMode.HALF_UP);
             refundTotal = refundTotal.add(refundValue);
+
+            recordRefund(sale, soldItem, batchId, qtyToReturn, refundValue, hospitalId, userId);
 
             // Medicine that has been in a patient's possession does not go back on the shelf.
             //
@@ -288,13 +393,16 @@ public class PharmacySaleService {
             tx.setQuantity(BigDecimal.ZERO);
             tx.setQuantityBefore(batchToCheck.getCurrentQuantity());
             tx.setQuantityAfter(batchToCheck.getCurrentQuantity());
-            tx.setReferenceType("PHARMACY_SALE");
+            tx.setReferenceType(PHARMACY_SALE);
             tx.setReferenceId(sale.getId());
             tx.setRemarks("Patient return for Bill #" + sale.getBillNumber()
                     + " - refunded, not returned to saleable stock");
             tx.setCreatedBy(userId);
             transactionRepository.save(tx);
         }
+
+        auditTrail.write("PHARMACY_REFUND", PHARMACY_SALE, sale.getBillNumber(),
+                "Refunded ₹" + refundTotal.toPlainString() + " on bill " + sale.getBillNumber());
 
         java.util.Map<String, Object> result = new java.util.HashMap<>();
         result.put("status", "SUCCESS");

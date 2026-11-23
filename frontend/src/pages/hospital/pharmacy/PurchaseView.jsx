@@ -1,14 +1,151 @@
 ﻿import React, { useState, useEffect, useCallback } from 'react';
+import ConfirmationModal from '../../../components/ConfirmationModal';
 import { SkeletonTableRow } from '../../../components/Skeleton';
 import { useToast } from '../../../context/ToastContext';
 import purchaseApi from '../../../services/pharmacy/purchaseApi';
+import { extractApiError } from '../../../utils/apiError';
+import { localIsoDate } from '../../../utils/date';
 import PurchaseForm from './PurchaseForm';
+
+const money = (v) =>
+  `₹${(Number(v) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const balanceOf = (inv) =>
+  inv.postingStatus === 'POSTED'
+    ? (Number(inv.totalAmount) || 0) - (Number(inv.paidAmount) || 0)
+    : 0;
+
+const PAY_METHODS = [
+  ['CASH', 'Cash'],
+  ['UPI', 'UPI'],
+  ['BANK_TRANSFER', 'Bank transfer'],
+  ['CHEQUE', 'Cheque'],
+  ['CARD', 'Card'],
+];
+
+/** Record a payment made to the supplier against one invoice (never more than the balance). */
+function PaymentModal({ invoice, onClose, onSaved }) {
+  const toast = useToast();
+  const due = balanceOf(invoice);
+  const [form, setForm] = useState({
+    amount: due.toFixed(2),
+    method: 'BANK_TRANSFER',
+    reference: '',
+    paidOn: localIsoDate(),
+  });
+  const [saving, setSaving] = useState(false);
+  const amount = Number(form.amount);
+  const problem =
+    !amount || amount <= 0
+      ? 'Enter the amount paid'
+      : amount > due + 0.001
+        ? `Only ${money(due)} is due on this invoice`
+        : '';
+
+  const save = async (e) => {
+    e.preventDefault();
+    if (problem) return;
+    setSaving(true);
+    try {
+      await purchaseApi.recordPayment(invoice.id, { ...form, amount });
+      toast.success(`Payment of ${money(amount)} recorded for invoice ${invoice.invoiceNumber}`);
+      onSaved();
+    } catch (err) {
+      toast.error(extractApiError(err, 'Could not record the payment'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <form onSubmit={save} className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+        <div>
+          <h3 className="text-lg font-bold text-gray-900">Record supplier payment</h3>
+          <p className="text-sm text-gray-500">
+            Invoice {invoice.invoiceNumber} · {invoice.supplier?.supplierName || 'Supplier'} · due{' '}
+            {money(due)}
+          </p>
+        </div>
+        <label className="block text-sm">
+          <span className="font-semibold text-gray-700">Amount (₹)</span>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.amount}
+            onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+            className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg"
+          />
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block text-sm">
+            <span className="font-semibold text-gray-700">Paid by</span>
+            <select
+              value={form.method}
+              onChange={(e) => setForm((f) => ({ ...f, method: e.target.value }))}
+              className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg bg-white"
+            >
+              {PAY_METHODS.map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="font-semibold text-gray-700">Date</span>
+            <input
+              type="date"
+              max={localIsoDate()}
+              value={form.paidOn}
+              onChange={(e) => setForm((f) => ({ ...f, paidOn: e.target.value }))}
+              className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg"
+            />
+          </label>
+        </div>
+        <label className="block text-sm">
+          <span className="font-semibold text-gray-700">Reference (UTR / cheque no.)</span>
+          <input
+            value={form.reference}
+            maxLength={60}
+            onChange={(e) => setForm((f) => ({ ...f, reference: e.target.value }))}
+            className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg"
+          />
+        </label>
+        {problem && (
+          <p role="alert" className="text-sm text-red-600">
+            {problem}
+          </p>
+        )}
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg border border-gray-300 text-sm"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving || Boolean(problem)}
+            className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-semibold disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : 'Record payment'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
 
 const PurchaseView = ({ refreshKey = 0 }) => {
   const toast = useToast();
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [paying, setPaying] = useState(null);
+  const [cancelling, setCancelling] = useState(null);
   const [pageInfo, setPageInfo] = useState({ page: 0, size: 10, totalElements: 0 });
 
   const fetchInvoices = useCallback(async () => {
@@ -37,7 +174,8 @@ const PurchaseView = ({ refreshKey = 0 }) => {
 
   const handleSavePurchase = async (payload) => {
     try {
-      await purchaseApi.create(payload);
+      if (editing) await purchaseApi.update(editing.id, payload);
+      else await purchaseApi.create(payload);
       toast.success(
         `Purchase ${payload.postingStatus === 'POSTED' ? 'posted' : 'saved'} successfully`
       );
@@ -58,18 +196,45 @@ const PurchaseView = ({ refreshKey = 0 }) => {
       toast.success('Purchase invoice posted and inventory updated');
       fetchInvoices();
     } catch (err) {
-      toast.error('Failed to post invoice');
+      toast.error(extractApiError(err, 'Failed to post invoice'));
     } finally {
       setPostingId(null);
     }
   };
 
+  const handleCancel = async (reason) => {
+    const inv = cancelling;
+    try {
+      await purchaseApi.cancel(inv.id, reason);
+      toast.success(
+        inv.postingStatus === 'DRAFT'
+          ? `Draft ${inv.invoiceNumber} discarded`
+          : `Purchase ${inv.invoiceNumber} cancelled and its stock taken back out`
+      );
+      fetchInvoices();
+    } catch (err) {
+      toast.error(extractApiError(err, 'Could not cancel the purchase'));
+    } finally {
+      setCancelling(null);
+    }
+  };
+
+  const openEdit = async (inv) => {
+    try {
+      setEditing(await purchaseApi.getById(inv.id));
+      setIsFormOpen(true);
+    } catch (err) {
+      toast.error(extractApiError(err, 'Could not open the draft'));
+    }
+  };
+
   // Calculate quick stats from loaded invoices (Simplified for this view)
   const stats = {
-    monthTotal: invoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0),
-    pendingPayables: invoices
-      .filter((i) => i.paymentStatus !== 'PAID')
+    monthTotal: invoices
+      .filter((i) => i.postingStatus === 'POSTED')
       .reduce((sum, inv) => sum + (inv.totalAmount || 0), 0),
+    // What is still owed to suppliers on posted invoices (total minus payments made).
+    pendingPayables: invoices.reduce((sum, inv) => sum + balanceOf(inv), 0),
     suppliers: new Set(invoices.map((i) => i.supplierId)).size,
   };
 
@@ -199,20 +364,35 @@ const PurchaseView = ({ refreshKey = 0 }) => {
                       {new Date(inv.invoiceDate).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <div className="font-black text-gray-900">
-                        ₹{inv.totalAmount?.toLocaleString()}
-                      </div>
+                      <div className="font-black text-gray-900">{money(inv.totalAmount)}</div>
+                      {inv.postingStatus === 'POSTED' && (
+                        <div
+                          className={`text-[10px] font-semibold ${balanceOf(inv) > 0 ? 'text-amber-600' : 'text-green-600'}`}
+                        >
+                          {balanceOf(inv) > 0
+                            ? `Paid ${money(inv.paidAmount)} · due ${money(balanceOf(inv))}`
+                            : 'Fully paid'}
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-center">
                       <span
                         className={`inline-flex px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-tight border ${
                           inv.postingStatus === 'POSTED'
                             ? 'bg-green-50 text-green-700 border-green-100'
-                            : 'bg-amber-50 text-amber-700 border-amber-100'
+                            : inv.postingStatus === 'CANCELLED'
+                              ? 'bg-gray-100 text-gray-500 border-gray-200'
+                              : 'bg-amber-50 text-amber-700 border-amber-100'
                         }`}
+                        title={inv.cancelReason ? `Reason: ${inv.cancelReason}` : undefined}
                       >
                         {inv.postingStatus}
                       </span>
+                      {inv.cancelReason && (
+                        <div className="text-[10px] text-gray-400 mt-1 max-w-[12rem] mx-auto truncate">
+                          {inv.cancelReason}
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-center">
                       {inv.postingStatus === 'DRAFT' ? (
@@ -245,9 +425,36 @@ const PurchaseView = ({ refreshKey = 0 }) => {
                           )}
                           {postingId === inv.id ? 'Posting...' : 'Post & Inward'}
                         </button>
-                      ) : (
-                        <span className="text-[10px] font-bold text-gray-300">Finalized</span>
-                      )}
+                      ) : null}
+                      <div className="mt-1.5 flex flex-wrap justify-center gap-2 text-[11px] font-semibold">
+                        {inv.postingStatus === 'DRAFT' && (
+                          <button
+                            type="button"
+                            onClick={() => openEdit(inv)}
+                            className="text-sky-700 hover:underline"
+                          >
+                            Edit
+                          </button>
+                        )}
+                        {inv.postingStatus === 'POSTED' && balanceOf(inv) > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setPaying(inv)}
+                            className="text-emerald-700 hover:underline"
+                          >
+                            Record payment
+                          </button>
+                        )}
+                        {inv.postingStatus !== 'CANCELLED' && (
+                          <button
+                            type="button"
+                            onClick={() => setCancelling(inv)}
+                            className="text-red-600 hover:underline"
+                          >
+                            {inv.postingStatus === 'DRAFT' ? 'Discard' : 'Cancel'}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -259,8 +466,39 @@ const PurchaseView = ({ refreshKey = 0 }) => {
 
       <PurchaseForm
         isOpen={isFormOpen}
-        onClose={() => setIsFormOpen(false)}
+        initial={editing}
+        onClose={() => {
+          setIsFormOpen(false);
+          setEditing(null);
+        }}
         onSave={handleSavePurchase}
+      />
+      {paying && (
+        <PaymentModal
+          invoice={paying}
+          onClose={() => setPaying(null)}
+          onSaved={() => {
+            setPaying(null);
+            fetchInvoices();
+          }}
+        />
+      )}
+      <ConfirmationModal
+        isOpen={Boolean(cancelling)}
+        onCancel={() => setCancelling(null)}
+        onConfirm={handleCancel}
+        title={
+          cancelling?.postingStatus === 'DRAFT'
+            ? 'Discard draft purchase'
+            : 'Cancel posted purchase'
+        }
+        message={
+          cancelling?.postingStatus === 'DRAFT'
+            ? `Discard draft ${cancelling?.invoiceNumber}? Nothing was added to stock.`
+            : `Cancel purchase ${cancelling?.invoiceNumber}? Its stock is taken back out. This works only while none of it has been sold; otherwise use a supplier return.`
+        }
+        showReasonInput
+        inputPlaceholder="Reason (kept in the audit log)"
       />
     </div>
   );

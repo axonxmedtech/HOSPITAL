@@ -18,6 +18,15 @@ const WardService = {
   getAvailableBeds: (wardId) =>
     apiClient.get('/hospital/beds/available', { params: { ward_id: wardId } }).then((r) => r.data),
   deleteWard: (wardId) => apiClient.delete(`/hospital/wards/${wardId}`).then((r) => r.data),
+  /** Beds held for planned admissions (in force now). */
+  getReservations: () => apiClient.get('/hospital/beds/reservations').then((r) => r.data),
+  /** payload: { bedId, patientId?, patientName, patientPhone, expectedAt, reservedUntil?, notes } */
+  reserveBed: (payload) =>
+    apiClient.post('/hospital/beds/reservations', payload).then((r) => r.data),
+  cancelReservation: (publicId, reason) =>
+    apiClient
+      .post(`/hospital/beds/reservations/${publicId}/cancel`, { reason })
+      .then((r) => r.data),
 };
 
 export default WardService;

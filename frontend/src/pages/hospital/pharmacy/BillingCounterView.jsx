@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import ConfirmationModal from '../../../components/ConfirmationModal';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
@@ -6,6 +7,8 @@ import hospitalService from '../../../services/hospitalService';
 import inventoryApi from '../../../services/pharmacy/inventoryApi';
 import salesApi from '../../../services/pharmacy/salesApi';
 import { extractApiError } from '../../../utils/apiError';
+import { HELD_BILL_LIMIT, holdBill, loadHeldBills, removeHeldBill } from '../../../utils/heldBills';
+import { billTotals, gstIncluded } from '../../../utils/pharmacyMoney';
 import { printBlob } from '../../../utils/printPdf';
 
 const BillingCounterView = ({ initialData }) => {
@@ -146,25 +149,15 @@ const BillingCounterView = ({ initialData }) => {
 
   const [billDiscount, setBillDiscount] = useState(0);
 
+  // Prices include GST (as MRP does): the customer pays the shelf price, never more than MRP.
+  // These are display figures; the server works the bill out again and saves its own.
   const calculateTotals = useCallback(
     (items, manualDisc = billDiscount) => {
-      let sub = 0;
-      let tax = 0;
-      let disc = parseFloat(manualDisc || 0);
-
-      items.forEach((item) => {
-        const lineSub = item.qty * item.price;
-        const lineTax = (lineSub * (item.taxPercent || 0)) / 100;
-        sub += lineSub;
-        tax += lineTax;
-      });
-
-      setTotals({
-        subtotal: sub,
-        tax: tax,
-        discount: disc,
-        net: Math.max(0, sub + tax - disc),
-      });
+      const t = billTotals(
+        items.filter((i) => !i.outOfStock),
+        manualDisc
+      );
+      setTotals({ subtotal: t.gross, tax: t.gst, discount: t.discount, net: t.net });
     },
     [billDiscount]
   );
@@ -263,9 +256,69 @@ const BillingCounterView = ({ initialData }) => {
     }
   };
 
+  // ── Hold / resume / clear ──────────────────────────────────────────────────────────────
+  const counterUserId = authService.getCurrentUser()?.userId;
+  const [heldBills, setHeldBills] = useState(() => loadHeldBills(counterUserId));
+  const [showHeld, setShowHeld] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  const resetCart = () => {
+    setBillItems([]);
+    setPatientSearch('');
+    setPatientId(null);
+    setDoctorId(null);
+    setSelectedRx(null);
+    setBillDiscount(0);
+    setTotals({ subtotal: 0, tax: 0, discount: 0, net: 0 });
+  };
+
+  const handleHoldBill = () => {
+    if (billItems.length === 0) {
+      toast.error('Nothing to hold: the bill is empty.');
+      return;
+    }
+    const next = holdBill(counterUserId, {
+      label: patientSearch.trim() || 'Walk-in Customer',
+      billItems,
+      patientSearch,
+      billDiscount,
+      paymentMethod,
+      total: totals.net,
+    });
+    if (!next) {
+      toast.error(`Could not hold the bill (at most ${HELD_BILL_LIMIT} held bills).`);
+      return;
+    }
+    setHeldBills(next);
+    resetCart();
+    toast.success(`Bill held. ${next.length} held — resume it from "Held bills".`);
+  };
+
+  const resumeHeldBill = (bill) => {
+    if (billItems.length > 0) {
+      toast.error('Hold or clear the current bill first.');
+      return;
+    }
+    setBillItems(bill.billItems || []);
+    setPatientSearch(bill.patientSearch || '');
+    setBillDiscount(bill.billDiscount || 0);
+    setPaymentMethod(bill.paymentMethod || 'CASH');
+    calculateTotals(bill.billItems || [], bill.billDiscount || 0);
+    setHeldBills(removeHeldBill(counterUserId, bill.id));
+    setShowHeld(false);
+  };
+
+  const discardHeldBill = (bill) => {
+    setHeldBills(removeHeldBill(counterUserId, bill.id));
+  };
+
   const handleCompleteSale = async () => {
     if (billItems.length === 0) {
       toast.error('Bill is empty!');
+      return;
+    }
+    if (Number(billDiscount) > totals.subtotal) {
+      toast.error(`Discount can be at most ₹${totals.subtotal.toFixed(2)}.`);
       return;
     }
 
@@ -300,7 +353,11 @@ const BillingCounterView = ({ initialData }) => {
       };
 
       const savedSale = await salesApi.create(payload);
-      toast.success('Bill completed successfully!');
+      toast.success(
+        savedSale?.billNumber
+          ? `Bill ${savedSale.billNumber} saved: ₹${Number(savedSale.netAmount || 0).toFixed(2)}`
+          : 'Bill completed successfully!'
+      );
       if (savedSale && savedSale.id) {
         setLastSavedSaleId(savedSale.id);
         // Automatically download/print the receipt PDF
@@ -321,6 +378,28 @@ const BillingCounterView = ({ initialData }) => {
       setIsSubmitting(false);
     }
   };
+
+  // F4 = hold the bill; F12 or Ctrl+Enter = complete the sale (some browsers keep F12 for their tools).
+  const shortcuts = useRef({});
+  shortcuts.current = { handleHoldBill, handleCompleteSale, isSubmitting };
+  useEffect(() => {
+    const onKey = (e) => {
+      const {
+        handleHoldBill: hold,
+        handleCompleteSale: complete,
+        isSubmitting: busy,
+      } = shortcuts.current;
+      if (e.key === 'F4') {
+        e.preventDefault();
+        hold();
+      } else if (e.key === 'F12' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) {
+        e.preventDefault();
+        if (!busy) complete();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   return (
     <div className="h-full flex flex-col gap-4 -mt-2">
@@ -581,8 +660,7 @@ const BillingCounterView = ({ initialData }) => {
                   {/* Render Current Cart Items */}
                   {billItems.length > 0 ? (
                     billItems.map((item, idx) => {
-                      const gstAmount = (item.qty * item.price * (item.taxPercent || 0)) / 100;
-                      const lineTotalInclGst = item.total + gstAmount;
+                      const gstAmount = gstIncluded(item.total, item.taxPercent);
                       return (
                         <tr
                           key={idx}
@@ -609,7 +687,7 @@ const BillingCounterView = ({ initialData }) => {
                               </span>
                               {item.taxPercent > 0 && (
                                 <span className="bg-emerald-50 text-emerald-700 px-1.5 rounded font-bold">
-                                  GST {item.taxPercent}%: ₹{gstAmount.toFixed(2)}
+                                  incl. GST {item.taxPercent}%: ₹{gstAmount.toFixed(2)}
                                 </span>
                               )}
                             </div>
@@ -621,10 +699,10 @@ const BillingCounterView = ({ initialData }) => {
                             ₹{item.price.toFixed(2)}
                           </td>
                           <td className="px-6 py-4 text-right font-black text-gray-900">
-                            ₹{lineTotalInclGst.toFixed(2)}
+                            ₹{item.total.toFixed(2)}
                             {gstAmount > 0 && (
                               <div className="text-[10px] font-medium text-gray-400">
-                                ₹{item.total.toFixed(2)} + ₹{gstAmount.toFixed(2)} GST
+                                incl. ₹{gstAmount.toFixed(2)} GST
                               </div>
                             )}
                           </td>
@@ -693,12 +771,8 @@ const BillingCounterView = ({ initialData }) => {
             </div>
             <div className="p-5 space-y-3 bg-white border-b border-gray-200 text-sm">
               <div className="flex justify-between text-gray-500 font-medium">
-                <span>Sub Total</span>
+                <span>Total (MRP-inclusive)</span>
                 <span>₹{totals.subtotal.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-gray-500 font-medium">
-                <span>Tax (GST)</span>
-                <span>+₹{totals.tax.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-gray-500 font-medium">
                 <span>Discount</span>
@@ -707,6 +781,10 @@ const BillingCounterView = ({ initialData }) => {
               <div className="flex justify-between font-black text-gray-900 pt-3 border-t border-dashed border-gray-200 text-lg">
                 <span>Final Bill</span>
                 <span>₹{totals.net.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-[11px] text-gray-400">
+                <span>Includes GST</span>
+                <span>₹{totals.tax.toFixed(2)}</span>
               </div>
             </div>
             <div className="p-5 bg-gray-50/50">
@@ -772,9 +850,16 @@ const BillingCounterView = ({ initialData }) => {
                 type="number"
                 placeholder="Enter discount amount..."
                 value={billDiscount || ''}
+                min="0"
+                max={totals.subtotal || 0}
                 onChange={(e) => handleDiscountChange(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white font-medium"
               />
+              {Number(billDiscount) > totals.subtotal && totals.subtotal > 0 && (
+                <p className="mt-1 text-[11px] text-red-600" role="alert">
+                  Discount can be at most ₹{totals.subtotal.toFixed(2)}.
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -783,18 +868,79 @@ const BillingCounterView = ({ initialData }) => {
       {/* BOTTOM ACTION BAR */}
       <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-xl flex items-center justify-between flex-shrink-0">
         <div className="flex gap-3">
-          <button className="px-6 py-2.5 border border-gray-200 text-gray-600 text-sm font-bold rounded-xl hover:bg-gray-50 transition-all active:scale-95">
+          <button
+            type="button"
+            onClick={handleHoldBill}
+            className="px-6 py-2.5 border border-gray-200 text-gray-600 text-sm font-bold rounded-xl hover:bg-gray-50 transition-all active:scale-95"
+          >
             Hold Bill (F4)
           </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowHeld((v) => !v)}
+              disabled={heldBills.length === 0}
+              aria-expanded={showHeld}
+              className="px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-bold rounded-xl hover:bg-gray-50 transition-all disabled:opacity-40"
+            >
+              Held bills ({heldBills.length})
+            </button>
+            {showHeld && heldBills.length > 0 && (
+              <div className="absolute bottom-full mb-2 left-0 w-80 bg-white border border-gray-200 rounded-xl shadow-xl p-2 z-20">
+                {heldBills.map((b) => (
+                  <div
+                    key={b.id}
+                    className="flex items-center justify-between gap-2 px-2 py-2 rounded-lg hover:bg-gray-50"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-gray-900 truncate">{b.label}</div>
+                      <div className="text-[11px] text-gray-500">
+                        {(b.billItems || []).length} item(s) · ₹{Number(b.total || 0).toFixed(2)} ·{' '}
+                        {new Date(b.heldAt).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </div>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => resumeHeldBill(b)}
+                        className="px-2 py-1 text-[11px] font-bold rounded-md bg-gray-900 text-white"
+                      >
+                        Resume
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => discardHeldBill(b)}
+                        className="px-2 py-1 text-[11px] font-bold rounded-md text-red-600 hover:bg-red-50"
+                        aria-label={`Discard held bill for ${b.label}`}
+                      >
+                        Discard
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           <button
-            onClick={() => {
-              setBillItems([]);
-              setTotals({ subtotal: 0, tax: 0, discount: 0, net: 0 });
-            }}
+            type="button"
+            onClick={() => (billItems.length > 0 ? setConfirmClear(true) : resetCart())}
             className="px-6 py-2.5 bg-red-50 text-red-600 text-sm font-bold rounded-xl hover:bg-red-100 transition-all active:scale-95"
           >
             Clear Cart
           </button>
+          <ConfirmationModal
+            isOpen={confirmClear}
+            title="Clear this bill?"
+            message="All medicines, the discount and the customer name on this bill will be removed. Nothing has been sold yet."
+            onConfirm={() => {
+              resetCart();
+              setConfirmClear(false);
+            }}
+            onCancel={() => setConfirmClear(false)}
+          />
         </div>
 
         <div className="flex gap-4 items-center">
@@ -821,7 +967,7 @@ const BillingCounterView = ({ initialData }) => {
                 />
               </svg>
             )}
-            Complete & Save Sale (F12)
+            Complete & Save Sale (F12 / Ctrl+Enter)
           </button>
         </div>
       </div>

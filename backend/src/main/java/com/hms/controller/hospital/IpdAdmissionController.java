@@ -28,6 +28,7 @@ public class IpdAdmissionController {
 
     /** Attempts for the IPD-number clash. Two callers colliding is normal; more is a real fault. */
     private static final int ADMISSION_ATTEMPTS = 3;
+    private static final String REASON = "reason";
 
     @RequireModule("IPD")
     @PostMapping("/admit")
@@ -53,8 +54,7 @@ public class IpdAdmissionController {
     private IpdAdmission admitWithIpdNumberRetry(CreateIpdAdmissionRequest req) {
         for (int attempt = 1; ; attempt++) {
             try {
-                return ipdAdmissionService.admitFromOpd(req.getOpdId(), req.getPatientId(), req.getDoctorId(), req.getWardId(),
-                        req.getBedId(), req.getAdmissionType(), req.getPrimaryDiagnosis());
+                return ipdAdmissionService.admit(req);
             } catch (org.springframework.dao.DataIntegrityViolationException e) {
                 // Only an IPD-number clash is safe to retry. Re-running the admission for any
                 // other constraint would just repeat a failure a retry cannot fix.
@@ -145,8 +145,81 @@ public class IpdAdmissionController {
     public ResponseEntity<?> confirmDischarge(@PathVariable("id") Long id,
                                               @RequestBody(required = false) java.util.Map<String, String> body) {
         java.util.Map<String, String> b = body == null ? java.util.Map.of() : body;
-        IpdAdmission ipd = ipdAdmissionService.confirmDischarge(id, b.get("dischargeType"), b.get("dischargeNote"));
+        IpdAdmission ipd = ipdAdmissionService.confirmDischarge(id, b.get("dischargeType"), b.get("dischargeNote"), b.get("refundMode"));
         return ResponseEntity.ok(ipd);
+    }
+
+    /** Takes an advance. Body: {"amount": 5000, "mode": "CASH", "reference": "..."}. */
+    @RequireModule("IPD")
+    @PostMapping("/{id}/advance")
+    @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<java.util.Map<String, Object>> takeAdvance(@PathVariable("id") Long id,
+                                                                     @RequestBody java.util.Map<String, Object> body) {
+        java.math.BigDecimal amount;
+        try {
+            Object a = body.get("amount");
+            amount = a == null || String.valueOf(a).isBlank() ? null : new java.math.BigDecimal(String.valueOf(a));
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Enter the advance amount as a number");
+        }
+        com.hms.entity.BillingPayment p = ipdAdmissionService.takeAdvance(id, amount,
+                body.get("mode") == null ? null : String.valueOf(body.get("mode")),
+                body.get("reference") == null ? null : String.valueOf(body.get("reference")));
+        return ResponseEntity.ok(java.util.Map.of("paymentId", p.getId(), "amount", p.getAmount()));
+    }
+
+    @GetMapping("/advances/{paymentId}/receipt/pdf")
+    @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<org.springframework.core.io.InputStreamResource> advanceReceipt(@PathVariable("paymentId") Long paymentId) {
+        return ResponseEntity.ok()
+                .header("Content-Disposition", "inline; filename=advance_receipt_" + paymentId + ".pdf")
+                .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                .body(new org.springframework.core.io.InputStreamResource(ipdAdmissionService.advanceReceiptPdf(paymentId)));
+    }
+
+    /** Applies a package to the stay. Body: {"packageId": 3}. */
+    @RequireModule("IPD")
+    @PostMapping("/{id}/package")
+    @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<IpdAdmission> applyPackage(@PathVariable("id") Long id, @RequestBody java.util.Map<String, Object> body) {
+        Object p = body.get("packageId");
+        Long packageId;
+        try {
+            packageId = p == null || String.valueOf(p).isBlank() ? null : Long.valueOf(String.valueOf(p));
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Select a package");
+        }
+        return ResponseEntity.ok(ipdAdmissionService.applyPackage(id, packageId));
+    }
+
+    /** Removes the stay's package (admin). Body: {"reason": "..."}. */
+    @RequireModule("IPD")
+    @PostMapping("/{id}/package/remove")
+    @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
+    public ResponseEntity<IpdAdmission> removePackage(@PathVariable("id") Long id,
+                                                      @RequestBody(required = false) java.util.Map<String, String> body) {
+        return ResponseEntity.ok(ipdAdmissionService.removePackage(id, body == null ? null : body.get(REASON)));
+    }
+
+    /** The printable discharge summary (once the doctor has planned the discharge). */
+    @GetMapping("/{id}/discharge-summary/pdf")
+    @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<org.springframework.core.io.InputStreamResource> dischargeSummaryPdf(@PathVariable("id") Long id) {
+        java.io.ByteArrayInputStream pdf = ipdAdmissionService.dischargeSummaryPdf(id);
+        return ResponseEntity.ok()
+                .header("Content-Disposition", "inline; filename=discharge_summary_" + id + ".pdf")
+                .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                .body(new org.springframework.core.io.InputStreamResource(pdf));
+    }
+
+    /** Cancels an admission made by mistake. Body: {"reason": "...", "refundMode": "CASH"}. */
+    @RequireModule("IPD")
+    @PostMapping("/{id}/cancel")
+    @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<?> cancelAdmission(@PathVariable("id") Long id,
+                                             @RequestBody(required = false) java.util.Map<String, String> body) {
+        java.util.Map<String, String> b = body == null ? java.util.Map.of() : body;
+        return ResponseEntity.ok(ipdAdmissionService.cancelAdmission(id, b.get(REASON), b.get("refundMode")));
     }
 
     @RequireModule("IPD")
@@ -154,15 +227,7 @@ public class IpdAdmissionController {
     @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> cancelDischargePlan(@PathVariable("id") Long id,
                                                  @RequestBody(required = false) java.util.Map<String, String> body) {
-        return ResponseEntity.ok(ipdAdmissionService.cancelDischargePlan(id, body == null ? null : body.get("reason")));
-    }
-
-    @RequireModule("IPD")
-    @PostMapping("/{id}/administer")
-    @PreAuthorize("hasAnyRole('DOCTOR', 'HOSPITAL_ADMIN')")
-    public ResponseEntity<?> administerItems(@PathVariable("id") Long id, @jakarta.validation.Valid @RequestBody com.hms.dto.AdministerItemsRequest req) {
-        ipdAdmissionService.administerItems(id, req.getAdministeredItems());
-        return ResponseEntity.ok().body("{\"message\":\"Items administered successfully\"}");
+        return ResponseEntity.ok(ipdAdmissionService.cancelDischargePlan(id, body == null ? null : body.get(REASON)));
     }
 
     @RequireModule("IPD")

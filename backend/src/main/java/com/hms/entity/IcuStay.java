@@ -55,6 +55,8 @@ public class IcuStay {
     public static final String DISP_REFERRED_OUT = "REFERRED_OUT";
     public static final String DISP_EXPIRED = "EXPIRED";
     public static final String DISP_ANOTHER_ICU = "ANOTHER_ICU";
+    /** The IPD admission itself was cancelled as a mistake. */
+    public static final String DISP_CANCELLED = "CANCELLED";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

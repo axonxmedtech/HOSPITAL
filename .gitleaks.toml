@@ -41,6 +41,11 @@ regexes = [
   # working tree. Gitleaks 8.21.2 has no `targetRules`/`condition` (see note below), so an exact
   # secret literal is the tightest available scope.
   '''eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0MTIzNDUifQ.c2lnbmF0dXJlX3BsYWNlaG9sZGVy''',  # pragma: allowlist secret
+  # The browser-storage slot name for held pharmacy bills in BillingCounterView.test.jsx (user 42).
+  # Not a credential: it is the localStorage key the counter writes under. A test constant named
+  # STORAGE_KEY holding it tripped generic-api-key in commit 5acdadc; the constant was renamed,
+  # but Gitleaks scans history, so the exact literal is allowed here (same reasoning as above).
+  '''hms\.pharmacy\.heldBills\.42''',
 ]
 
 # Common example/placeholder tokens across docs and .env.example style files.

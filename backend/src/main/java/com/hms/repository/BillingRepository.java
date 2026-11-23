@@ -22,6 +22,7 @@ public interface BillingRepository extends JpaRepository<Billing, Long> {
     @org.springframework.data.jpa.repository.Query("SELECT MAX(b.id) FROM Billing b WHERE b.hospitalId = :hospitalId")
     Long findMaxIdByHospitalId(@org.springframework.data.repository.query.Param("hospitalId") Long hospitalId);
 
+    java.util.Optional<Billing> findByIdAndHospitalId(Long id, Long hospitalId);
 
     /**
      * Tenant-scoped, row-locked read of one bill.

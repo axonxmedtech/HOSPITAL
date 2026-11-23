@@ -45,7 +45,7 @@ public class LabOrder {
     private String testName;
 
     @Column(name = "status", nullable = false, length = 50)
-    private String status = "ORDERED"; // ORDERED, COMPLETED, CANCELLED
+    private String status = "ORDERED"; // ORDERED, SAMPLE_COLLECTED (inpatients), COMPLETED, CANCELLED
 
     /** NOT NULL in the table; ROUTINE unless a stat order is placed. */
     @Column(name = "priority", nullable = false, length = 10)
@@ -54,4 +54,37 @@ public class LabOrder {
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    // ── inpatient investigations (V43) ──
+
+    /** The admission an inpatient investigation belongs to; null for an OPD order. */
+    @Column(name = "ipd_admission_id")
+    private Long ipdAdmissionId;
+
+    @Column(name = "notes", length = 500)
+    private String notes;
+
+    @Column(name = "ordered_by")
+    private String orderedBy;
+
+    @Column(name = "sample_collected_at")
+    private LocalDateTime sampleCollectedAt;
+
+    @Column(name = "sample_collected_by")
+    private String sampleCollectedBy;
+
+    @Column(name = "result_text", columnDefinition = "text")
+    private String resultText;
+
+    @Column(name = "result_at")
+    private LocalDateTime resultAt;
+
+    @Column(name = "result_by")
+    private String resultBy;
+
+    @Column(name = "cancel_reason")
+    private String cancelReason;
+
+    @Column(name = "cancelled_at")
+    private LocalDateTime cancelledAt;
 }

@@ -3,6 +3,9 @@
 -- Kept apart from audit_logs: reads far outnumber changes and would bury the change history.
 --
 -- Idempotent: DatabaseMigrationRunner creates the same table on non-Flyway (dev) profiles.
+--
+-- Numbered V45 (written as V37): staging and production run Flyway with out-of-order=false, and
+-- V38 (pharmacy) and V40-V44 (IPD) reached them first, so any lower number would be refused.
 
 CREATE TABLE IF NOT EXISTS patient_access_logs (
     id BIGINT NOT NULL AUTO_INCREMENT,

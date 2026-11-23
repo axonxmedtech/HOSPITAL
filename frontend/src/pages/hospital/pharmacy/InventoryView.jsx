@@ -10,6 +10,8 @@ import { useViewManager } from '../../../hooks/pharmacy/useViewManager';
 import authService from '../../../services/authService';
 import categoriesApi from '../../../services/pharmacy/categoriesApi';
 import inventoryApi from '../../../services/pharmacy/inventoryApi';
+import medicinesApi from '../../../services/pharmacy/medicinesApi';
+import { extractApiError } from '../../../utils/apiError';
 
 const InventoryView = ({ onNavigate, refreshKey = 0 }) => {
   const currentUser = authService.getCurrentUser();
@@ -430,12 +432,24 @@ const InventoryView = ({ onNavigate, refreshKey = 0 }) => {
                           {selectedItem.medicine?.scheduleType || 'OTC'}
                         </span>
                       </div>
-                      <div className="flex justify-between border-b border-gray-100 pb-1.5">
-                        <span className="text-gray-400 font-medium">Reorder Alert Level:</span>
-                        <span className="font-bold text-amber-600">
-                          {selectedItem.medicine?.reorderLevel || 0} Units
-                        </span>
-                      </div>
+                      <LowStockLevelRow
+                        medicine={selectedItem.medicine}
+                        onSaved={(level) => {
+                          setSelectedItem((cur) =>
+                            cur
+                              ? {
+                                  ...cur,
+                                  medicine: {
+                                    ...cur.medicine,
+                                    reorderLevel: level,
+                                    minStockLevel: level,
+                                  },
+                                }
+                              : cur
+                          );
+                          refresh();
+                        }}
+                      />
                       <div className="flex justify-between border-b border-gray-100 pb-1.5">
                         <span className="text-gray-400 font-medium">GST Percentage:</span>
                         <span className="font-bold text-emerald-600">
@@ -564,6 +578,15 @@ const InventoryView = ({ onNavigate, refreshKey = 0 }) => {
                 >
                   Adjust Stock (Audit)
                 </button>
+                {selectedItem?.status === 'BLOCKED' && (
+                  <UnblockButton
+                    batch={selectedItem}
+                    onDone={() => {
+                      setSelectedItem((cur) => (cur ? { ...cur, status: 'ACTIVE' } : cur));
+                      refresh();
+                    }}
+                  />
+                )}
               </div>
               <button
                 onClick={() => {
@@ -588,5 +611,134 @@ const InventoryView = ({ onNavigate, refreshKey = 0 }) => {
     </ViewLayout>
   );
 };
+
+/** Puts a blocked batch back on sale; asks for the reason, which goes to the audit log. */
+function UnblockButton({ batch, onDone }) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    if (reason.trim().length < 3) {
+      setError('Give a reason');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await inventoryApi.unblockBatch(batch.id, reason.trim());
+      setOpen(false);
+      onDone();
+    } catch (err) {
+      setError(extractApiError(err, 'Could not unblock the batch'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-lg"
+      >
+        Unblock batch
+      </button>
+    );
+  }
+  return (
+    <span className="flex items-center gap-2">
+      <input
+        aria-label="Reason for unblocking"
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        placeholder="Reason (audit log)"
+        className="px-2 py-1.5 border border-gray-300 rounded-lg text-xs w-48"
+      />
+      <button
+        type="button"
+        onClick={save}
+        disabled={saving}
+        className="px-3 py-1.5 bg-green-600 text-white text-xs font-bold rounded-lg disabled:opacity-50"
+      >
+        {saving ? 'Saving…' : 'Unblock'}
+      </button>
+      {error && (
+        <span role="alert" className="text-[11px] text-red-600">
+          {error}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * Low-stock level of a medicine, editable in place: an alert shows on the dashboard once
+ * sellable stock (not expired, not blocked) falls below it. 0 switches the alert off.
+ */
+function LowStockLevelRow({ medicine, onSaved }) {
+  const current = medicine?.minStockLevel ?? medicine?.reorderLevel ?? 0;
+  const [value, setValue] = useState(String(current));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => setValue(String(current)), [current]);
+
+  const save = async () => {
+    const level = Number(value);
+    if (!Number.isInteger(level) || level < 0) {
+      setError('Whole number, 0 or more');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await medicinesApi.setStockLevel(medicine.id, level);
+      onSaved(level);
+    } catch (err) {
+      setError(extractApiError(err, 'Could not save the level'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!medicine?.id) return null;
+  return (
+    <div className="border-b border-gray-100 pb-1.5">
+      <div className="flex justify-between items-center gap-2">
+        <label htmlFor="low-stock-level" className="text-gray-400 font-medium">
+          Low-stock alert below:
+        </label>
+        <span className="flex items-center gap-1.5">
+          <input
+            id="low-stock-level"
+            type="number"
+            min="0"
+            step="1"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            className="w-20 px-2 py-1 border border-gray-300 rounded text-right font-bold text-amber-700"
+          />
+          <span className="text-gray-400">units</span>
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving || value === String(current)}
+            className="px-2 py-1 rounded bg-gray-900 text-white text-[11px] font-semibold disabled:opacity-40"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </span>
+      </div>
+      {error && (
+        <p role="alert" className="mt-1 text-[11px] text-red-600 text-right">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
 
 export default InventoryView;
