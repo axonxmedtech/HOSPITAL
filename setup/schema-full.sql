@@ -2633,3 +2633,22 @@ CREATE TABLE IF NOT EXISTS `bed_reservations` (
     KEY idx_bed_reservations_bed (hospital_id, bed_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+
+-- V45: patient access log — who opened, printed or downloaded a patient's record. Append-only,
+-- retained when a facility is purged (like audit_logs).
+CREATE TABLE IF NOT EXISTS `patient_access_logs` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `patient_id` bigint DEFAULT NULL,
+  `record_type` varchar(30) NOT NULL,
+  `record_ref` varchar(64) DEFAULT NULL,
+  `action` varchar(20) NOT NULL,
+  `user_id` bigint DEFAULT NULL,
+  `user_email` varchar(150) NOT NULL,
+  `user_role` varchar(30) DEFAULT NULL,
+  `client_ip` varchar(45) DEFAULT NULL,
+  `accessed_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_pal_patient` (`hospital_id`,`patient_id`,`accessed_at`),
+  KEY `idx_pal_user` (`hospital_id`,`user_email`,`accessed_at`)
+);

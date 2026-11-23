@@ -58,14 +58,17 @@ public class ProductionConfigurationValidator {
     private final Environment environment;
     private final String jwtSecret;
     private final String allowedOrigins;
+    private final String datasourceUrl;
 
     public ProductionConfigurationValidator(
             Environment environment,
             @Value("${jwt.secret:}") String jwtSecret,
-            @Value("${cors.allowed.origins:}") String allowedOrigins) {
+            @Value("${cors.allowed.origins:}") String allowedOrigins,
+            @Value("${spring.datasource.url:}") String datasourceUrl) {
         this.environment = environment;
         this.jwtSecret = jwtSecret;
         this.allowedOrigins = allowedOrigins;
+        this.datasourceUrl = datasourceUrl;
     }
 
     @PostConstruct
@@ -75,6 +78,10 @@ public class ProductionConfigurationValidator {
         }
         validateJwtSecret(jwtSecret);
         validateFrontendOrigins(allowedOrigins);
+        String transportProblem = plaintextRemoteDatabase(datasourceUrl);
+        if (transportProblem != null) {
+            logger.error("SECURITY: {}", transportProblem);
+        }
         logger.info("Production configuration validated: JWT secret and frontend origins are acceptable.");
     }
 
@@ -131,6 +138,49 @@ public class ProductionConfigurationValidator {
                                 + "development value and cannot be the production frontend.");
             }
         }
+    }
+
+    /**
+     * Patient data must not cross a network unencrypted. A database on this machine (localhost) or
+     * on the Docker network (a single-label host such as {@code db}) never leaves the server, so
+     * {@code useSSL=false} is acceptable there. Anywhere else it is not.
+     *
+     * <p>Reported, not enforced: refusing to start would turn a configuration we cannot see from
+     * here into a failed deploy. Package-private for tests.
+     *
+     * @return a description of the problem, or null when the connection is acceptable
+     */
+    static String plaintextRemoteDatabase(String jdbcUrl) {
+        if (jdbcUrl == null || !jdbcUrl.startsWith("jdbc:mysql://")) {
+            return null;
+        }
+        String rest = jdbcUrl.substring("jdbc:mysql://".length());
+        int end = rest.length();
+        for (char c : new char[] {'/', '?'}) {
+            int i = rest.indexOf(c);
+            if (i >= 0 && i < end) end = i;
+        }
+        String host = rest.substring(0, end).toLowerCase(Locale.ROOT);
+        if (host.startsWith("[")) {
+            host = host.substring(1, Math.max(1, host.indexOf(']')));
+        } else if (host.contains(":")) {
+            host = host.substring(0, host.indexOf(':'));
+        }
+        boolean sameServer = host.isEmpty() || "localhost".equals(host) || host.startsWith("127.")
+                || "::1".equals(host) || (!host.contains(".") && !host.contains(":"));
+        if (sameServer) {
+            return null;
+        }
+        String params = jdbcUrl.contains("?") ? jdbcUrl.substring(jdbcUrl.indexOf('?') + 1).toLowerCase(Locale.ROOT) : "";
+        boolean encrypted = params.contains("sslmode=required") || params.contains("sslmode=verify_ca")
+                || params.contains("sslmode=verify_identity")
+                || (params.contains("usessl=true") && params.contains("requiressl=true"));
+        if (encrypted) {
+            return null;
+        }
+        return "the database at '" + host + "' is on another machine but the connection is not "
+                + "encrypted. Patient data crosses the network in clear text. Add sslMode=REQUIRED "
+                + "(or VERIFY_IDENTITY) to SPRING_DATASOURCE_URL.";
     }
 
     private static boolean isLocal(String lowerOrigin) {

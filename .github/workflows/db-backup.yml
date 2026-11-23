@@ -1,14 +1,16 @@
 name: Database Backup
 
 # Scheduled + on-demand MySQL backup. The dump is written and retained ON THE VPS — it contains
-# patient data (PHI) and is NEVER downloaded to the runner or uploaded as an artifact. Only backup
-# metadata (filename, size, checksum, verification result) is surfaced. See
-# docs/database/BACKUP_AND_RESTORE.md.
+# patient data (PHI) and is NEVER downloaded to the runner or uploaded as an artifact. The VPS then
+# encrypts it (age, public key) and copies it straight to off-site object storage
+# (scripts/db/offsite-copy.sh); the runner never sees the dump or the storage key. Only metadata
+# (filename, size, checksum, verification result) is surfaced. See
+# docs/database/BACKUP_AND_RESTORE.md and docs/database/OFFSITE_BACKUPS.md.
 
 on:
   schedule:
-    # Weekly. 18:30 UTC Saturday = 00:00 IST Sunday (the midnight that starts Sunday).
-    - cron: '30 18 * * 6'
+    # Daily. 18:30 UTC = 00:00 IST. At most one day of data is ever at risk.
+    - cron: '30 18 * * *'
   workflow_dispatch:
     inputs:
       environment:
@@ -81,6 +83,10 @@ jobs:
           SSH_USER: ${{ secrets.DEPLOY_SSH_USER || 'deploy' }}
           REPO: ${{ steps.env.outputs.repo_path }}
           ENV_LABEL: ${{ steps.env.outputs.label }}
+          # required: the run FAILS (and GitHub emails the failure) if the encrypted off-site copy
+          # is missing or fails. Set the repository variable DB_BACKUP_OFFSITE=auto only while the
+          # bucket is being set up.
+          OFFSITE: ${{ vars.DB_BACKUP_OFFSITE || 'required' }}
         run: |
           # pipefail: without it the pipeline's status is tee's (always 0) and a failed
           # backup would report success. The gate must actually gate.
@@ -96,8 +102,8 @@ jobs:
             -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
             "cd '$REPO' && \
              ENV_LABEL='$ENV_LABEL' RETENTION_DAYS='${{ vars.DB_BACKUP_RETENTION_DAYS || 30 }}' \
-             bash scripts/db/backup.sh" \
-            | tee backup-logs/backup.txt
+             OFFSITE='$OFFSITE' bash scripts/db/backup.sh" \
+            2>&1 | tee backup-logs/backup.txt
           rc=$?
           rm -f /tmp/deploy_key
           exit $rc
@@ -110,7 +116,7 @@ jobs:
             echo ""
             echo "Dump retained on the VPS (contains PHI — never downloaded). Metadata:"
             echo '```'
-            grep -E '^\[backup\]|sha256|bytes|pruning' backup-logs/backup.txt 2>/dev/null | tail -20 || cat backup-logs/backup.txt 2>/dev/null || echo "(no output)"
+            grep -E '^\[backup\]|^\[offsite\]|WARNING|ERROR|sha256|bytes|pruning' backup-logs/backup.txt 2>/dev/null | tail -20 || cat backup-logs/backup.txt 2>/dev/null || echo "(no output)"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 

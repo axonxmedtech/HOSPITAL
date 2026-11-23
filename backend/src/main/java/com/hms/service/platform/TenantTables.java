@@ -296,6 +296,8 @@ public final class TenantTables {
         retain("ipd_insurance_claims", Ownership.DIRECT);
         retain("ipd_insurance_claim_events", Ownership.DIRECT);
         retain("bed_reservations", Ownership.DIRECT);
+        // Patient access log: who opened, printed or downloaded a record (append-only, like audit_logs).
+        retain("patient_access_logs", Ownership.DIRECT);
         retain("bed_status_audits", Ownership.DIRECT);
         retain("support_tickets", Ownership.DIRECT);
 

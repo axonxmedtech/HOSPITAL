@@ -1,5 +1,6 @@
 package com.hms.controller.hospital;
 
+import com.hms.audit.PatientRecordAccess;
 import com.hms.security.RequireModule;
 import jakarta.validation.Valid;
 
@@ -103,6 +104,7 @@ public class IpdAdmissionController {
         return ResponseEntity.ok(ipdAdmissionService.listMyIpdAdmissionsForDoctor());
     }
 
+    @PatientRecordAccess(record = PatientRecordAccess.Kind.ADMISSION, action = PatientRecordAccess.Action.VIEW, label = "IPD_CASE")
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('RECEPTIONIST','DOCTOR','HOSPITAL_ADMIN')")
     public ResponseEntity<?> getIpdDetails(@PathVariable("id") Long id) {

@@ -201,6 +201,7 @@ public class DatabaseMigrationRunner {
         ensureHelpFeedbackTable();
         ensureHospitalSidebarSettingsTable(); // V36
         ensurePharmacyLegalInvoice(); // V38
+        ensurePatientAccessLogsTable(); // V45
         ensureIpdCancelAndHospitalNumbering(); // V40
         ensureDischargeSummaryDetails(); // V41
         ensureIpdBillingRulesAndPackages(); // V42
@@ -624,6 +625,19 @@ public class DatabaseMigrationRunner {
                 "data TEXT NOT NULL, updated_at DATETIME(6) NULL, PRIMARY KEY (id)," +
                 "UNIQUE KEY UK_help_progress_scope (scope_key), KEY idx_help_progress_hospital (hospital_id))");
         } catch (Exception e) { log.warn("DB migration skipped (help_progress): {}", e.getMessage()); }
+    }
+
+    /** Patient access log (V45): who opened, printed or downloaded a record. Mirrors schema-full.sql. */
+    private void ensurePatientAccessLogsTable() {
+        try {
+            jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS patient_access_logs (" +
+                "id BIGINT NOT NULL AUTO_INCREMENT, hospital_id BIGINT NOT NULL, patient_id BIGINT NULL," +
+                "record_type VARCHAR(30) NOT NULL, record_ref VARCHAR(64) NULL, action VARCHAR(20) NOT NULL," +
+                "user_id BIGINT NULL, user_email VARCHAR(150) NOT NULL, user_role VARCHAR(30) NULL," +
+                "client_ip VARCHAR(45) NULL, accessed_at DATETIME(6) NOT NULL, PRIMARY KEY (id)," +
+                "KEY idx_pal_patient (hospital_id, patient_id, accessed_at)," +
+                "KEY idx_pal_user (hospital_id, user_email, accessed_at))");
+        } catch (Exception e) { log.warn("DB migration skipped (patient_access_logs): {}", e.getMessage()); }
     }
 
     /**

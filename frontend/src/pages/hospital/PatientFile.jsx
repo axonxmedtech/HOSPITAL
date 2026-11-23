@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import PatientAccessLog from '../../components/records/PatientAccessLog';
 import { useToast } from '../../context/ToastContext';
 import useLiveRefresh from '../../hooks/useLiveRefresh';
 import apiClient from '../../services/apiService';
+import authService from '../../services/authService';
 import patientDocumentService from '../../services/patientDocumentService';
 import { extractApiError } from '../../utils/apiError';
 import { formatDay, formatDays, formatWhen } from '../../utils/date';
@@ -111,6 +113,7 @@ const TABS = [
   { id: 'bills', label: 'Bills', key: 'bills', needs: 'billing' },
   { id: 'docs', label: 'Documents', key: 'documents', needs: 'clinical' },
   { id: 'timeline', label: 'Clinical timeline', needs: 'clinical' },
+  { id: 'access', label: 'Access log', needs: 'admin' },
 ];
 
 export default function PatientFile() {
@@ -149,7 +152,11 @@ export default function PatientFile() {
   }, [tab, timeline, publicId, toastError]);
 
   const access = useMemo(() => file?.access || {}, [file]);
-  const tabs = useMemo(() => TABS.filter((t) => !t.needs || access[t.needs]), [access]);
+  const isAdmin = authService.getCurrentUser()?.role === 'HOSPITAL_ADMIN';
+  const tabs = useMemo(
+    () => TABS.filter((t) => !t.needs || (t.needs === 'admin' ? isAdmin : access[t.needs])),
+    [access, isAdmin]
+  );
   // "Everything" shows only what exists; empty sections are listed in one line instead.
   const show = (id, count) => tab === id || (tab === 'all' && count > 0);
 
@@ -489,6 +496,8 @@ export default function PatientFile() {
             </Table>
           </Section>
         )}
+
+        {isAdmin && tab === 'access' && <PatientAccessLog publicId={publicId} />}
 
         {access.clinical && tab === 'timeline' && (
           <Section

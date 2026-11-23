@@ -1,5 +1,6 @@
 package com.hms.controller.hospital;
 
+import com.hms.audit.PatientRecordAccess;
 import com.hms.dto.PatientDocumentDTO;
 import com.hms.entity.PatientDocument;
 import com.hms.service.hospital.PatientDocumentService;
@@ -54,6 +55,7 @@ public class PatientDocumentController {
     }
 
     /** Metadata only. Nurses read patient records, so nurses can see what is on file. */
+    @PatientRecordAccess(record = PatientRecordAccess.Kind.PATIENT_PK, action = PatientRecordAccess.Action.VIEW, label = "DOCUMENT_LIST")
     @GetMapping("/patients/{patientId}/documents")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','DOCTOR','RECEPTIONIST','NURSE','NURSE_INCHARGE')")
     public ResponseEntity<List<PatientDocumentDTO>> list(@PathVariable Long patientId) {
@@ -66,6 +68,7 @@ public class PatientDocumentController {
      * <p>Inline disposition so a browser can preview a report without downloading it, with the
      * stored name quoted rather than interpolated into a path.
      */
+    @PatientRecordAccess(record = PatientRecordAccess.Kind.DOCUMENT, action = PatientRecordAccess.Action.DOWNLOAD, label = "DOCUMENT")
     @GetMapping("/patient-documents/{documentPublicId}/content")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','DOCTOR','RECEPTIONIST','NURSE','NURSE_INCHARGE')")
     public ResponseEntity<InputStreamResource> content(@PathVariable String documentPublicId) {
