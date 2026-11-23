@@ -53,7 +53,7 @@ public class IcuStayController {
         return ResponseEntity.ok(icuStayService.history(view, from, to, search, page, size));
     }
 
-    @PatientRecordAccess(record = PatientRecordAccess.Kind.ICU_STAY, action = PatientRecordAccess.Action.VIEW, label = "ICU_STAY")
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.ICU_STAY, action = PatientRecordAccess.Action.VIEW, label = "ICU_STAY")
     @GetMapping("/stays/{publicId}")
     public ResponseEntity<IcuStayDTO> getStay(@PathVariable String publicId) {
         return ResponseEntity.ok(icuStayService.viewByPublicId(publicId));

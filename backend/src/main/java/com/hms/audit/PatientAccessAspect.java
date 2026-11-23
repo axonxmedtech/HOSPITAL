@@ -38,14 +38,14 @@ public class PatientAccessAspect {
             return;
         }
         try {
-            accessLogService.record(access.record(), ref, access.action(), label(access));
+            accessLogService.logAccess(access.kind(), ref, access.action(), label(access));
         } catch (RuntimeException e) {
-            log.warn("Patient access log not written ({} {}): {}", access.record(), access.action(), e.getMessage());
+            log.warn("Patient access log not written ({} {}): {}", access.kind(), access.action(), e.getMessage());
         }
     }
 
     private static String label(PatientRecordAccess access) {
-        return access.label().isBlank() ? access.record().name() : access.label();
+        return access.label().isBlank() ? access.kind().name() : access.label();
     }
 
     private static String firstPathVariable(JoinPoint joinPoint) {
