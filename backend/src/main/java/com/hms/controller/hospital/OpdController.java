@@ -157,7 +157,7 @@ public class OpdController {
     }
 
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    @PatientRecordAccess(record = PatientRecordAccess.Kind.OPD, action = PatientRecordAccess.Action.PRINT, label = "CASE_PAPER")
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.OPD, action = PatientRecordAccess.Action.PRINT, label = "CASE_PAPER")
     @GetMapping("/{id}/pdf")
     public ResponseEntity<byte[]> getOpdPdf(
             @PathVariable String id,
@@ -206,7 +206,7 @@ public class OpdController {
      * was unreliable and dropped pages.
      */
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    @PatientRecordAccess(record = PatientRecordAccess.Kind.OPD, action = PatientRecordAccess.Action.PRINT, label = "OPD_DOCUMENTS")
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.OPD, action = PatientRecordAccess.Action.PRINT, label = "OPD_DOCUMENTS")
     @GetMapping("/{id}/documents/pdf")
     public ResponseEntity<byte[]> getOpdDocumentsPdf(
             @PathVariable String id,
@@ -416,7 +416,7 @@ public class OpdController {
     }
 
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
-    @PatientRecordAccess(record = PatientRecordAccess.Kind.OPD, action = PatientRecordAccess.Action.VIEW, label = "OPD_VISIT")
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.OPD, action = PatientRecordAccess.Action.VIEW, label = "OPD_VISIT")
     @GetMapping("/{id}")
     public ResponseEntity<Opd> getOpd(@PathVariable String id) {
         Long opdId;

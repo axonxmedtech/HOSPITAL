@@ -104,7 +104,7 @@ public class IpdAdmissionController {
         return ResponseEntity.ok(ipdAdmissionService.listMyIpdAdmissionsForDoctor());
     }
 
-    @PatientRecordAccess(record = PatientRecordAccess.Kind.ADMISSION, action = PatientRecordAccess.Action.VIEW, label = "IPD_CASE")
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.ADMISSION, action = PatientRecordAccess.Action.VIEW, label = "IPD_CASE")
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('RECEPTIONIST','DOCTOR','HOSPITAL_ADMIN')")
     public ResponseEntity<?> getIpdDetails(@PathVariable("id") Long id) {

@@ -38,7 +38,7 @@ public class NurseWorkspaceController {
         return ResponseEntity.ok(workspaceService.getMyPatients());
     }
 
-    @PatientRecordAccess(record = PatientRecordAccess.Kind.ADMISSION, action = PatientRecordAccess.Action.VIEW, label = "NURSING_CHART")
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.ADMISSION, action = PatientRecordAccess.Action.VIEW, label = "NURSING_CHART")
     @GetMapping("/patients/{admissionId}")
     public ResponseEntity<?> getPatientDetail(@PathVariable Long admissionId) {
         return ResponseEntity.ok(workspaceService.getPatientDetail(admissionId));
