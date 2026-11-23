@@ -986,11 +986,6 @@ public class BillingService {
         billingPaymentRepository.save(r);
     }
 
-    /** How a ledger row shows on the collection report: ADVANCE, INSURANCE or PAYMENT. */
-    private static String collectionKind(com.hms.entity.BillingPayment p) {
-        if (KIND_ADVANCE.equals(p.getKind()) || KIND_INSURANCE.equals(p.getKind())) return p.getKind();
-        return KIND_PAYMENT;
-    }
 
     /** Live bills of this hospital; a legacy bill hand-marked PAID with no ledger counts as settled. */
     private boolean mayStillOwe(Billing b, Long hospitalId) {
@@ -1021,6 +1016,12 @@ public class BillingService {
 
     /** Running totals for the daily collection report, by payment mode. */
     private static final class CollectionTally {
+        /** How a ledger row shows on the collection report: ADVANCE, INSURANCE or PAYMENT. */
+        private static String collectionKind(com.hms.entity.BillingPayment p) {
+            if (KIND_ADVANCE.equals(p.getKind()) || KIND_INSURANCE.equals(p.getKind())) return p.getKind();
+            return KIND_PAYMENT;
+        }
+
         final Map<String, BigDecimal> collected = new java.util.LinkedHashMap<>();
         final Map<String, BigDecimal> refunded = new java.util.LinkedHashMap<>();
         BigDecimal totalIn = BigDecimal.ZERO;

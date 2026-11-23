@@ -55,6 +55,7 @@ public class DatabaseMigrationRunner {
     private static final String DATETIME_6_NULL = "DATETIME(6) NULL";
     private static final String TINYINT_TRUE = "TINYINT(1) NOT NULL DEFAULT 1";
     private static final String SURGERY_FORMS_TABLE = "surgery_forms";
+    private static final String SURGERIES_TABLE = "surgeries";
 
     private static final Logger log = LoggerFactory.getLogger(DatabaseMigrationRunner.class);
 
@@ -749,8 +750,8 @@ public class DatabaseMigrationRunner {
             addColumnIfMissing(LAB_ORDERS_TABLE, "result_text", TEXT_NULL);
             addColumnIfMissing(LAB_ORDERS_TABLE, "result_at", DATETIME_6_NULL);
             addColumnIfMissing(LAB_ORDERS_TABLE, "result_by", VARCHAR_255_NULL);
-            addColumnIfMissing(LAB_ORDERS_TABLE, "cancel_reason", VARCHAR_255_NULL);
-            addColumnIfMissing(LAB_ORDERS_TABLE, "cancelled_at", DATETIME_6_NULL);
+            addColumnIfMissing(LAB_ORDERS_TABLE, CANCEL_REASON, VARCHAR_255_NULL);
+            addColumnIfMissing(LAB_ORDERS_TABLE, CANCELLED_AT, DATETIME_6_NULL);
             jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS diet_orders ( id BIGINT NOT NULL AUTO_INCREMENT, "
                     + "public_id VARCHAR(36) NOT NULL, hospital_id BIGINT NOT NULL, ipd_admission_id BIGINT NOT NULL, "
                     + "diet_type VARCHAR(30) NOT NULL, instructions VARCHAR(500) NULL, ordered_by_doctor_id BIGINT NULL, "
@@ -2519,9 +2520,9 @@ public class DatabaseMigrationRunner {
         } catch (Exception e) {
             log.warn("DB migration skipped (surgery execution tables): {}", e.getMessage());
         }
-        addColumnIfMissing("surgeries", "operative_note", TEXT_NULL);
-        addColumnIfMissing("surgeries", "operative_note_by_user_id", BIGINT_NULL);
-        addColumnIfMissing("surgeries", "operative_note_at", DATETIME_6_NULL);
+        addColumnIfMissing(SURGERIES_TABLE, "operative_note", TEXT_NULL);
+        addColumnIfMissing(SURGERIES_TABLE, "operative_note_by_user_id", BIGINT_NULL);
+        addColumnIfMissing(SURGERIES_TABLE, "operative_note_at", DATETIME_6_NULL);
     }
 
     /**
@@ -2645,8 +2646,8 @@ public class DatabaseMigrationRunner {
 
     /** OT Phase 4 — the theatre link and the duration that makes interval booking possible. */
     private void ensureSurgeryRoomColumns() {
-        addColumnIfMissing("surgeries", "ot_room_id", BIGINT_NULL);
-        addColumnIfMissing("surgeries", "estimated_duration_minutes", INT_NULL);
+        addColumnIfMissing(SURGERIES_TABLE, "ot_room_id", BIGINT_NULL);
+        addColumnIfMissing(SURGERIES_TABLE, "estimated_duration_minutes", INT_NULL);
         try {
             jdbcTemplate.execute("CREATE INDEX idx_surgery_room_scheduled ON surgeries(ot_room_id, scheduled_at)");
             log.info("DB migration applied: index surgeries(ot_room_id, scheduled_at)");
@@ -2694,9 +2695,9 @@ public class DatabaseMigrationRunner {
 
     /** OT Phase 3 — waiting-list ordering lives on the surgery, not in a WAITLISTED status. */
     private void ensureSurgeryWaitlistColumns() {
-        addColumnIfMissing("surgeries", "waitlist_priority", "INT NOT NULL DEFAULT 0");
-        addColumnIfMissing("surgeries", "target_date", "DATE NULL");
-        addColumnIfMissing("surgeries", "approved_at", DATETIME_6_NULL);
+        addColumnIfMissing(SURGERIES_TABLE, "waitlist_priority", "INT NOT NULL DEFAULT 0");
+        addColumnIfMissing(SURGERIES_TABLE, "target_date", "DATE NULL");
+        addColumnIfMissing(SURGERIES_TABLE, "approved_at", DATETIME_6_NULL);
         try {
             jdbcTemplate.execute("CREATE INDEX idx_surgery_hospital_scheduled ON surgeries(hospital_id, scheduled_at)");
             log.info("DB migration applied: index surgeries(hospital_id, scheduled_at)");
@@ -2707,7 +2708,7 @@ public class DatabaseMigrationRunner {
 
     /** Adds the optimistic lifecycle revision used by schedule/reschedule commands. */
     private void ensureSurgeryLifecycleVersionColumn() {
-        addColumnIfMissing("surgeries", "lifecycle_version", "BIGINT NOT NULL DEFAULT 0");
+        addColumnIfMissing(SURGERIES_TABLE, "lifecycle_version", "BIGINT NOT NULL DEFAULT 0");
     }
 
     /**
@@ -2762,7 +2763,7 @@ public class DatabaseMigrationRunner {
      * endoscopy, minor orthopaedics) can exist without one.
      */
     private void ensureSurgeryDayCareColumns() {
-        addColumnIfMissing("surgeries", "encounter_type", "VARCHAR(20) NOT NULL DEFAULT 'IPD'");
+        addColumnIfMissing(SURGERIES_TABLE, "encounter_type", "VARCHAR(20) NOT NULL DEFAULT 'IPD'");
         try {
             jdbcTemplate.execute("ALTER TABLE surgeries MODIFY ipd_admission_id BIGINT NULL");
             log.info("DB migration applied: surgeries.ipd_admission_id is now nullable (day-care)");
