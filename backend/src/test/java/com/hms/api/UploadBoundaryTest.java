@@ -99,6 +99,14 @@ class UploadBoundaryTest {
         tomcatMultipartDir = Files.createTempDirectory("hms-boundary-tomcat-");
         r.add("hms.import.spool-dir", () -> spoolDir.toString());
         r.add("spring.servlet.multipart.location", () -> tomcatMultipartDir.toString());
+        // After refusing a request, Tomcat reads at most 2 MB (its default) of the unread body and
+        // then closes the connection. A test client still writing a larger body at that moment
+        // sees the close ("header parser received no bytes") instead of the 413 — a race that
+        // failed CI on slower runners. Here the refused body is read to the end (never parsed or
+        // stored), so every test receives the real 413 and can check it. Production keeps the
+        // 2 MB default on purpose; what these tests assert (limits, routing, nothing parsed,
+        // nothing spooled) does not depend on it.
+        r.add("server.tomcat.max-swallow-size", () -> "-1");
     }
 
     @LocalServerPort int port;
@@ -231,27 +239,6 @@ class UploadBoundaryTest {
                 : HttpRequest.BodyPublishers.ofInputStream(body::stream); // chunked: no Content-Length
         return HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build()
                 .send(b.POST(publisher).build(), HttpResponse.BodyHandlers.ofString());
-    }
-
-    /**
-     * Sends an upload the server must refuse as too large. The server answers 413 and closes the
-     * connection before reading the body; on a slow machine the client can still be writing that
-     * body when the socket closes, and then sees the close ("header parser received no bytes")
-     * instead of the 413. Both mean the same thing for these tests — refused before parsing —
-     * so a close is reported as -1 and accepted by {@link #assertRefusedOversize}. What the
-     * tests really assert (nothing parsed, nothing imported) is checked separately and still holds.
-     */
-    private int send413OrClosed(String path, String token, Body body) throws Exception {
-        try {
-            return send(path, token, body, true).statusCode();
-        } catch (IOException closedWhileSending) {
-            return -1;
-        }
-    }
-
-    private static void assertRefusedOversize(String path, int status) {
-        assertThat(status).as(path + " must be refused as too large (413, or closed before the body was read)")
-                .isIn(413, -1);
     }
 
     private long filesIn(Path dir) throws IOException {
@@ -434,7 +421,8 @@ class UploadBoundaryTest {
     })
     void onlyTheExactImportRoutesGetTheLargeAllowance(String path) throws Exception {
         int before = CountingResolver.PARSES.get();
-        assertRefusedOversize(path, send413OrClosed(path, admin, body("a.csv", 8 * UploadLimits.MEBIBYTE, MAPPING)));
+        HttpResponse<String> r = send(path, admin, body("a.csv", 8 * UploadLimits.MEBIBYTE, MAPPING), true);
+        assertThat(r.statusCode()).as(path).isEqualTo(413);
         assertThat(CountingResolver.PARSES.get()).isEqualTo(before);
         verify(engine, never()).commit(any(), any(), any());
     }
