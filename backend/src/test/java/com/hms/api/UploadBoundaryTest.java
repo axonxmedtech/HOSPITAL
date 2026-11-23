@@ -233,6 +233,27 @@ class UploadBoundaryTest {
                 .send(b.POST(publisher).build(), HttpResponse.BodyHandlers.ofString());
     }
 
+    /**
+     * Sends an upload the server must refuse as too large. The server answers 413 and closes the
+     * connection before reading the body; on a slow machine the client can still be writing that
+     * body when the socket closes, and then sees the close ("header parser received no bytes")
+     * instead of the 413. Both mean the same thing for these tests — refused before parsing —
+     * so a close is reported as -1 and accepted by {@link #assertRefusedOversize}. What the
+     * tests really assert (nothing parsed, nothing imported) is checked separately and still holds.
+     */
+    private int send413OrClosed(String path, String token, Body body) throws Exception {
+        try {
+            return send(path, token, body, true).statusCode();
+        } catch (IOException closedWhileSending) {
+            return -1;
+        }
+    }
+
+    private static void assertRefusedOversize(String path, int status) {
+        assertThat(status).as(path + " must be refused as too large (413, or closed before the body was read)")
+                .isIn(413, -1);
+    }
+
     private long filesIn(Path dir) throws IOException {
         try (Stream<Path> s = Files.list(dir)) {
             return s.count();
@@ -413,8 +434,7 @@ class UploadBoundaryTest {
     })
     void onlyTheExactImportRoutesGetTheLargeAllowance(String path) throws Exception {
         int before = CountingResolver.PARSES.get();
-        HttpResponse<String> r = send(path, admin, body("a.csv", 8 * UploadLimits.MEBIBYTE, MAPPING), true);
-        assertThat(r.statusCode()).as(path).isEqualTo(413);
+        assertRefusedOversize(path, send413OrClosed(path, admin, body("a.csv", 8 * UploadLimits.MEBIBYTE, MAPPING)));
         assertThat(CountingResolver.PARSES.get()).isEqualTo(before);
         verify(engine, never()).commit(any(), any(), any());
     }
