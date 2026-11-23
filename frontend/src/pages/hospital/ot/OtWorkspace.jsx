@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import OtHistoryView from '../../../components/records/OtHistoryView';
 import { useToast } from '../../../context/ToastContext';
 import useOtPermissions from '../../../hooks/useOtPermissions';
 import otService from '../../../services/otService';
@@ -24,7 +25,7 @@ import SurgeryTeamModal from './SurgeryTeamModal';
 export default function OtWorkspace() {
   const { error: toastError } = useToast();
   const { can: canOt } = useOtPermissions();
-  const [otFilter, setOtFilter] = useState('board'); // 'board' | 'day' | 'requests'
+  const [otFilter, setOtFilter] = useState('board'); // 'board' | 'day' | 'requests' | 'history'
   const [isDayCareModalOpen, setIsDayCareModalOpen] = useState(false);
   const [isOtListOpen, setIsOtListOpen] = useState(false);
   const [otTeamTarget, setOtTeamTarget] = useState(null);
@@ -88,10 +89,18 @@ export default function OtWorkspace() {
             >
               Requests
             </button>
+            <button
+              onClick={() => setOtFilter('history')}
+              className={`px-4 py-1.5 text-sm font-semibold ${otFilter === 'history' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600'}`}
+            >
+              History
+            </button>
           </div>
         </div>
         <OtAnalyticsStrip refreshKey={otRows} />
-        {otFilter === 'day' ? (
+        {otFilter === 'history' ? (
+          <OtHistoryView />
+        ) : otFilter === 'day' ? (
           <OtDayBoard date={localIsoDate()} onSelect={(c) => setOtExecTarget(c)} />
         ) : otLoading ? (
           <div className="text-center text-gray-400 py-16">Loading…</div>

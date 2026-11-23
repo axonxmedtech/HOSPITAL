@@ -99,6 +99,14 @@ class UploadBoundaryTest {
         tomcatMultipartDir = Files.createTempDirectory("hms-boundary-tomcat-");
         r.add("hms.import.spool-dir", () -> spoolDir.toString());
         r.add("spring.servlet.multipart.location", () -> tomcatMultipartDir.toString());
+        // After refusing a request, Tomcat reads at most 2 MB (its default) of the unread body and
+        // then closes the connection. A test client still writing a larger body at that moment
+        // sees the close ("header parser received no bytes") instead of the 413 — a race that
+        // failed CI on slower runners. Here the refused body is read to the end (never parsed or
+        // stored), so every test receives the real 413 and can check it. Production keeps the
+        // 2 MB default on purpose; what these tests assert (limits, routing, nothing parsed,
+        // nothing spooled) does not depend on it.
+        r.add("server.tomcat.max-swallow-size", () -> "-1");
     }
 
     @LocalServerPort int port;

@@ -49,6 +49,34 @@ jobs:
         with:
           java-version: ${{ inputs.java-version }}
 
+      # The cache setup-java restores is keyed only by the pom and was first saved by a job that
+      # never ran the full build, so it lacks build plugins (spring-boot-maven-plugin and others)
+      # and is never replaced. Every build then fetched them from Maven Central, which began
+      # answering 429 Too Many Requests and failed the staging deploy. This build job keeps its
+      # own cache of everything the full build needs, saved once the build has fetched it.
+      - name: Restore full build Maven cache
+        # Pin to SHA in production: https://github.com/actions/cache/releases
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: m2-build-v1-${{ runner.os }}-${{ hashFiles('backend/pom.xml') }}
+          restore-keys: |
+            m2-build-v1-${{ runner.os }}-
+
+      # Maven retries a busy Central itself (backend/.mvn/maven.config); this resolves the
+      # plugins and dependencies up front and, if Central still refuses, waits and tries again
+      # rather than failing the whole pipeline on a rate limit.
+      - name: Resolve dependencies (retry when Maven Central is busy)
+        run: |
+          for attempt in 1 2 3; do
+            if mvn -B -q --no-transfer-progress dependency:resolve-plugins dependency:resolve; then
+              exit 0
+            fi
+            echo "::warning::Dependency download failed (attempt $attempt of 3); waiting before retrying."
+            sleep $((attempt * 45))
+          done
+          exit 1
+
       - name: Compile
         run: mvn compile -q
 

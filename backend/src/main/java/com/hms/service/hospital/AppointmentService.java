@@ -415,9 +415,7 @@ public class AppointmentService {
                         page = appointmentRepository
                                 .searchAppointmentsByDate(hospitalId, search, today, pageable);
                     } else {
-                        page = appointmentRepository
-                                .findByHospitalIdAndAppointmentDateAndIsActiveTrueOrderByAppointmentTimeAsc(hospitalId,
-                                        today, pageable);
+                        page = appointmentRepository.findOpenOnDate(hospitalId, today, pageable);
                     }
                     break;
                 case "upcoming":
@@ -425,9 +423,7 @@ public class AppointmentService {
                         page = appointmentRepository
                                 .searchAppointmentsByDateAfter(hospitalId, search, today, pageable);
                     } else {
-                        page = appointmentRepository
-                                .findByHospitalIdAndAppointmentDateGreaterThanEqualAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
-                                        hospitalId, today, pageable);
+                        page = appointmentRepository.findOpenFromDate(hospitalId, today, pageable);
                     }
                     break;
                 case "history":
@@ -494,13 +490,10 @@ public class AppointmentService {
         } else {
             switch (view.toLowerCase()) {
                 case "today":
-                    appointments = appointmentRepository
-                            .findByDoctorIdAndAppointmentDateAndIsActiveTrueOrderByAppointmentTimeAsc(doctorId, today);
+                    appointments = appointmentRepository.findOpenOnDateForDoctor(doctorId, today);
                     break;
                 case "upcoming":
-                    appointments = appointmentRepository
-                            .findByDoctorIdAndAppointmentDateGreaterThanEqualAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
-                                    doctorId, today);
+                    appointments = appointmentRepository.findOpenFromDateForDoctor(doctorId, today);
                     break;
                 case "history":
                     appointments = appointmentRepository
@@ -601,8 +594,7 @@ public class AppointmentService {
         }
 
         LocalDate today = LocalDate.now();
-        List<Appointment> appointments = appointmentRepository
-                .findByHospitalIdAndAppointmentDateAndIsActiveTrue(hospitalId, today);
+        List<Appointment> appointments = appointmentRepository.findOpenOnDate(hospitalId, today);
 
         logger.info("Found {} appointments for today for hospital {}", appointments.size(), hospitalId);
         return populateNames(appointments);
@@ -896,9 +888,7 @@ public class AppointmentService {
                         page = appointmentRepository
                                 .searchAppointmentsByDoctorAndDate(doctorId, hospitalId, search, today, pageable);
                     } else {
-                        page = appointmentRepository
-                                .findByDoctorIdAndAppointmentDateAndIsActiveTrueOrderByAppointmentTimeAsc(doctorId,
-                                        today, pageable);
+                        page = appointmentRepository.findOpenOnDateForDoctor(doctorId, today, pageable);
                     }
                     break;
                 case "upcoming":
@@ -906,9 +896,7 @@ public class AppointmentService {
                         page = appointmentRepository
                                 .searchAppointmentsByDoctorAndDateAfter(doctorId, hospitalId, search, today, pageable);
                     } else {
-                        page = appointmentRepository
-                                .findByDoctorIdAndAppointmentDateGreaterThanEqualAndIsActiveTrueOrderByAppointmentDateAscAppointmentTimeAsc(
-                                        doctorId, today, pageable);
+                        page = appointmentRepository.findOpenFromDateForDoctor(doctorId, today, pageable);
                     }
                     break;
                 case "history":

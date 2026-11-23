@@ -52,6 +52,10 @@ public class ConsultationRequest {
         @NotBlank(message = "Prescription medicine name is required")
         private String medicineName;
 
+        /** Strength, e.g. "500 mg". Required for new prescriptions (checked when saving). */
+        @jakarta.validation.constraints.Size(max = 50, message = "Strength is too long")
+        private String strength;
+
         @NotBlank(message = "Prescription dosage is required")
         private String dosage;
 

@@ -39,7 +39,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * INV-P0-1: a request-supplied medicineId must never reach another facility's stock.
  *
  * <p>IpdAdmissionService carried this medicine lookup three times (consultation, IPD follow-up,
- * IPD administer). DoctorService's copy always compared the medicine's hospitalId to the caller's;
+ * IPD administer). The IPD administer endpoint is gone and the follow-up no longer takes stock at all
+ * (ward doses go through the medication chart), so these now prove that refusal. DoctorService's copy always compared the medicine's hospitalId to the caller's;
  * the two IpdAdmissionService copies loaded it by raw id and decremented whatever they found. Both
  * were additionally covered by a TenantScopingArchTest allowlist entry marked reviewed-and-safe,
  * so no test objected.
@@ -140,9 +141,9 @@ class IpdMedicineTenantIsolationTest {
         HttpHeaders h = new HttpHeaders();
         h.setBearerAuth(tokenA);
         h.setContentType(MediaType.APPLICATION_JSON);
-        String body = "{\"administeredItems\":[{\"medicineId\":" + medicineId
+        String body = "{\"diagnosis\":\"Review\",\"notes\":\"Round\",\"administeredItems\":[{\"medicineId\":" + medicineId
                 + ",\"medicineName\":\"Ceftriaxone\",\"quantity\":" + qty + "}]}";
-        return rest.exchange("/hospital/ipd/" + admissionA + "/administer", HttpMethod.POST,
+        return rest.exchange("/hospital/ipd/" + admissionA + "/followup", HttpMethod.POST,
                 new HttpEntity<>(body, h), String.class);
     }
 

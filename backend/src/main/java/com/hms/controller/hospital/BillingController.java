@@ -1,5 +1,6 @@
 package com.hms.controller.hospital;
 
+import com.hms.audit.PatientRecordAccess;
 import com.hms.exception.ResourceNotFoundException;
 
 import com.hms.entity.Billing;
@@ -37,6 +38,7 @@ import com.hms.service.PdfService;
 @RequestMapping({"/hospital/billing", "/clinic/billing", "/pharmacy/billing"})
 public class BillingController {
     private static final String DOCTOR_ROLE = "DOCTOR";
+    private static final String TOTAL_AMOUNT = "totalAmount";
     private static final String AMOUNT = "amount";
 
     /** The money figures every bill response carries, all from the server's own arithmetic. */
@@ -59,43 +61,12 @@ public class BillingController {
     @Autowired
     private com.hms.repository.HospitalSettingRepository hospitalSettingRepository;
 
+    @Autowired
+    private com.hms.security.BillingAccessPolicy billingAccessPolicy;
+
+    /** Admin always; doctor / reception as the hospital's Billing Handler setting allows. */
     private void validateBillingAccess() {
-        String role = securityHelper.getCurrentUserRole();
-        Long hospitalId = securityHelper.getCurrentHospitalId();
-        if (hospitalId == null) {
-            throw new org.springframework.security.access.AccessDeniedException("Invalid hospital context");
-        }
-
-        // HOSPITAL_ADMIN always has full access to billing
-        if ("HOSPITAL_ADMIN".equalsIgnoreCase(role) || "ROLE_HOSPITAL_ADMIN".equalsIgnoreCase(role)
-                || "ADMIN".equalsIgnoreCase(role) || "ROLE_ADMIN".equalsIgnoreCase(role)) {
-            return;
-        }
-
-        // Read the hospital's settings, falling back to an unsaved defaults object.
-        com.hms.entity.HospitalSetting settings = hospitalSettingRepository.findByHospital_Id(hospitalId)
-                .orElseGet(com.hms.entity.HospitalSetting::new);
-
-        String handler = (settings != null && settings.getBillingHandler() != null && !settings.getBillingHandler().isBlank())
-                ? settings.getBillingHandler()
-                : "BOTH";
-
-        // Enforce settings
-        if ("ROLE_DOCTOR".equalsIgnoreCase(role) || DOCTOR_ROLE.equalsIgnoreCase(role)) {
-            if (!DOCTOR_ROLE.equalsIgnoreCase(handler) && 
-                !"BOTH".equalsIgnoreCase(handler) &&
-                !(settings != null && "SOLO".equalsIgnoreCase(settings.getReceptionMode()))) {
-                throw new org.springframework.security.access.AccessDeniedException("Billing management is restricted to receptionists.");
-            }
-        } else if ("ROLE_RECEPTIONIST".equalsIgnoreCase(role) || "RECEPTIONIST".equalsIgnoreCase(role)) {
-            if (!"RECEPTIONIST".equalsIgnoreCase(handler) && 
-                !"BOTH".equalsIgnoreCase(handler)) {
-                throw new org.springframework.security.access.AccessDeniedException("Billing management is restricted to doctors.");
-            }
-            if (settings != null && "SOLO".equalsIgnoreCase(settings.getReceptionMode())) {
-                throw new org.springframework.security.access.AccessDeniedException("Receptionist access is restricted under Solo Doctor mode.");
-            }
-        }
+        billingAccessPolicy.check();
     }
 
     @GetMapping
@@ -103,12 +74,16 @@ public class BillingController {
     public ResponseEntity<?> getAllBills(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate from,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate to,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         validateBillingAccess();
         Pageable pageable = PageRequest.of(page, size, org.springframework.data.domain.Sort.by("createdAt").descending());
         // Fetch page of Billing
-        org.springframework.data.domain.Page<com.hms.entity.Billing> billsPage = billingService.getAllBills(search, status, pageable);
+        org.springframework.data.domain.Page<com.hms.entity.Billing> billsPage =
+                billingService.getAllBills(search, status, category, from, to, pageable);
 
         java.util.List<com.hms.entity.Billing> content = billsPage.getContent();
         java.util.List<Long> billIds = content.stream()
@@ -299,6 +274,7 @@ public class BillingController {
     @Autowired
     private com.hms.security.SecurityContextHelper securityHelper;
 
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.BILL, action = PatientRecordAccess.Action.PRINT, label = "RECEIPT")
     @GetMapping("/{id}/pdf")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> downloadReceipt(@PathVariable Long id) {
@@ -325,6 +301,62 @@ public class BillingController {
                 .headers(headers)
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(new InputStreamResource(pdf));
+    }
+
+    /**
+     * Everything the patient owes for this hospital stay in one place: the IPD bill and the bill of
+     * the OPD visit that led to the admission (e.g. OPD ₹500 + IPD ₹550 = ₹1,050). Read-only — each
+     * bill keeps its own items and payments; nothing is merged or rewritten. Cancelled bills are
+     * listed for reference but left out of the totals.
+     */
+    @GetMapping("/ipd/{ipdId}/related-bills")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
+    public ResponseEntity<?> getIpdRelatedBills(@PathVariable Long ipdId) {
+        validateBillingAccess();
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        com.hms.entity.IpdAdmission admission = ipdAdmissionRepository.findByIdAndHospitalId(ipdId, hospitalId)
+                .orElseThrow(() -> new com.hms.exception.ResourceNotFoundException("Admission not found"));
+
+        java.util.LinkedHashMap<Long, Billing> bills = new java.util.LinkedHashMap<>();
+        if (admission.getSourceOpdId() != null) {
+            billingRepository.findByOpdIdAndHospitalId(admission.getSourceOpdId(), hospitalId)
+                    .stream().filter(b -> b.getIpdAdmissionId() == null)
+                    .forEach(b -> bills.put(b.getId(), b));
+        }
+        billingRepository.findByIpdAdmissionId(ipdId).stream()
+                .filter(b -> hospitalId.equals(b.getHospitalId()))
+                .forEach(b -> bills.put(b.getId(), b));
+
+        java.math.BigDecimal total = java.math.BigDecimal.ZERO;
+        java.math.BigDecimal paid = java.math.BigDecimal.ZERO;
+        java.util.List<Map<String, Object>> rows = new java.util.ArrayList<>();
+        for (Billing bill : bills.values()) {
+            com.hms.service.hospital.BillMoney money = com.hms.service.hospital.BillMoney.of(bill,
+                    billingItemRepository.findByBillingId(bill.getId()),
+                    billingMedicineRepository.findByBillingId(bill.getId()),
+                    billingPaymentRepository.findByBillingId(bill.getId()),
+                    () -> billingService.legacyIpdBedPrice(bill));
+            boolean cancelled = "CANCELLED".equalsIgnoreCase(bill.getPaymentStatus());
+            Map<String, Object> row = new HashMap<>();
+            row.put("billingId", bill.getId());
+            row.put("customId", bill.getCustomId());
+            row.put("category", bill.getIpdAdmissionId() != null ? "IPD" : "OPD");
+            row.put("status", bill.getPaymentStatus());
+            row.put("createdAt", bill.getCreatedAt());
+            row.put(TOTAL_AMOUNT, money.net());
+            putMoney(row, money);
+            rows.add(row);
+            if (!cancelled) {
+                total = total.add(money.net());
+                paid = paid.add(money.paid());
+            }
+        }
+        Map<String, Object> resp = new HashMap<>();
+        resp.put("bills", rows);
+        resp.put(TOTAL_AMOUNT, total);
+        resp.put("paidAmount", paid);
+        resp.put("balance", total.subtract(paid));
+        return ResponseEntity.ok(resp);
     }
 
     @GetMapping("/ipd/{ipdId}/bill")
@@ -358,7 +390,7 @@ public class BillingController {
         resp.put("status", bill.getPaymentStatus());
         putMoney(resp, money);
         resp.put("discountReason", bill.getDiscountReason());
-        resp.put("totalAmount", money.net());
+        resp.put(TOTAL_AMOUNT, money.net());
         java.util.List<Map<String,Object>> list = new java.util.ArrayList<>();
         for (BillingItem it : items) {
             Map<String,Object> m = new HashMap<>();
@@ -482,6 +514,7 @@ public class BillingController {
         return ResponseEntity.ok(billingService.dailyCollection(date != null ? date : java.time.LocalDate.now(java.time.ZoneId.systemDefault())));
     }
 
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.PATIENT, action = PatientRecordAccess.Action.VIEW, label = "BILLS")
     @GetMapping("/patient/{patientPublicId}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> getPatientBills(@PathVariable String patientPublicId) {

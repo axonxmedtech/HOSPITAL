@@ -215,6 +215,14 @@ public class GlobalExceptionHandler {
     }
     // -- 409 ---------------------------------------------------------------------
 
+    /** A second open visit for the same patient: says where the open one is. */
+    @ExceptionHandler(ActiveEncounterConflictException.class)
+    public ResponseEntity<ApiErrorResponse> handleActiveEncounter(ActiveEncounterConflictException ex) {
+        return ResponseEntity.status(ErrorCode.CONFLICT.status())
+                .body(new ApiErrorResponse(false, ErrorCode.CONFLICT, ex.getMessage(), ex.getMessage(),
+                        ex.getEncounter(), null, CorrelationIdFilter.currentId(), null));
+    }
+
     /**
      * A business precondition that has changed under the caller: the bed was taken, the
      * theatre is already running another case. The message is ours, so it is shown as-is.

@@ -5,6 +5,7 @@ import inventoryApi from '../../../services/pharmacy/inventoryApi';
 import salesApi from '../../../services/pharmacy/salesApi';
 import suppliersApi from '../../../services/pharmacy/suppliersApi';
 import { extractApiError } from '../../../utils/apiError';
+import { paidPerUnit, roundMoney } from '../../../utils/pharmacyMoney';
 
 const ReturnsView = () => {
   const { success, error: toastError } = useToast();
@@ -98,8 +99,9 @@ const ReturnsView = () => {
       sale.items.forEach((item) => {
         initialReturns[item.medicineBatchId] = {
           qtyToReturn: 0,
-          unitPrice: item.unitPrice,
-          maxQty: item.quantity,
+          // What the customer paid per unit (after discount, GST included), not the shelf price.
+          unitPrice: paidPerUnit(sale, item),
+          maxQty: Math.max(0, (Number(item.quantity) || 0) - (Number(item.returnedQuantity) || 0)),
           medicineName: item.medicineBatch?.medicine?.medicineName || 'Unknown Medicine',
           batchNumber: item.medicineBatch?.batchNumber || 'N/A',
         };
@@ -108,9 +110,7 @@ const ReturnsView = () => {
       success('Invoice found!');
     } catch (err) {
       console.error('Sale search failed', err);
-      toastError(
-        extractApiError(err, 'Invoice not found. Please verify the bill number.')
-      );
+      toastError(extractApiError(err, 'Invoice not found. Please verify the bill number.'));
     } finally {
       setSearchingBill(false);
     }
@@ -129,7 +129,6 @@ const ReturnsView = () => {
     }));
   };
 
-
   // Calculate customer refund total
   const patientRefundTotal = useMemo(() => {
     let total = 0;
@@ -137,7 +136,7 @@ const ReturnsView = () => {
       const item = patientReturns[key];
       total += item.qtyToReturn * item.unitPrice;
     });
-    return total;
+    return roundMoney(total);
   }, [patientReturns]);
 
   const handleProcessRefund = () => {
@@ -163,10 +162,9 @@ const ReturnsView = () => {
       onConfirm: async () => {
         setProcessingRefund(true);
         try {
-          await salesApi.processReturn(originalSale.id, items);
-          success(
-            `Refund processed successfully! ₹${patientRefundTotal.toLocaleString()} refunded.`
-          );
+          const result = await salesApi.processReturn(originalSale.id, items);
+          const refunded = Number(result?.refundAmount ?? patientRefundTotal);
+          success(`Refund processed successfully! ₹${refunded.toLocaleString()} refunded.`);
           setOriginalSale(null);
           setBillSearch('');
           setPatientReturns({});
@@ -261,9 +259,11 @@ const ReturnsView = () => {
       onConfirm: async () => {
         setProcessingSupplierReturn(true);
         try {
-          await inventoryApi.processSupplierReturn(selectedSupplierId, items);
+          const note = await inventoryApi.processSupplierReturn(selectedSupplierId, items);
           success(
-            `Supplier return dispatched successfully! Total claim value: ₹${supplierRefundTotal.toLocaleString()}`
+            `Return note ${note?.noteNumber || ''} issued. Claim value: ₹${Number(
+              note?.totalClaimed ?? supplierRefundTotal
+            ).toLocaleString()}`
           );
           setSupplierReturnItems([]);
           setSelectedSupplierId('');
@@ -356,7 +356,8 @@ const ReturnsView = () => {
                   <div>
                     <h3 className="font-bold text-gray-800 text-sm">Bill Items Overview</h3>
                     <p className="text-[10px] text-gray-400 mt-0.5">
-                      Specify the quantity being returned per item. Refunded medicine is not returned to saleable stock.
+                      Specify the quantity being returned per item. Refunded medicine is not
+                      returned to saleable stock.
                     </p>
                   </div>
                   <span className="text-xs font-black bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full">
@@ -432,7 +433,7 @@ const ReturnsView = () => {
                               />
                             </td>
                             <td className="px-6 py-4 text-center">
-{/* Medicine that has been with a patient is not put back on the shelf, so there is
+                              {/* Medicine that has been with a patient is not put back on the shelf, so there is
                                   no choice to offer here. The refund still goes through. */}
                               <span
                                 className="text-[10px] font-black uppercase tracking-widest text-gray-500"

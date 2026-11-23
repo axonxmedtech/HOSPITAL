@@ -26,6 +26,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(BillingController.class)
+@org.springframework.context.annotation.Import(com.hms.security.BillingAccessPolicy.class)
 public class BillingControllerTest {
 
     // R1b: JwtAuthenticationFilter now revalidates the session against these repositories on
@@ -99,7 +100,7 @@ public class BillingControllerTest {
         when(hospitalSettingRepository.findByHospital_Id(1L)).thenReturn(Optional.of(settings));
 
         org.springframework.data.domain.Page<com.hms.entity.Billing> emptyPage = new org.springframework.data.domain.PageImpl<>(Collections.emptyList());
-        when(billingService.getAllBills(null, null, org.springframework.data.domain.PageRequest.of(0, 10, org.springframework.data.domain.Sort.by("createdAt").descending())))
+        when(billingService.getAllBills(null, null, null, null, null, org.springframework.data.domain.PageRequest.of(0, 10, org.springframework.data.domain.Sort.by("createdAt").descending())))
                 .thenReturn(emptyPage);
     }
 

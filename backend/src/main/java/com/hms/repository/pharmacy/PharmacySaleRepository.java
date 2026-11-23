@@ -24,10 +24,20 @@ public interface PharmacySaleRepository extends JpaRepository<PharmacySale, Long
     @org.springframework.data.jpa.repository.Query("SELECT s FROM PharmacySale s WHERE s.billNumber = :billNumber AND s.hospitalId = :hid AND (:branchId IS NULL OR s.branchId = :branchId)")
     Optional<PharmacySale> findByBillNumberScoped(@org.springframework.data.repository.query.Param("billNumber") String billNumber, @org.springframework.data.repository.query.Param("hid") Long hid, @org.springframework.data.repository.query.Param("branchId") Long branchId);
 
-    @org.springframework.data.jpa.repository.Query("SELECT SUM(s.netAmount) FROM PharmacySale s WHERE s.hospitalId = :hospitalId AND s.createdAt BETWEEN :start AND :end")
-    java.math.BigDecimal getSumOfSalesBetween(Long hospitalId, java.time.LocalDateTime start, java.time.LocalDateTime end);
+    /** Sales total in a window, for one branch when :branchId is set (a branch login), else the whole pharmacy. */
+    @org.springframework.data.jpa.repository.Query("SELECT COALESCE(SUM(s.netAmount), 0) FROM PharmacySale s WHERE s.hospitalId = :hospitalId "
+            + "AND (:branchId IS NULL OR s.branchId = :branchId) AND s.createdAt BETWEEN :start AND :end")
+    java.math.BigDecimal sumSalesBetween(@org.springframework.data.repository.query.Param("hospitalId") Long hospitalId,
+            @org.springframework.data.repository.query.Param("branchId") Long branchId,
+            @org.springframework.data.repository.query.Param("start") java.time.LocalDateTime start,
+            @org.springframework.data.repository.query.Param("end") java.time.LocalDateTime end);
 
-    long countByHospitalIdAndCreatedAtBetween(Long hospitalId, java.time.LocalDateTime start, java.time.LocalDateTime end);
+    @org.springframework.data.jpa.repository.Query("SELECT COUNT(s) FROM PharmacySale s WHERE s.hospitalId = :hospitalId "
+            + "AND (:branchId IS NULL OR s.branchId = :branchId) AND s.createdAt BETWEEN :start AND :end")
+    long countSalesBetween(@org.springframework.data.repository.query.Param("hospitalId") Long hospitalId,
+            @org.springframework.data.repository.query.Param("branchId") Long branchId,
+            @org.springframework.data.repository.query.Param("start") java.time.LocalDateTime start,
+            @org.springframework.data.repository.query.Param("end") java.time.LocalDateTime end);
 
     java.util.List<PharmacySale> findByHospitalIdAndCreatedAtAfter(Long hospitalId, java.time.LocalDateTime createdAt);
 

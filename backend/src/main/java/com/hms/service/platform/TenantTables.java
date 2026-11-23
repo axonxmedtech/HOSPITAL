@@ -215,6 +215,8 @@ public final class TenantTables {
         purge(26, "help_progress", BY_HOSPITAL);
         // Ratings of help answers and questions help could not answer -- usage feedback only.
         purge(27, "help_feedback", BY_HOSPITAL);
+        // Which sidebar tabs each role sees -- a display preference only.
+        purge(28, "hospital_sidebar_settings", BY_HOSPITAL);
 
         // An ICU episode and everything charted during it is clinical record. The stay itself carries
         // the admission and discharge times a later review depends on; the rest is what was
@@ -278,6 +280,24 @@ public final class TenantTables {
 
         // Audit trail.
         retain("audit_logs", Ownership.DIRECT);
+        // Invoice serials: kept with the bills they numbered (GST invoices must stay consecutive).
+        retain("pharmacy_invoice_sequences", Ownership.DIRECT);
+        // Customer refunds: money records, kept like the bills they refund.
+        retain("pharmacy_sale_returns", Ownership.DIRECT);
+        // Supplier payments and return notes: financial documents.
+        retain("purchase_payments", Ownership.DIRECT);
+        retain("supplier_return_notes", Ownership.DIRECT);
+        // IPD billing rules and packages: what the hospital charged by, kept with its bills.
+        retain("ipd_billing_settings", Ownership.DIRECT);
+        retain("ipd_packages", Ownership.DIRECT);
+        // Diet orders: part of the inpatient clinical record.
+        retain("diet_orders", Ownership.DIRECT);
+        // Insurance claims are financial records; reservations are kept with the bed history.
+        retain("ipd_insurance_claims", Ownership.DIRECT);
+        retain("ipd_insurance_claim_events", Ownership.DIRECT);
+        retain("bed_reservations", Ownership.DIRECT);
+        // Patient access log: who opened, printed or downloaded a record (append-only, like audit_logs).
+        retain("patient_access_logs", Ownership.DIRECT);
         retain("bed_status_audits", Ownership.DIRECT);
         retain("support_tickets", Ownership.DIRECT);
 

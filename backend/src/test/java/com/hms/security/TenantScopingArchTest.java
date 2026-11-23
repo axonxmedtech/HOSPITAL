@@ -73,7 +73,8 @@ class TenantScopingArchTest {
             "BillingController#updateBillItems",
             "BillingController#validateBillingAccess",
             "BillingPdfService#generateBillingReceiptPdf",
-            "BillingSchedulerService#bedPriceOn",
+            // Night job, no user context: ward ids come from the admission's own bed history.
+            "BillingSchedulerService#wardAt",
             "BillingService#autoGenerateOpdBill",
             "BillingService#createOpdBill",
             // Reads the admission and ward of an already tenant-scoped bill, and checks both
@@ -122,19 +123,26 @@ class TenantScopingArchTest {
             "IcuVentilatorService#requireAdmission",
             "InitialAssessmentService#requireAdmission",
             "InventoryTransactionService#getTransactionHistory",
+            // The caller's own hospital (diet sheet letterhead), from the security context.
+            "IpdCareController#dietSheetPdf",
+            // The caller's own hospital (letterhead); the advance itself is loaded with *AndHospitalId.
+            "IpdAdmissionService#advanceReceiptPdf",
             "IpdAdmissionService#addIpdFollowup",
             "IpdAdmissionService#addIpdPrescription",
             // Remaining by-id load here is hospitalRepository.findById(hospitalId) where the id
             // comes from the authenticated token, not the request. The request-controlled
             // medicine lookup that used to make this entry false-safe is now
             // findByIdAndHospitalId (see IpdMedicineTenantIsolationTest).
-            "IpdAdmissionService#administerItems",
             "IpdAdmissionService#administerHospitalItems",
             "IpdAdmissionService#admitFromOpd",
             "IpdAdmissionService#changeBed",
             "IpdAdmissionService#confirmDischarge",
+            // Loads the caller's own hospital (letterhead); the id comes from an admission already proven owned.
+            "IpdAdmissionService#dischargeSummaryPdf",
             "IpdAdmissionService#getAdmittedIpdSummariesForCurrentUser",
             "IpdAdmissionService#getIpdAdmissionDetails",
+            // The caller's own hospital, to read its modules.
+            "IpdAdmissionService#hasBillingModule",
             "IpdAdmissionService#hasNursingModule",
             "IpdAdmissionService#listIpdAdmissions",
             "IpdAdmissionService#listMyIpdAdmissionsForDoctor",
@@ -201,6 +209,7 @@ class TenantScopingArchTest {
             "PlatformTicketController#updateTicketStatus",
             "PlatformTicketService#getTicketById",
             "PlatformTicketService#updateTicketStatus",
+            "PharmacyInvoiceDetailsService#load",
             "PlatformUserService#resetUserPassword",
             "PrescriptionPresetController#doctorNameOrNull",
             "PresetOwnershipSupport#sanitizeAssignedDoctorId",

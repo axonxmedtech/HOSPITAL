@@ -1,6 +1,8 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import hospitalService from '../services/hospitalService';
+import ConsultationModal from './ConsultationModal';
 
 // headlessui's combobox measures itself when it closes; jsdom has no ResizeObserver.
 globalThis.ResizeObserver =
@@ -39,18 +41,13 @@ vi.mock('../services/hospitalService', () => ({
     getInClinicPresets: vi.fn().mockResolvedValue([]),
     getPrescriptionPresets: vi.fn().mockResolvedValue([]),
     getConsultationNotePresets: vi.fn().mockResolvedValue([]),
-    getPatientConsultationDetails: vi
-      .fn()
-      .mockResolvedValue({
-        patient: { name: 'Ravi Kumar', age: 46 },
-        opdHistory: [],
-        ipdHistory: [],
-      }),
+    getPatientConsultationDetails: vi.fn().mockResolvedValue({
+      patient: { name: 'Ravi Kumar', age: 46 },
+      opdHistory: [],
+      ipdHistory: [],
+    }),
   },
 }));
-
-import hospitalService from '../services/hospitalService';
-import ConsultationModal from './ConsultationModal';
 
 /**
  * The medicine field names nothing until something is picked from the catalogue.
@@ -121,7 +118,7 @@ describe('ConsultationModal — catalogue selection is required', () => {
     await openPrescriptionTab(user);
     const field = screen.getByPlaceholderText('Search medicine from catalog...');
     await user.type(field, 'Ascoril');
-    await user.click(screen.getByPlaceholderText('Dosage (e.g., 500mg)'));
+    await user.click(screen.getByLabelText('Strength'));
 
     expect(field).toHaveValue('');
     await submit(user);

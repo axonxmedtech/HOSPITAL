@@ -80,6 +80,10 @@ public class MedicineMaster {
     @Column(name = "gst_percentage")
     private BigDecimal gstPercentage;
 
+    /** HSN code for GST invoices (medicines are usually 3003 / 3004). */
+    @Column(name = "hsn_code", length = 10)
+    private String hsnCode;
+
     @Column(name = "requires_prescription")
     private Boolean requiresPrescription = true;
 

@@ -128,8 +128,10 @@ describe('ConsultationModal — submission', () => {
     await user.type(screen.getByPlaceholderText('Search medicine from catalog...'), name);
     await user.click(screen.getByRole('button', { name: `pick ${name}` }));
 
-    await user.type(screen.getByPlaceholderText('Dosage (e.g., 500mg)'), dosage);
-    await user.type(screen.getByPlaceholderText('Duration (e.g., 5 Days)'), duration);
+    // Strength, dose and duration are structured fields: "500mg" → 500 mg, 1 tablet, "5 Days" → 5.
+    await user.type(screen.getByLabelText('Strength'), dosage.match(/\d+/)[0]);
+    await user.selectOptions(screen.getByLabelText('Dose'), '1');
+    await user.type(screen.getByLabelText('Duration'), duration.match(/\d+/)[0]);
     if (frequency) {
       const morning = screen.getByLabelText('Morning dose');
       await user.clear(morning);
@@ -171,7 +173,8 @@ describe('ConsultationModal — submission', () => {
     expect(payload.prescription).toHaveLength(1);
     expect(payload.prescription[0]).toMatchObject({
       medicineName: 'Paracetamol',
-      dosage: '500mg',
+      strength: '500 mg',
+      dosage: '1 tablet',
       duration: '5 Days',
     });
     expect(payload.prescription[0].frequency).toBeTruthy();
@@ -189,8 +192,9 @@ describe('ConsultationModal — submission', () => {
 
     await user.type(screen.getByPlaceholderText('Search medicine from catalog...'), 'Paracetamol');
     await user.click(screen.getByRole('button', { name: 'pick Paracetamol' }));
-    await user.type(screen.getByPlaceholderText('Dosage (e.g., 500mg)'), '500mg');
-    await user.type(screen.getByPlaceholderText('Duration (e.g., 5 Days)'), '5 Days');
+    await user.type(screen.getByLabelText('Strength'), '500');
+    await user.selectOptions(screen.getByLabelText('Dose'), '1');
+    await user.type(screen.getByLabelText('Duration'), '5');
 
     // One click instead of three keystrokes -- and it must satisfy the same frequency
     // validation that blocks Add Medicine when no dose is set.

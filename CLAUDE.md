@@ -131,6 +131,47 @@ Each hospital picks which vitals are captured at OPD entry and can define its ow
 - **Built-ins:** `service/hospital/VitalRegistry` (`BP`, `TEMPERATURE`, `PULSE`, `HEIGHT`, `WEIGHT`, `SPO2`), each mapped to a typed `opd` column. **Custom** vitals live in `hospital_vitals` (`is_custom=true`) and their values in the **`opd.custom_vitals` JSON** column (built-ins keep their typed columns).
 - **Defaults/rules:** lazy — a built-in with no `hospital_vitals` row is enabled; toggling writes an override. Built-ins can be turned off but **never deleted**; only customs are deletable (deleting keeps historical values). Custom vitals have **no validation**; built-ins keep theirs (BP `120/80` format, numerics ranged). `VitalSettingsService`: `list`/`enabledVitals`/`toggle`/`addCustom`/`deleteCustom` + `enabledBuiltInKeys`/`enabledCustomKeys` (used by `OpdService` to drop disabled vitals server-side) + `enabledVitalsFor(hospitalId)` (used by `ClinicalPdfService` to build the case-paper VITAL SIGNS table dynamically). API `/hospital/vitals`. Frontend: `VitalsSettingsCard.jsx` (Settings) + `hooks/useEnabledVitals.js` (drives the 3 OPD entry forms and the doctor's `ConsultationModal` vitals strip).
 
+### Patient records & history (nothing is lost)
+
+- **Never hard-delete patient, clinical or billing rows** — cancel, archive, stop, undo or mark inactive. `security/NoHardDeleteOfPatientDataTest` fails the build on a new delete call/method/raw `DELETE FROM` on those repositories/tables (a short reviewed allowlist covers editing an open bill's draft lines). The platform's permanent facility delete (`PlatformHospitalService.deleteHospitalPermanently`) requires the facility blocked first + its exact name typed + a reason, and writes a mandatory audit row before purging.
+- **Patient File** — `GET /hospital/patients/{publicId}/file` (`PatientFileService`): every OPD visit, IPD stay, ICU stay, surgery, bill and document. Admin/doctor everything; receptionist no clinical detail; nurse / nurse in-charge only a patient currently in their care (`NurseAccessGuard`); bills follow `security/BillingAccessPolicy` (shared with `BillingController`). Admin can open a deleted patient's file. Frontend `pages/hospital/PatientFile.jsx` at `/patients/:publicId/file`; patient names link there via `components/records/PatientNameLink`.
+- **History lists** (server-filtered, paged, `view` + `from`/`to` ISO dates + `search`): `GET /hospital/ipd?view=CURRENT|DISCHARGED|CANCELLED|ALL` (doctor = own admissions), `GET /hospital/icu/history?view=CURRENT|CLOSED|ALL` (not for staff nurses), `GET /hospital/surgeries/history?view=ACTIVE|DONE|CANCELLED|ALL`. Frontend: `components/RecordsFilterBar` (view tabs, date quick-picks, search) + `components/records/{Ipd,Icu,Ot}HistoryView`.
+- **Access log (who opened which record)** — annotate every controller method that opens, prints or downloads a patient's record with `@PatientRecordAccess(record = Kind.X, action = …, label = "…")` (`com.hms.audit`); `PatientAccessAspect` writes a `patient_access_logs` row after a 2xx answer, tracing the method's **first `@PathVariable`** to the patient (hospital-scoped lookups in `PatientAccessLogRepository`). Same user + record + action within 10 min = one row. Append-only, retained on facility purge, kept apart from `audit_logs`. Admin reads it at `GET /hospital/patients/{publicId}/access-log` → Patient File "Access log" tab (`components/records/PatientAccessLog`).
+- **Backups** — nightly `db-backup.yml` → `scripts/db/backup.sh` (dump stays on the VPS) → `offsite-copy.sh` (age-encrypted copy to S3, `daily/` + `monthly/`; `OFFSITE=required` fails the run if it can't). Setup and restore: `docs/database/OFFSITE_BACKUPS.md`; disk encryption: `docs/security/DATA_AT_REST.md`.
+
+### Pharmacy money and stock rules
+
+- **Prices include GST (MRP style).** A batch's selling price (≤ MRP) is what the customer pays; GST is extracted from it. `service/pharmacy/PharmacyBillCalculator` is the only place a counter bill is priced — `PharmacySaleService.createSale` ignores every amount the browser sends and refuses expired / blocked / disposed batches, empty bills, discounts above the bill and unknown payment methods. `utils/pharmacyMoney.js` mirrors it for display only.
+- **Invoices:** consecutive serials per facility (or branch) per financial year from `PharmacyInvoiceNumberService` (`PH/26-27/00001`, `B3/…`, return notes `SR/…`); create the series row _before_ taking the lock (MySQL gap lock — see `PharmacyInvoiceNumberIT`). GSTIN / drug licence live on `hospitals` (Settings → Invoice details) and print on the tax invoice.
+- **Refunds** are recorded in `pharmacy_sale_returns` (amount + GST in it) and are based on what was paid per unit, never the shelf price. Reports read refunds from there; revenue and profit exclude GST.
+- **Purchases** are totalled on the server (rate excl. GST + GST − discount). Drafts can be edited / discarded; a posted purchase can only be cancelled (with a reason) while all its stock is still on the shelf. A re-used batch number must keep its expiry and cannot revive a blocked / disposed batch. Supplier payments go to `purchase_payments`.
+- **Branches:** every pharmacy query takes `securityHelper.getCurrentBranchId()` (null = whole pharmacy); new queries must too. Money / stock changes outside a sale go through `PharmacyAuditTrail` (shown in the pharmacy Audit Logs).
+- A `PHARMACY` facility cannot reach doctor / receptionist / patient endpoints (`FacilityAccessAspect.NOT_FOR_PHARMACY`).
+
+### IPD rules (admission → discharge)
+
+- **Numbers & cancel:** IPD numbers run per hospital (`uk_ipd_admission_hospital_ipd_number`; the admission locks the hospital row). A mistaken admission is **cancelled** (`POST /hospital/ipd/{id}/cancel`, status `CANCELLED`), never discharged. Cancelling frees the bed, voids the bill and reopens the doctor's request. It is refused once a stock dose was given, a surgery is booked, or a discharge is planned.
+- **Bed charges:** all bed, nursing and visit days come from `IpdChargePeriods` (`CALENDAR_DAY` or `HOURS_24` + grace).
+  - The rule is snapshotted on `ipd_admission` at admission and set in `ipd_billing_settings`.
+  - Line descriptions name the day, which makes them idempotent and lets packages find them.
+  - `BillingSchedulerService` is the only place that adds day 2+ charges.
+- **Packages:** `ipd_packages` cover bed, nursing and visits for N days. Applying one later credits the covered lines with a negative adjustment line, and removal is reversed by opposite lines; nothing is deleted.
+- **Money:**
+  - **Advances** are `billing_payments` of kind `ADVANCE` and may exceed the balance. The unused part is refunded at `confirm-discharge` (`refundMode`).
+  - **Insurance:** `ipd_insurance_claims` follow a state machine in `IpdInsuranceService`. The approved amount is the insurer's share at discharge, and the bill stays open for it. The settlement is posted as kind/mode `INSURANCE`.
+- **Discharge summary:**
+  - Structured (`DischargeSummaryRules`: diagnosis, course and condition required) and editable while `DISCHARGE_PLANNED`.
+  - PDF via `ClinicalPdfService.generateDischargeSummaryPdf`.
+  - A NORMAL discharge books the follow-up appointment (best effort, next free 15-minute slot).
+- **Care orders:** `IpdCareAccess` decides who may read and write.
+  - **Rounds:** one timeline (`/rounds`) that nurses can read.
+  - **Investigations:** stored on `lab_orders` with `ipd_admission_id` (ORDERED → SAMPLE_COLLECTED → COMPLETED/CANCELLED). A result may be recorded after discharge.
+  - **Diet:** `diet_orders` (history kept), plus a diet sheet PDF.
+- **Bed reservations:** `bed_reservations` hold a free bed until `reserved_until`.
+  - `BedReservationService.claimFor` is called by admit and change-bed. Only the reserved patient may enter, matched by `patientId`, or by `reservationId` for a hold made by name.
+  - Expired holds are ignored.
+- **Desk role:** reception, the admin, or a doctor in Solo/Both mode (`FrontDeskAccess`).
+
 ### Design docs
 
 Specs and phase plans live under `docs/superpowers/specs/` and `docs/superpowers/plans/` (dated markdown). Consult the latest `nursing-mgmt-phase*` docs before extending the nurse module.

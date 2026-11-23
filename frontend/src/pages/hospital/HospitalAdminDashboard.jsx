@@ -22,6 +22,7 @@ import AppointmentModal from '../../components/AppointmentModal';
 import DailyCollectionReport from '../../components/billing/DailyCollectionReport';
 import OpdBillCell from '../../components/billing/OpdBillCell';
 import ConfirmationModal from '../../components/ConfirmationModal';
+import DataMenu from '../../components/DataMenu';
 import DataTable from '../../components/DataTable';
 import DateSelect from '../../components/DateSelect';
 import DuplicatePhoneConflictModal from '../../components/DuplicatePhoneConflictModal';
@@ -48,9 +49,15 @@ import PatientFormFields, {
   stripPatientPayload,
 } from '../../components/PatientFormFields';
 import PatientModal from '../../components/PatientModal';
+import PatientSearchPicker from '../../components/PatientSearchPicker';
 import PlanUsage from '../../components/plan/PlanUsage';
 import PrescriptionPresetsManager from '../../components/PrescriptionPresetsManager';
 import ProfileModal from '../../components/ProfileModal';
+import IpdHistoryView from '../../components/records/IpdHistoryView';
+import { patientFilePath } from '../../components/records/patientFile';
+import PatientNameLink from '../../components/records/PatientNameLink';
+import SubTabs from '../../components/records/SubTabs';
+import { DateRangeFilter } from '../../components/RecordsFilterBar';
 import SetupChecklist from '../../components/SetupChecklist';
 import Sidebar from '../../components/Sidebar';
 import {
@@ -69,6 +76,7 @@ import { useConfirm } from '../../context/ConfirmContext';
 import { useToast } from '../../context/ToastContext';
 import useDebounce from '../../hooks/useDebounce'; // BUG-017: standardised debounce hook
 import useEnabledVitals from '../../hooks/useEnabledVitals';
+import useOpdCreateError from '../../hooks/useOpdCreateError';
 import useWebSocket from '../../hooks/useWebSocket';
 import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
@@ -81,6 +89,7 @@ import timeSlotService from '../../services/timeSlotService';
 import wardService from '../../services/wardService';
 import { safeLoadMessage, extractApiError } from '../../utils/apiError';
 import { localIsoDate } from '../../utils/date';
+import { rangeFor, rangeParams } from '../../utils/dateRange';
 import { extractPhoneConflicts } from '../../utils/duplicatePhone';
 import { backdropProps } from '../../utils/modalA11y';
 import { describeShift, isOnShiftNow } from '../../utils/nurseShift';
@@ -97,14 +106,18 @@ import IcuBedBoard from './icu/IcuBedBoard';
 import IcuDashboard from './icu/IcuDashboard';
 import IcuWardsAndBeds from './icu/IcuWardsAndBeds';
 import IcuDashboardView from './IcuDashboardView';
+import IpdBillingSettingsCard from './IpdBillingSettingsCard';
+import IpdPackagesCard from './IpdPackagesCard';
 import OtAnalyticsCard from './OtAnalyticsCard';
 import OtPermissionsCard from './OtPermissionsCard';
 import OtPoliciesCard from './OtPoliciesCard';
 import OtRoomsCard from './OtRoomsCard';
 import BillingHistoryView from './pharmacy/BillingHistoryView';
 import SuppliersView from './pharmacy/SuppliersView';
+import PharmacyInvoiceDetailsCard from './PharmacyInvoiceDetailsCard';
 import PrintPaymentSettingsCard from './PrintPaymentSettingsCard';
 import ScoreSettingsCard from './ScoreSettingsCard';
+import SidebarSettingsCard from './SidebarSettingsCard';
 import TimeSlotsView from './TimeSlotsView';
 import VentilatorSettingsCard from './VentilatorSettingsCard';
 import VitalsSettingsCard from './VitalsSettingsCard';
@@ -151,7 +164,12 @@ const HospitalAdminDashboard = () => {
   const hasIPD = modules.includes('IPD');
   const hasAppointments = modules.includes('APPOINTMENTS');
   // Tenant-aware label: clinic logins say "Clinic" wherever we'd otherwise say "Hospital".
-  const tenantWord = user?.hospitalType === 'CLINIC' ? 'Clinic' : 'Hospital';
+  const tenantWord =
+    user?.hospitalType === 'CLINIC'
+      ? 'Clinic'
+      : user?.hospitalType === 'PHARMACY'
+        ? 'Pharmacy'
+        : 'Hospital';
   const isPharmacyTenant = user?.hospitalType === 'PHARMACY';
   // The analytics endpoint is HOSPITAL-only and is not aliased for the other tenant types.
   // Framed as "not one of the others" to match apiService, which rewrites /hospital/** only for
@@ -185,6 +203,7 @@ const HospitalAdminDashboard = () => {
   const [createTaskModal, setCreateTaskModal] = useState(false);
   const [pharmacists, setPharmacists] = useState([]);
   const [doctorSubView, setDoctorSubView] = useState('Active');
+  const [adminIpdView, setAdminIpdView] = useState('current'); // 'current' | 'history'
   const [deletedDoctors, setDeletedDoctors] = useState([]);
   const [otIncharges, setOtIncharges] = useState([]);
   const [appointments, setAppointments] = useState([]);
@@ -193,6 +212,8 @@ const HospitalAdminDashboard = () => {
   const [icuPatients, setIcuPatients] = useState([]);
   const [opds, setOpds] = useState([]);
   const [billingStatus, setBillingStatus] = useState('PENDING');
+  const [billingCategory, setBillingCategory] = useState(''); // '' = all, 'OPD', 'IPD'
+  const [billingRange, setBillingRange] = useState(() => rangeFor('all')); // bill date window
   const [auditLogs, setAuditLogs] = useState([]);
   const [stats, setStats] = useState({ today: 0, pending: 0, total: 0 });
   const [loading, setLoading] = useState(false);
@@ -360,7 +381,6 @@ const HospitalAdminDashboard = () => {
   // the submit is waiting on a person to say whether it is the same patient or a different one.
   const [adminOpdPhoneConflicts, setAdminOpdPhoneConflicts] = useState(null);
   const adminOpdInFlight = useRef(false);
-  const [adminOpdShowDropdown, setAdminOpdShowDropdown] = useState(false);
   // OPD "New Patient": the patient fields are rendered inline in this same OPD form, so one
   // submit registers the patient and opens their OPD. Same fields, same client rules and the
   // same endpoint as the Patients tab - the existing-patient search path below is untouched.
@@ -565,7 +585,7 @@ const HospitalAdminDashboard = () => {
       loadData();
     } catch (err) {
       console.error('Failed to create OPD', err);
-      toastError('Failed to create OPD case');
+      await showOpdCreateError(err);
     } finally {
       // Released on both paths, so a failure leaves the button usable for the retry
       // — which, thanks to the patient id persisted above, now creates only the OPD.
@@ -613,6 +633,7 @@ const HospitalAdminDashboard = () => {
   const [ticketForm, setTicketForm] = useState({ subject: '', message: '', priority: 'LOW' });
 
   const navigate = useNavigate();
+  const showOpdCreateError = useOpdCreateError();
 
   // Reset patientDateFilter at midnight IST
   useEffect(() => {
@@ -660,6 +681,8 @@ const HospitalAdminDashboard = () => {
     searchTerm,
     page,
     billingStatus,
+    billingCategory,
+    billingRange,
     auditLogRoleFilter,
     patientTabView,
     patientDateFilter,
@@ -668,13 +691,15 @@ const HospitalAdminDashboard = () => {
     appointmentsViewFilter,
     pharmacyRefreshKey,
     doctorSubView,
+    adminIpdView,
   ]);
 
   // Periodic background polling replaced with WebSocket real-time sync
 
   // Effect for Patients list loading (Overview Tab specific)
   useEffect(() => {
-    if (activeTab !== 'overview') return;
+    // A pharmacy's Overview has no patient list (and a pharmacy has no patient records).
+    if (activeTab !== 'overview' || isPharmacyTenant) return;
     if (patientsSearchInput === '' && patientsSearchTerm !== '') return;
     loadPatients(patientsSearchTerm, patientsPage);
   }, [activeTab, patientsSearchTerm, patientsPage, pageSize]);
@@ -1294,7 +1319,7 @@ const HospitalAdminDashboard = () => {
       if (activeTab === 'overview') {
         if (isPharmacyTenant) {
           const [dashboardData, recentBillsData, lowStockData] = await Promise.all([
-            reportsApi.getDashboardData(),
+            reportsApi.getDashboardData(rangeParams(rangeFor('30d'))),
             salesApi.getHistory(0, 5),
             inventoryApi.getLowStock(0, 5),
           ]);
@@ -1479,7 +1504,14 @@ const HospitalAdminDashboard = () => {
             setPatients(patData);
           }
         } else if (activeTab === 'billing') {
-          const data = await hospitalService.getBills(searchTerm, page, pageSize, billingStatus);
+          const data = await hospitalService.getBills(
+            searchTerm,
+            page,
+            pageSize,
+            billingStatus,
+            billingCategory,
+            rangeParams(billingRange)
+          );
           if (data && data.content) {
             setBilling(Array.isArray(data.content) ? data.content : []);
             setTotalPages(data.totalPages || 1);
@@ -1493,6 +1525,9 @@ const HospitalAdminDashboard = () => {
             setTotalPages(1);
             setTotalElements(0);
           }
+        } else if (activeTab === 'ipd' && adminIpdView === 'history') {
+          // IpdHistoryView loads its own server-filtered, paged list.
+          setIpds([]);
         } else if (activeTab === 'ipd') {
           try {
             // Use admissions endpoint to show only currently admitted patients (same as receptionist)
@@ -1980,6 +2015,8 @@ const HospitalAdminDashboard = () => {
   const handleEdit = (item, type = null) => {
     setEditData(item);
     const modalTypeStr = type && typeof type === 'string' ? type : activeTab;
+    // A doctor added while the Deleted list is showing appears under Active Doctors.
+    if (modalTypeStr === 'doctors') setDoctorSubView('Active');
     setModalType(modalTypeStr);
     setShowModal(true);
   };
@@ -2613,7 +2650,7 @@ const HospitalAdminDashboard = () => {
                 <div className="bg-white p-6 rounded-2xl border border-gray-150 shadow-sm relative overflow-hidden group">
                   <div className="absolute top-0 right-0 w-20 h-20 bg-blue-50/50 rounded-bl-full -z-10"></div>
                   <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                    Gross Sales
+                    Sales (incl. GST)
                   </p>
                   <h3 className="text-2xl font-black text-gray-900 mt-2">
                     ₹
@@ -2623,7 +2660,7 @@ const HospitalAdminDashboard = () => {
                     })}
                   </h3>
                   <p className="text-[10px] text-gray-400 mt-1 font-semibold">
-                    Total processed invoices
+                    Last 30 days, before refunds
                   </p>
                 </div>
 
@@ -2631,17 +2668,17 @@ const HospitalAdminDashboard = () => {
                 <div className="bg-white p-6 rounded-2xl border border-gray-150 shadow-sm relative overflow-hidden group">
                   <div className="absolute top-0 right-0 w-20 h-20 bg-green-50/50 rounded-bl-full -z-10"></div>
                   <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                    Net Revenue
+                    Net Sales
                   </p>
                   <h3 className="text-2xl font-black text-emerald-600 mt-2">
                     ₹
-                    {(pharmacyStats?.kpis?.netRevenue || 0).toLocaleString('en-IN', {
+                    {(pharmacyStats?.kpis?.netSales || 0).toLocaleString('en-IN', {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     })}
                   </h3>
                   <p className="text-[10px] text-emerald-600/80 mt-1 font-semibold">
-                    Net profit after customer returns
+                    Last 30 days, after refunds
                   </p>
                 </div>
 
@@ -2659,7 +2696,7 @@ const HospitalAdminDashboard = () => {
                     })}
                   </h3>
                   <p className="text-[10px] text-indigo-500/80 mt-1 font-semibold">
-                    Cash value of active shelf stock
+                    Stock on the shelf today, at cost
                   </p>
                 </div>
 
@@ -2667,13 +2704,13 @@ const HospitalAdminDashboard = () => {
                 <div className="bg-white p-6 rounded-2xl border border-gray-150 shadow-sm relative overflow-hidden group">
                   <div className="absolute top-0 right-0 w-20 h-20 bg-amber-50/50 rounded-bl-full -z-10"></div>
                   <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                    Profit Margin
+                    Gross Margin
                   </p>
                   <h3 className="text-2xl font-black text-amber-600 mt-2">
                     {pharmacyStats?.kpis?.profitMargin || 0}%
                   </h3>
                   <p className="text-[10px] text-amber-600/80 mt-1 font-semibold">
-                    Average mark-up profit margin
+                    Last 30 days, profit on sales excl. GST
                   </p>
                 </div>
               </div>
@@ -2803,10 +2840,11 @@ const HospitalAdminDashboard = () => {
                       ) : (
                         <div className="text-center py-12 text-green-600 font-bold text-xs flex items-center justify-center gap-1">
                           <svg
-                            className="w-4.5 h-4.5"
+                            className="w-5 h-5 shrink-0"
                             fill="none"
                             viewBox="0 0 24 24"
                             stroke="currentColor"
+                            aria-hidden="true"
                           >
                             <path
                               strokeLinecap="round"
@@ -2815,7 +2853,7 @@ const HospitalAdminDashboard = () => {
                               d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
                             />
                           </svg>
-                          All medicine stocks are healthy!
+                          Nothing below its low-stock level. Set levels per medicine in Inventory.
                         </div>
                       )
                     ) : (pharmacyStats?.fastMoving || []).length > 0 ? (
@@ -3112,13 +3150,18 @@ const HospitalAdminDashboard = () => {
                     : activeTab === 'opd'
                       ? 'Active patients currently in queue or being consulted'
                       : activeTab === 'ipd'
-                        ? 'Manage currently admitted patients in general wards'
+                        ? adminIpdView === 'history'
+                          ? 'Every admission — discharged, current and cancelled — kept for good'
+                          : 'Manage currently admitted patients in general wards'
                         : activeTab === 'icu'
                           ? 'Manage critical-care patients currently admitted to ICU'
                           : `Manage ${isPharmacyTenant ? 'pharmacy' : user?.hospitalType === 'CLINIC' ? 'clinic' : 'hospital'} ${activeTab} records`
                 }
                 onSearch={
-                  activeTab === 'fees' || activeTab === 'settings'
+                  activeTab === 'fees' ||
+                  activeTab === 'settings' ||
+                  activeTab === 'icu' || // the ICU view has its own search (in ICU history)
+                  (activeTab === 'ipd' && adminIpdView === 'history')
                     ? null
                     : (e) => setSearchInput(e.target.value)
                 }
@@ -3131,28 +3174,26 @@ const HospitalAdminDashboard = () => {
                     ? () => setIsAdminOpdModalOpen(true)
                     : activeTab === 'nurse-tasks'
                       ? () => setCreateTaskModal(true)
-                      : activeTab === 'doctors' && doctorSubView === 'Deleted'
-                        ? null
-                        : activeTab === 'ipd'
-                          ? () => {
-                              setAdminIpdOpdForAdmit(null);
-                              setIsAdminIpdAdmitOpen(true);
-                            }
-                          : activeTab === 'icu'
-                            ? null
-                            : activeTab !== 'billing' &&
-                                activeTab !== 'audit-logs' &&
-                                activeTab !== 'fees' &&
-                                activeTab !== 'settings' &&
-                                activeTab !== 'ot' &&
-                                activeTab !== 'time-slots' &&
-                                activeTab !== 'calendar' &&
-                                activeTab !== 'icu-wards' &&
-                                activeTab !== 'icu-dashboard' &&
-                                activeTab !== 'icu-beds' &&
-                                user?.role === 'HOSPITAL_ADMIN'
-                              ? handleAdd
-                              : null
+                      : activeTab === 'ipd'
+                        ? () => {
+                            setAdminIpdOpdForAdmit(null);
+                            setIsAdminIpdAdmitOpen(true);
+                          }
+                        : activeTab === 'icu'
+                          ? null
+                          : activeTab !== 'billing' &&
+                              activeTab !== 'audit-logs' &&
+                              activeTab !== 'fees' &&
+                              activeTab !== 'settings' &&
+                              activeTab !== 'ot' &&
+                              activeTab !== 'time-slots' &&
+                              activeTab !== 'calendar' &&
+                              activeTab !== 'icu-wards' &&
+                              activeTab !== 'icu-dashboard' &&
+                              activeTab !== 'icu-beds' &&
+                              user?.role === 'HOSPITAL_ADMIN'
+                            ? handleAdd
+                            : null
                 }
                 addLabel={
                   activeTab === 'opd'
@@ -3161,14 +3202,24 @@ const HospitalAdminDashboard = () => {
                       ? 'Admit Patient'
                       : activeTab === 'nurse-tasks'
                         ? 'New Task'
-                        : activeTab === 'fees' ||
-                            activeTab === 'settings' ||
-                            (activeTab === 'doctors' && doctorSubView === 'Deleted')
+                        : activeTab === 'fees' || activeTab === 'settings'
                           ? ''
                           : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'nurses' ? 'Nurse' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'ot-incharges' ? 'OT Incharge' : activeTab === 'appointments' && hasAppointments ? 'Appointment' : activeTab === 'wards' ? 'Ward' : ''}`
                 }
                 filter={
-                  activeTab === 'doctors' && user?.role === 'HOSPITAL_ADMIN' ? (
+                  activeTab === 'ipd' ? (
+                    <SubTabs
+                      options={[
+                        { value: 'current', label: 'Current Patients' },
+                        { value: 'history', label: 'Discharged / History' },
+                      ]}
+                      value={adminIpdView}
+                      onChange={(v) => {
+                        setAdminIpdView(v);
+                        setSearchInput('');
+                      }}
+                    />
+                  ) : activeTab === 'doctors' && user?.role === 'HOSPITAL_ADMIN' ? (
                     <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 h-[38px] items-center">
                       {['Active', 'Deleted'].map((subView) => (
                         <button
@@ -3190,16 +3241,7 @@ const HospitalAdminDashboard = () => {
                       ))}
                     </div>
                   ) : activeTab === 'patients' ? (
-                    <div className="flex items-center gap-2">
-                      {!isPharmacyTenant && user?.role === 'HOSPITAL_ADMIN' && (
-                        <button
-                          type="button"
-                          className="px-4 py-2 rounded-lg border border-gray-300 bg-white text-sm font-medium hover:bg-gray-50"
-                          onClick={() => navigate('/hospital/patients/import')}
-                        >
-                          Import Patients
-                        </button>
-                      )}
+                    <div className="flex flex-wrap items-center gap-2">
                       <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 h-[38px] items-center">
                         {['All', 'Date'].map((view) => (
                           <button
@@ -3227,28 +3269,20 @@ const HospitalAdminDashboard = () => {
                           onChange={(v) => setPatientDateFilter(v)}
                         />
                       )}
-                      <button
-                        type="button"
-                        onClick={handleDownloadPatientsReport}
-                        disabled={loading}
-                        className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px] whitespace-nowrap shrink-0"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-4 w-4"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                          />
-                        </svg>
-                        <span>Download PDF</span>
-                      </button>
+                      <DataMenu
+                        items={[
+                          !isPharmacyTenant &&
+                            user?.role === 'HOSPITAL_ADMIN' && {
+                              label: 'Import Patients',
+                              onClick: () => navigate('/hospital/patients/import'),
+                            },
+                          {
+                            label: 'Download PDF',
+                            onClick: handleDownloadPatientsReport,
+                            disabled: loading,
+                          },
+                        ]}
+                      />
                     </div>
                   ) : activeTab === 'opd' ? (
                     <div className="flex items-center gap-2">
@@ -3279,28 +3313,20 @@ const HospitalAdminDashboard = () => {
                           onChange={(v) => setOpdDateFilter(v)}
                         />
                       )}
-                      <button
-                        type="button"
-                        onClick={handleDownloadOpdReport}
-                        disabled={loading}
-                        className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px] whitespace-nowrap shrink-0"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-4 w-4"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                          />
-                        </svg>
-                        <span>Download PDF</span>
-                      </button>
+                      <DataMenu
+                        items={[
+                          !isPharmacyTenant &&
+                            user?.role === 'HOSPITAL_ADMIN' && {
+                              label: 'Import Patients',
+                              onClick: () => navigate('/hospital/patients/import'),
+                            },
+                          {
+                            label: 'Download PDF',
+                            onClick: handleDownloadOpdReport,
+                            disabled: loading,
+                          },
+                        ]}
+                      />
                     </div>
                   ) : activeTab === 'appointments' && hasAppointments ? (
                     <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 h-[38px] items-center">
@@ -3323,20 +3349,43 @@ const HospitalAdminDashboard = () => {
                       ))}
                     </div>
                   ) : activeTab === 'billing' ? (
-                    <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
-                      {['PENDING', 'PARTIAL', 'PAID', 'CANCELLED'].map((status) => (
-                        <button
-                          key={status}
-                          onClick={() => setBillingStatus(status)}
-                          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
-                            billingStatus === status
-                              ? 'bg-white text-primary-600 shadow-sm border border-gray-100'
-                              : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
-                          }`}
-                        >
-                          {status.charAt(0) + status.slice(1).toLowerCase()}
-                        </button>
-                      ))}
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
+                        {['PENDING', 'PARTIAL', 'PAID', 'CANCELLED'].map((status) => (
+                          <button
+                            key={status}
+                            onClick={() => setBillingStatus(status)}
+                            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
+                              billingStatus === status
+                                ? 'bg-white text-primary-600 shadow-sm border border-gray-100'
+                                : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
+                            }`}
+                          >
+                            {status.charAt(0) + status.slice(1).toLowerCase()}
+                          </button>
+                        ))}
+                      </div>
+                      <select
+                        aria-label="Bill category"
+                        value={billingCategory}
+                        onChange={(e) => {
+                          setBillingCategory(e.target.value);
+                          setPage(0);
+                        }}
+                        className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white text-gray-700"
+                      >
+                        <option value="">All categories</option>
+                        <option value="OPD">OPD</option>
+                        <option value="IPD">IPD</option>
+                      </select>
+                      <DateRangeFilter
+                        range={billingRange}
+                        label="Bill date"
+                        onChange={(r) => {
+                          setBillingRange(r);
+                          setPage(0);
+                        }}
+                      />
                     </div>
                   ) : activeTab === 'audit-logs' ? (
                     <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 gap-1">
@@ -3998,6 +4047,12 @@ const HospitalAdminDashboard = () => {
                           iconClass: 'bg-sky-50 text-sky-600',
                         },
                         {
+                          view: 'sidebar',
+                          title: 'Sidebar',
+                          desc: 'Choose which tabs each role sees in the menu.',
+                          iconClass: 'bg-indigo-50 text-indigo-600',
+                        },
+                        {
                           view: 'vitals',
                           title: 'Vitals',
                           desc: 'Which vitals are captured at OPD entry; add your own.',
@@ -4032,6 +4087,16 @@ const HospitalAdminDashboard = () => {
                                 title: 'Medicines',
                                 desc: 'Who can record a medicine or saline as given — taken off stock and billed.',
                                 iconClass: 'bg-sky-50 text-sky-600',
+                              },
+                            ]
+                          : []),
+                        ...(modules.includes('IPD') && modules.includes('BILLING')
+                          ? [
+                              {
+                                view: 'ipd-billing',
+                                title: 'IPD Billing & Packages',
+                                desc: 'How bed days are counted, the advance for a planned admission, doctor visit fee and packages.',
+                                iconClass: 'bg-emerald-50 text-emerald-600',
                               },
                             ]
                           : []),
@@ -4546,6 +4611,21 @@ const HospitalAdminDashboard = () => {
                           )}
                         </div>
                       )}
+                    </div>
+                  )}
+                  {(isPharmacyTenant ||
+                    (settingsView === 'operations' && user?.modules?.includes('PHARMACY'))) && (
+                    <PharmacyInvoiceDetailsCard />
+                  )}
+                  {!isPharmacyTenant && settingsView === 'sidebar' && (
+                    <div className="max-w-4xl mx-auto my-4">
+                      <SidebarSettingsCard user={user} adminTabs={tabs} />
+                    </div>
+                  )}
+                  {!isPharmacyTenant && settingsView === 'ipd-billing' && (
+                    <div className="max-w-4xl mx-auto my-4">
+                      <IpdBillingSettingsCard />
+                      <IpdPackagesCard />
                     </div>
                   )}
                   {!isPharmacyTenant && settingsView === 'vitals' && (
@@ -5644,7 +5724,9 @@ const HospitalAdminDashboard = () => {
                   )}
                 </div>
               )}
+              {activeTab === 'ipd' && adminIpdView === 'history' && <IpdHistoryView />}
               {activeTab === 'ipd' &&
+                adminIpdView !== 'history' &&
                 (loadError ? (
                   <LoadFailureNotice message={loadError} onRetry={() => loadData()} />
                 ) : ipds.length > 0 ? (
@@ -6216,7 +6298,6 @@ const HospitalAdminDashboard = () => {
                   onClick={() => {
                     setIsAdminOpdModalOpen(false);
                     setAdminOpdPatientSearch('');
-                    setAdminOpdShowDropdown(false);
                     setAdminOpdForm({
                       patientId: null,
                       doctorId: null,
@@ -6276,7 +6357,6 @@ const HospitalAdminDashboard = () => {
                     aria-pressed={adminOpdPatientMode === 'new'}
                     onClick={() => {
                       setAdminOpdPatientMode('new');
-                      setAdminOpdShowDropdown(false);
                       // Drop any patient picked by search, so only one of the two
                       // sources is ever in play.
                       setAdminOpdPatientSearch('');
@@ -6309,74 +6389,20 @@ const HospitalAdminDashboard = () => {
                     <span className="block text-sm font-semibold text-neutral-700 mb-2">
                       Patient <span className="text-red-600">*</span>
                     </span>
-                    <div className="relative">
-                      <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
-                        <svg
-                          className="w-5 h-5"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                          />
-                        </svg>
-                      </span>
-                      <input
-                        type="text"
-                        className="w-full border border-gray-300 rounded-xl pl-10 pr-4 py-2 focus:ring-2 focus:ring-sky-500 text-sm focus:border-transparent text-slate-800"
-                        value={adminOpdPatientSearch}
-                        onChange={(e) => {
-                          setAdminOpdPatientSearch(e.target.value);
-                          setAdminOpdShowDropdown(true);
-                          setAdminOpdForm((prev) => ({ ...prev, patientId: null }));
-                        }}
-                        onFocus={() => setAdminOpdShowDropdown(true)}
-                        onBlur={() => setTimeout(() => setAdminOpdShowDropdown(false), 250)}
-                        placeholder="Type patient name to search..."
-                        autoComplete="off"
-                      />
-                    </div>
-                    {adminOpdShowDropdown && adminOpdPatientSearch.trim().length >= 2 && (
-                      <div className="absolute left-0 right-0 mt-1 bg-white border border-neutral-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto divide-y divide-neutral-100">
-                        {patients.filter((p) =>
-                          p.name?.toLowerCase().includes(adminOpdPatientSearch.toLowerCase())
-                        ).length > 0 ? (
-                          patients
-                            .filter((p) =>
-                              p.name?.toLowerCase().includes(adminOpdPatientSearch.toLowerCase())
-                            )
-                            .map((p) => (
-                              <button
-                                type="button"
-                                key={p.id}
-                                onMouseDown={() => {
-                                  setAdminOpdForm((prev) => ({ ...prev, patientId: p.id }));
-                                  setAdminOpdPatientSearch(
-                                    `${p.name}${p.phone ? ` (${p.phone})` : ''}`
-                                  );
-                                  setAdminOpdShowDropdown(false);
-                                }}
-                                className="w-full px-4 py-3 hover:bg-neutral-50 cursor-pointer transition-colors duration-150 flex flex-col gap-0.5 text-left border-0"
-                              >
-                                <span className="font-semibold text-neutral-800 text-sm">
-                                  {p.name}
-                                </span>
-                                <span className="text-xs text-neutral-500">
-                                  {p.phone ? `📞 ${p.phone}` : ''} | {p.age} Yrs | {p.gender}
-                                </span>
-                              </button>
-                            ))
-                        ) : (
-                          <div className="px-4 py-4 text-sm text-neutral-500 text-center">
-                            No matching patients found
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    <PatientSearchPicker
+                      text={adminOpdPatientSearch}
+                      onTextChange={setAdminOpdPatientSearch}
+                      onSelect={(p) =>
+                        setAdminOpdForm((prev) => ({ ...prev, patientId: p ? p.id : null }))
+                      }
+                      onRegisterNew={(typed) => {
+                        setAdminOpdPatientMode('new');
+                        setAdminNewPatientForm((prev) => ({
+                          ...prev,
+                          ...(/^[\d\s+-]+$/.test(typed) ? { phone: typed } : { name: typed }),
+                        }));
+                      }}
+                    />
                   </div>
                 )}
                 {/* Doctor Select */}
@@ -7464,6 +7490,7 @@ const PatientsTable = ({
   startIndex = 0,
   pagination,
 }) => {
+  const navigate = useNavigate();
   const columnHelper = createColumnHelper();
 
   const columns = [
@@ -7479,7 +7506,9 @@ const PatientsTable = ({
     }),
     columnHelper.accessor('name', {
       header: 'Name',
-      cell: (info) => <span className="font-medium text-gray-900">{info.getValue()}</span>,
+      cell: (info) => (
+        <PatientNameLink publicId={info.row.original.publicId} name={info.getValue()} />
+      ),
     }),
     columnHelper.accessor('age', {
       header: 'Age',
@@ -7502,6 +7531,20 @@ const PatientsTable = ({
               <div className="text-right">
                 <ActionMenu
                   actions={[
+                    {
+                      label: 'Patient file',
+                      onClick: () => navigate(patientFilePath(info.row.original.publicId)),
+                      icon: (
+                        <svg
+                          className="h-4 w-4"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                          aria-hidden="true"
+                        >
+                          <path d="M4 3a2 2 0 012-2h5.586A2 2 0 0113 1.586L16.414 5A2 2 0 0117 6.414V17a2 2 0 01-2 2H6a2 2 0 01-2-2V3zm3 7a1 1 0 000 2h6a1 1 0 100-2H7zm0 4a1 1 0 100 2h6a1 1 0 100-2H7z" />
+                        </svg>
+                      ),
+                    },
                     {
                       label: 'View Details',
                       onClick: () => onViewDetails(info.row.original),

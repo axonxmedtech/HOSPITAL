@@ -27,6 +27,7 @@ public class ManufacturerService {
     public Manufacturer createManufacturer(ManufacturerRequest req) {
         Manufacturer m = new Manufacturer();
         m.setHospitalId(securityHelper.getCurrentHospitalId());
+        refuseDuplicate(m.getHospitalId(), req.getManufacturerName(), null);
         m.setManufacturerName(req.getManufacturerName());
         m.setContactPerson(req.getContactPerson());
         m.setPhone(req.getPhone());
@@ -55,6 +56,7 @@ public class ManufacturerService {
     @Transactional
     public Manufacturer update(Long id, ManufacturerRequest req) {
         Manufacturer m = getById(id);
+        refuseDuplicate(m.getHospitalId(), req.getManufacturerName(), m.getId());
         m.setManufacturerName(req.getManufacturerName());
         m.setContactPerson(req.getContactPerson());
         m.setPhone(req.getPhone());
@@ -74,5 +76,11 @@ public class ManufacturerService {
         Manufacturer saved = manufacturerRepository.save(m);
         notifier.refresh(securityHelper.getCurrentHospitalId());
         return saved;
+    }
+
+    private void refuseDuplicate(Long hid, String name, Long exceptId) {
+        if (name != null && manufacturerRepository.nameTaken(hid, name, exceptId)) {
+            throw new IllegalArgumentException("A manufacturer named '" + name.trim() + "' already exists");
+        }
     }
 }

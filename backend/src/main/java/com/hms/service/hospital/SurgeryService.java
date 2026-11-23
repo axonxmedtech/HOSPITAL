@@ -376,6 +376,42 @@ public class SurgeryService {
                 hospitalId, day.atStartOfDay(), day.plusDays(1).atStartOfDay()));
     }
 
+    /** OT history views. */
+    public static final Map<String, List<String>> OT_VIEWS = Map.of(
+            "ACTIVE", List.of("REQUESTED", "APPROVED", "SCHEDULED", "PRE_OP", "IN_PROGRESS", "POSTPONED"),
+            "DONE", List.of(Surgery.COMPLETED, "CLOSED"),
+            "CANCELLED", List.of(Surgery.CANCELLED),
+            "ALL", List.of("REQUESTED", "APPROVED", "SCHEDULED", "PRE_OP", "IN_PROGRESS", "POSTPONED",
+                    Surgery.COMPLETED, "CLOSED", Surgery.CANCELLED));
+
+    /**
+     * OT history: every surgery — open, done (completed / closed) or cancelled — with a from–to
+     * window on the operation date and a search over patient and procedure. A doctor sees the
+     * cases they operated or requested; everyone else with OT access sees the hospital's.
+     * Read-only.
+     */
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<SurgeryView> history(
+            String view, java.time.LocalDate from, java.time.LocalDate to, String search, int page, int size) {
+        Long hospitalId = requireHospitalId();
+        String v = view == null || view.isBlank() ? "DONE" : view.trim().toUpperCase(java.util.Locale.ROOT);
+        List<String> statuses = OT_VIEWS.get(v);
+        if (statuses == null) throw new IllegalArgumentException("Unknown view: " + view + " (use ACTIVE, DONE, CANCELLED or ALL)");
+        if (from != null && to != null && to.isBefore(from)) throw new IllegalArgumentException("The 'to' date is before the 'from' date");
+        Long doctorId = null;
+        if ("DOCTOR".equals(securityHelper.getCurrentUserRole())) {
+            doctorId = doctorRepository.findByEmailAndHospitalId(securityHelper.getCurrentUserEmail(), hospitalId)
+                    .map(Doctor::getId).orElse(-1L);
+        }
+        String q = search == null || search.isBlank() ? null : "%" + search.trim().toLowerCase(java.util.Locale.ROOT) + "%";
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(
+                Math.max(0, page), Math.max(1, Math.min(size, 100)),
+                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "scheduledAt", "requestedAt", "id"));
+        org.springframework.data.domain.Page<Surgery> p = surgeryRepository.searchHistory(hospitalId, statuses, doctorId,
+                from == null ? null : from.atStartOfDay(), to == null ? null : to.plusDays(1).atStartOfDay(), q, pageable);
+        return new org.springframework.data.domain.PageImpl<>(decorate(p.getContent()), pageable, p.getTotalElements());
+    }
+
     /** The case timeline: every status change with its actor and reason. */
     public List<com.hms.entity.SurgeryStateTransition> timeline(String publicId) {
         Long hospitalId = requireHospitalId();
@@ -627,6 +663,7 @@ public class SurgeryService {
                     patientRepository.findById(id).orElse(null));
             if (p != null) {
                 v.setPatientName(p.getName());
+                v.setPatientPublicId(p.getPublicId());
                 v.setPatientAge(p.getAge());
                 v.setPatientSex(p.getGender());
             }

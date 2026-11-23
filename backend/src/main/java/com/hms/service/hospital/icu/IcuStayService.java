@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -48,7 +49,8 @@ public class IcuStayService {
 
     private static final List<String> DISPOSITIONS = List.of(
             IcuStay.DISP_WARD, IcuStay.DISP_HOME, IcuStay.DISP_LAMA,
-            IcuStay.DISP_REFERRED_OUT, IcuStay.DISP_EXPIRED, IcuStay.DISP_ANOTHER_ICU);
+            IcuStay.DISP_REFERRED_OUT, IcuStay.DISP_EXPIRED, IcuStay.DISP_ANOTHER_ICU,
+            IcuStay.DISP_CANCELLED);
 
     @Autowired private IcuStayRepository icuStayRepository;
     @Autowired private com.hms.repository.IcuWardRepository icuWardRepository;
@@ -254,7 +256,7 @@ public class IcuStayService {
         }
 
         final Long filterDoctorId;
-        if ("DOCTOR".equalsIgnoreCase(role)) {
+        if (ROLE_DOCTOR.equalsIgnoreCase(role)) {
             String email = securityHelper.getCurrentUserEmail();
             filterDoctorId = doctorRepository.findByEmailAndHospitalId(email, hospitalId)
                     .map(com.hms.entity.Doctor::getId)
@@ -272,7 +274,7 @@ public class IcuStayService {
 
         List<com.hms.dto.icu.IcuPatientSummaryDTO> result = new java.util.ArrayList<>();
         for (IpdAdmission ipd : admissions) {
-            if ("NURSE".equals(role)) {
+            if (ROLE_NURSE.equals(role)) {
                 Long userId = securityHelper.getCurrentUserId();
                 if (userId == null || (!assignments.existsByIpdAdmissionIdAndNurseUserIdAndIsActiveTrue(ipd.getId(), userId)
                         && !coverageService.coversAdmission(userId, ipd.getId(), java.time.LocalDate.now()))) {
@@ -341,16 +343,127 @@ public class IcuStayService {
         return result;
     }
 
+    private static final String ROLE_DOCTOR = "DOCTOR";
+    private static final String ROLE_NURSE = "NURSE";
+    private static final String VIEW_CLOSED = "CLOSED";
+
+    /** ICU list views. */
+    public static final Map<String, List<String>> ICU_VIEWS = Map.of(
+            "CURRENT", List.of(IcuStay.ACTIVE),
+            VIEW_CLOSED, List.of(IcuStay.CLOSED),
+            "ALL", List.of(IcuStay.ACTIVE, IcuStay.CLOSED));
+
+    /**
+     * ICU history: every stay — in the unit now or already moved out — with a from–to date
+     * window (ICU discharge date in the Closed view, ICU admission date otherwise) and a search.
+     * Admin and reception see every unit, a doctor the stays of their own patients (or where they
+     * were the intensivist), a nurse in-charge the units they manage. A staff nurse sees only the
+     * patients currently in their care, so history is not offered to that role. Read-only.
+     */
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<Map<String, Object>> history(
+            String view, java.time.LocalDate from, java.time.LocalDate to, String search, int page, int size) {
+        Long hospitalId = requireHospitalId();
+        String role = securityHelper.getCurrentUserRole();
+        if (ROLE_NURSE.equals(role)) {
+            throw new org.springframework.security.access.AccessDeniedException("ICU history is not available for staff nurses");
+        }
+        String v = view == null || view.isBlank() ? VIEW_CLOSED : view.trim().toUpperCase(java.util.Locale.ROOT);
+        List<String> statuses = ICU_VIEWS.get(v);
+        if (statuses == null) throw new IllegalArgumentException("Unknown view: " + view + " (use CURRENT, CLOSED or ALL)");
+        if (from != null && to != null && to.isBefore(from)) throw new IllegalArgumentException("The 'to' date is before the 'from' date");
+
+        boolean byDischarge = VIEW_CLOSED.equals(v);
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(
+                Math.max(0, page), Math.max(1, Math.min(size, 100)),
+                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC,
+                        byDischarge ? "dischargedAt" : "admittedAt", "id"));
+        Map<Long, String> unitNames = new HashMap<>();
+        scopedPatientWards(hospitalId, role).forEach(u -> unitNames.put(u.getWardId(), u.getWardName()));
+        Optional<Long> doctorScope = ROLE_DOCTOR.equals(role)
+                ? Optional.of(doctorRepository.findByEmailAndHospitalId(securityHelper.getCurrentUserEmail(), hospitalId)
+                        .map(com.hms.entity.Doctor::getId).orElse(-1L))
+                : Optional.empty();
+        if (unitNames.isEmpty()) return org.springframework.data.domain.Page.empty(pageable);
+
+        String q = search == null || search.isBlank() ? null : "%" + search.trim().toLowerCase(java.util.Locale.ROOT) + "%";
+        org.springframework.data.domain.Page<IcuStay> p = icuStayRepository.searchHistory(hospitalId, statuses,
+                unitNames.keySet(), doctorScope.orElse(null), byDischarge,
+                from == null ? null : from.atStartOfDay(), to == null ? null : to.plusDays(1).atStartOfDay(), q, pageable);
+        return new org.springframework.data.domain.PageImpl<>(historyRows(hospitalId, p.getContent(), unitNames),
+                pageable, p.getTotalElements());
+    }
+
+    /** History rows with patient, IPD number and doctor names, loaded in tenant-scoped batches. */
+    private List<Map<String, Object>> historyRows(Long hospitalId, List<IcuStay> stays, Map<Long, String> unitNames) {
+        Map<Long, com.hms.entity.Patient> patients = new HashMap<>();
+        patientRepository.findByHospitalIdAndIdIn(hospitalId,
+                        stays.stream().map(IcuStay::getPatientId).collect(java.util.stream.Collectors.toSet()))
+                .forEach(x -> patients.put(x.getId(), x));
+        Map<Long, IpdAdmission> admissions = new HashMap<>();
+        stays.stream().map(IcuStay::getIpdAdmissionId).distinct().forEach(id ->
+                ipdAdmissionRepository.findByIdAndHospitalId(id, hospitalId).ifPresent(a -> admissions.put(id, a)));
+        java.util.Set<Long> doctorIds = new java.util.HashSet<>();
+        stays.stream().map(IcuStay::getIntensivistDoctorId).filter(java.util.Objects::nonNull).forEach(doctorIds::add);
+        admissions.values().stream().map(IpdAdmission::getDoctorId).filter(java.util.Objects::nonNull).forEach(doctorIds::add);
+        Map<Long, String> doctorNames = new HashMap<>();
+        if (!doctorIds.isEmpty()) {
+            doctorRepository.findByHospitalIdAndIdIn(hospitalId, doctorIds).forEach(d -> doctorNames.put(d.getId(), d.getName()));
+        }
+        return stays.stream()
+                .map(st -> historyRow(st, admissions.get(st.getIpdAdmissionId()), patients.get(st.getPatientId()),
+                        unitNames, doctorNames))
+                .toList();
+    }
+
+    private static Map<String, Object> historyRow(IcuStay st, IpdAdmission a, com.hms.entity.Patient pt,
+                                                  Map<Long, String> unitNames, Map<Long, String> doctorNames) {
+        Map<String, Object> m = new java.util.LinkedHashMap<>();
+        m.put("publicId", st.getPublicId());
+        m.put("status", st.getStatus());
+        m.put("ipdAdmissionId", st.getIpdAdmissionId());
+        m.put("ipdNumber", a != null ? a.getIpdNumber() : null);
+        m.put("ipdStatus", a != null ? a.getStatus() : null);
+        m.put("unitName", unitNames.get(st.getWardId()));
+        m.put("admittedAt", st.getAdmittedAt());
+        m.put("dischargedAt", st.getDischargedAt());
+        m.put("days", stayDays(st));
+        m.put("disposition", st.getDisposition());
+        m.put("source", st.getSource());
+        m.put("intensivistName", doctorNames.get(st.getIntensivistDoctorId()));
+        m.put("doctorName", a != null ? doctorNames.get(a.getDoctorId()) : null);
+        if (pt != null) m.put("patient", patientSummary(pt));
+        return m;
+    }
+
+    /** Whole days in the ICU (at least 1); a stay still open counts up to now. */
+    private static Long stayDays(IcuStay st) {
+        if (st.getAdmittedAt() == null) return null;
+        java.time.LocalDateTime end = st.getDischargedAt();
+        if (end == null) end = java.time.LocalDateTime.now(java.time.ZoneId.systemDefault());
+        return Math.max(1, java.time.temporal.ChronoUnit.DAYS.between(st.getAdmittedAt().toLocalDate(), end.toLocalDate()));
+    }
+
+    private static Map<String, Object> patientSummary(com.hms.entity.Patient pt) {
+        Map<String, Object> pm = new java.util.LinkedHashMap<>();
+        pm.put("publicId", pt.getPublicId());
+        pm.put("name", pt.getName());
+        pm.put("phone", pt.getPhone());
+        pm.put("gender", pt.getGender());
+        pm.put("dateOfBirth", pt.getDateOfBirth());
+        return pm;
+    }
+
     /** Match the established ICU board ward scope before loading patient identities. */
     private List<com.hms.entity.IcuWard> scopedPatientWards(Long hospitalId, String role) {
         List<com.hms.entity.IcuWard> wards = icuWardRepository.findByHospitalId(hospitalId);
         return switch (role == null ? "" : role) {
-            case "HOSPITAL_ADMIN", "DOCTOR", "RECEPTIONIST" -> wards;
+            case "HOSPITAL_ADMIN", ROLE_DOCTOR, "RECEPTIONIST" -> wards;
             case "NURSE_INCHARGE" -> {
                 var wardIds = nurseInchargeGuard.myWardIds();
                 yield wards.stream().filter(w -> wardIds.contains(w.getWardId())).toList();
             }
-            case "NURSE" -> {
+            case ROLE_NURSE -> {
                 Long wardId = nurseProfileRepository.findByUserId(securityHelper.getCurrentUserId())
                         .filter(n -> hospitalId.equals(n.getHospitalId()))
                         .map(com.hms.entity.NurseProfile::getWardId).orElse(null);

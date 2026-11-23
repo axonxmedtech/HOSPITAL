@@ -8,6 +8,7 @@ const WardModal = ({ open, initial, onClose, onSaved }) => {
   const { error: toastError } = useToast();
   const [wardName, setWardName] = useState('');
   const [bedPrice, setBedPrice] = useState('');
+  const [nursingCharge, setNursingCharge] = useState('');
   const [totalBeds, setTotalBeds] = useState('');
   const [floorNumber, setFloorNumber] = useState('');
   const [saving, setSaving] = useState(false);
@@ -16,11 +17,13 @@ const WardModal = ({ open, initial, onClose, onSaved }) => {
     if (initial) {
       setWardName(initial.wardName || '');
       setBedPrice(initial.bedPrice ?? '');
+      setNursingCharge(initial.nursingCharge ?? '');
       setTotalBeds(initial.totalBeds ?? '');
       setFloorNumber(initial.floorNumber ?? '');
     } else {
       setWardName('');
       setBedPrice('');
+      setNursingCharge('');
       setTotalBeds('');
       setFloorNumber('');
     }
@@ -50,6 +53,7 @@ const WardModal = ({ open, initial, onClose, onSaved }) => {
         const payload = {
           wardName,
           bedPrice: Number(bedPrice),
+          nursingCharge: nursingCharge === '' ? 0 : Number(nursingCharge),
           floorNumber: floorNumber ? Number(floorNumber) : null,
           totalBeds: totalBeds === '' ? null : Number(totalBeds),
         };
@@ -58,6 +62,7 @@ const WardModal = ({ open, initial, onClose, onSaved }) => {
         const payload = {
           wardName,
           bedPrice: Number(bedPrice),
+          nursingCharge: nursingCharge === '' ? 0 : Number(nursingCharge),
           totalBeds: totalBeds ? Number(totalBeds) : 0,
           floorNumber: floorNumber ? Number(floorNumber) : null,
         };
@@ -107,6 +112,22 @@ const WardModal = ({ open, initial, onClose, onSaved }) => {
               onChange={(e) => setBedPrice(e.target.value)}
               type="number"
               step="0.01"
+              className="mt-1 w-full p-2 border rounded"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="ward-nursing-charge" className="block text-sm text-slate-600">
+              Nursing Charge per Day (optional)
+            </label>
+            <input
+              id="ward-nursing-charge"
+              value={nursingCharge}
+              onChange={(e) => setNursingCharge(e.target.value)}
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="0 = no nursing charge"
               className="mt-1 w-full p-2 border rounded"
             />
           </div>

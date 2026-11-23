@@ -5,6 +5,7 @@ import authService from '../../../services/authService';
 import manufacturersApi from '../../../services/pharmacy/manufacturersApi';
 import medicinesApi from '../../../services/pharmacy/medicinesApi';
 import suppliersApi from '../../../services/pharmacy/suppliersApi';
+import { extractApiError } from '../../../utils/apiError';
 import { localIsoDate } from '../../../utils/date';
 
 // Common medicine forms/types for the Type dropdown (a picked medicine's own type is added on top
@@ -28,7 +29,7 @@ const MEDICINE_TYPE_OPTIONS = [
   'Other',
 ];
 
-const PurchaseForm = ({ isOpen, onClose, onSave }) => {
+const PurchaseForm = ({ isOpen, onClose, onSave, initial = null }) => {
   const toast = useToast();
   const currentUser = authService.getCurrentUser();
   // Standalone pharmacy: medicine sourced from the platform catalog; type is editable,
@@ -57,6 +58,7 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
       medicineType: '',
       manufacturerName: '',
       batchNumber: '',
+      hsnCode: '',
       expiryDate: '',
       quantity: '',
       freeQuantity: 0,
@@ -85,6 +87,7 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
         medicineType: '',
         manufacturerName: '',
         batchNumber: '',
+        hsnCode: '',
         expiryDate: '',
         quantity: '',
         freeQuantity: 0,
@@ -97,12 +100,44 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
     ]);
   };
 
+  // Editing a draft fills the form from it; otherwise start empty.
+  const fillFrom = (inv) => {
+    setHeader({
+      supplierId: inv.supplierId ? String(inv.supplierId) : '',
+      invoiceNumber: inv.invoiceNumber || '',
+      invoiceDate: inv.invoiceDate || localIsoDate(),
+      subtotal: Number(inv.subtotal) || 0,
+      discountAmount: Number(inv.discountAmount) || 0,
+      gstAmount: Number(inv.gstAmount) || 0,
+      totalAmount: Number(inv.totalAmount) || 0,
+    });
+    setItems(
+      (inv.items || []).map((it) => ({
+        medicineId: it.medicineId ? String(it.medicineId) : '',
+        medicineName: it.medicine?.medicineName || '',
+        medicineType: it.medicine?.medicineType || '',
+        manufacturerName: it.medicine?.manufacturerName || '',
+        batchNumber: it.batchNumber || '',
+        hsnCode: it.medicine?.hsnCode || '',
+        expiryDate: it.expiryDate || '',
+        quantity: it.quantity ?? '',
+        freeQuantity: it.freeQuantity ?? 0,
+        purchaseRate: it.purchaseRate ?? '',
+        mrp: it.mrp ?? '',
+        sellingPrice: it.sellingPrice ?? '',
+        gstPercentage: it.gstPercentage ?? 0,
+        lineTotal: Number(it.lineTotal) || 0,
+      }))
+    );
+  };
+
   useEffect(() => {
     if (isOpen) {
       fetchSuppliers();
-      resetForm(); // Clear old data when opening
+      if (initial) fillFrom(initial);
+      else resetForm(); // Clear old data when opening
     }
-  }, [isOpen]);
+  }, [isOpen, initial]);
 
   const fetchSuppliers = async () => {
     try {
@@ -147,6 +182,7 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
         medicineType: '',
         manufacturerName: '',
         batchNumber: '',
+        hsnCode: '',
         expiryDate: '',
         quantity: '',
         freeQuantity: 0,
@@ -219,11 +255,19 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
         gstPercentage: parseFloat(it.gstPercentage) || 0,
         lineTotal: parseFloat(it.lineTotal) || 0,
         expiryDate: it.expiryDate || null, // Convert empty string to null
-        batchNumber: it.batchNumber || 'UNBATCHED',
+        batchNumber: (it.batchNumber || '').trim(),
+        hsnCode: (it.hsnCode || '').trim(),
       }));
 
     if (validItems.length === 0) {
       toast.error('Please add at least one valid medicine item with quantity');
+      return;
+    }
+    const missingBatch = validItems.find((it) => !it.batchNumber);
+    if (missingBatch) {
+      toast.error(
+        `Enter the batch number printed on the pack for ${missingBatch.medicineName || 'every medicine'}`
+      );
       return;
     }
 
@@ -243,7 +287,8 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
       await onSave(payload);
       onClose();
     } catch (err) {
-      // Error handling is handled by the parent view or toast
+      // The server explains what is wrong (duplicate invoice, batch expiry clash, ...).
+      toast.error(extractApiError(err, 'Could not save the purchase'));
     } finally {
       setIsSubmitting(false);
     }
@@ -256,7 +301,9 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-7xl max-h-[95vh] overflow-hidden flex flex-col">
         <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">New Purchase Inward</h2>
+            <h2 className="text-2xl font-bold text-gray-900">
+              {initial ? `Edit draft ${initial.invoiceNumber}` : 'New Purchase Inward'}
+            </h2>
             <p className="text-sm text-gray-500">
               Enter supplier invoice details and update inventory.
             </p>
@@ -344,6 +391,12 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
                     <th className="px-3 py-3 font-medium w-36">Manufacturer</th>
                   )}
                   <th className="px-3 py-3 font-medium w-32">Batch</th>
+                  <th
+                    className="px-3 py-3 font-medium w-24"
+                    title="HSN code for the tax invoice, e.g. 3004"
+                  >
+                    HSN
+                  </th>
                   <th className="px-3 py-3 font-medium w-90">Expiry</th>
                   <th className="px-3 py-3 font-medium w-24">Qty</th>
                   <th className="px-3 py-3 font-medium w-24">Free</th>
@@ -405,6 +458,20 @@ const PurchaseForm = ({ isOpen, onClose, onSave }) => {
                         onChange={(e) => handleItemChange(index, 'batchNumber', e.target.value)}
                         className="w-full border-b border-transparent group-hover:border-gray-200 focus:border-gray-900 focus:ring-0 text-sm py-1 bg-transparent outline-none"
                         placeholder="Batch"
+                      />
+                    </td>
+                    <td className="px-3 py-3">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={8}
+                        value={item.hsnCode || ''}
+                        onChange={(e) =>
+                          handleItemChange(index, 'hsnCode', e.target.value.replace(/\D/g, ''))
+                        }
+                        className="w-full border-b border-transparent group-hover:border-gray-200 focus:border-gray-900 focus:ring-0 text-sm py-1 bg-transparent outline-none"
+                        placeholder="3004"
+                        aria-label="HSN code"
                       />
                     </td>
                     <td className="px-3 py-3">

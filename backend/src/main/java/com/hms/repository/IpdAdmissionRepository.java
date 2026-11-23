@@ -12,7 +12,6 @@ import org.springframework.data.jpa.repository.Lock;
 public interface IpdAdmissionRepository extends JpaRepository<IpdAdmission, Long> {
     boolean existsByWardIdAndHospitalId(Long wardId, Long hospitalId);
 
-    Optional<IpdAdmission> findByIpdNumber(String ipdNumber);
 
     /**
      * Portable across MySQL (production) and H2 (test profile). MySQL's CAST accepts
@@ -22,13 +21,18 @@ public interface IpdAdmissionRepository extends JpaRepository<IpdAdmission, Long
      * any realistic sequence and keeps the value exact.
      */
     @org.springframework.data.jpa.repository.Query(
-        value = "SELECT COALESCE(MAX(CAST(SUBSTRING(ipd_number, 5) AS DECIMAL(20,0))), 0) FROM ipd_admission WHERE ipd_number LIKE 'IPD-%'",
+        value = "SELECT COALESCE(MAX(CAST(SUBSTRING(ipd_number, 5) AS DECIMAL(20,0))), 0) FROM ipd_admission "
+                + "WHERE hospital_id = :hospitalId AND ipd_number LIKE 'IPD-%'",
         nativeQuery = true)
-    Long findMaxIpdSequence();
+    Long findMaxIpdSequence(@org.springframework.data.repository.query.Param("hospitalId") Long hospitalId);
     boolean existsByHospitalIdAndPatientIdAndStatusIn(Long hospitalId, Long patientId,
             java.util.Collection<String> statuses);
 
     Optional<IpdAdmission> findByIdAndHospitalId(Long id, Long hospitalId);
+
+    /** The patient's current admission, if they are in hospital. */
+    Optional<IpdAdmission> findFirstByHospitalIdAndPatientIdAndStatusInOrderByIdDesc(Long hospitalId,
+            Long patientId, java.util.Collection<String> statuses);
 
     /** A patient's admissions in one facility. Used to decide nursing access to their records. */
     java.util.List<IpdAdmission> findByHospitalIdAndPatientId(Long hospitalId, Long patientId);
@@ -82,4 +86,31 @@ public interface IpdAdmissionRepository extends JpaRepository<IpdAdmission, Long
             @org.springframework.data.repository.query.Param("toExclusive") java.time.LocalDateTime toExclusive);
 
     java.util.Optional<IpdAdmission> findByHospitalIdAndPatientIdAndStatus(Long hospitalId, Long patientId, String status);
+
+    /**
+     * IPD list with history: status set, optional doctor, a date window (on discharge date for
+     * the Discharged view, admission date otherwise) and a search over patient name / phone /
+     * IPD number. Tenant-scoped on both the admission and the patient.
+     */
+    @org.springframework.data.jpa.repository.Query(value = """
+        SELECT a FROM IpdAdmission a
+        WHERE a.hospitalId = :hospitalId
+          AND a.status IN :statuses
+          AND (:doctorId IS NULL OR a.doctorId = :doctorId)
+          AND (:from IS NULL OR (CASE WHEN :byDischarge = true THEN a.dischargeDatetime ELSE a.admissionDatetime END) >= :from)
+          AND (:to IS NULL OR (CASE WHEN :byDischarge = true THEN a.dischargeDatetime ELSE a.admissionDatetime END) < :to)
+          AND (:q IS NULL
+               OR LOWER(a.ipdNumber) LIKE :q
+               OR a.patientId IN (SELECT p.id FROM Patient p WHERE p.hospitalId = :hospitalId
+                                  AND (LOWER(p.name) LIKE :q OR p.phone LIKE :q OR LOWER(p.customId) LIKE :q)))
+        """)
+    org.springframework.data.domain.Page<IpdAdmission> searchHistory(
+            @org.springframework.data.repository.query.Param("hospitalId") Long hospitalId,
+            @org.springframework.data.repository.query.Param("statuses") java.util.Collection<String> statuses,
+            @org.springframework.data.repository.query.Param("doctorId") Long doctorId,
+            @org.springframework.data.repository.query.Param("byDischarge") boolean byDischarge,
+            @org.springframework.data.repository.query.Param("from") java.time.LocalDateTime from,
+            @org.springframework.data.repository.query.Param("to") java.time.LocalDateTime to,
+            @org.springframework.data.repository.query.Param("q") String q,
+            org.springframework.data.domain.Pageable pageable);
 }

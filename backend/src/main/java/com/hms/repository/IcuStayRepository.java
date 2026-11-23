@@ -14,6 +14,9 @@ public interface IcuStayRepository extends JpaRepository<IcuStay, Long> {
 
     Optional<IcuStay> findByPublicIdAndHospitalId(String publicId, Long hospitalId);
 
+    /** Patient File: every ICU stay of one patient, newest first. */
+    List<IcuStay> findByPatientIdAndHospitalIdOrderByAdmittedAtDesc(Long patientId, Long hospitalId);
+
     Optional<IcuStay> findByIpdAdmissionIdAndHospitalIdAndStatus(
             Long ipdAdmissionId, Long hospitalId, String status);
 
@@ -63,4 +66,35 @@ public interface IcuStayRepository extends JpaRepository<IcuStay, Long> {
             @org.springframework.data.repository.query.Param("admissionId") Long admissionId,
             @org.springframework.data.repository.query.Param("hospitalId") Long hospitalId,
             @org.springframework.data.repository.query.Param("at") java.time.LocalDateTime at);
+
+    /**
+     * ICU history: stays by status within a set of units, optional doctor (the admission's
+     * doctor or the intensivist), a date window (on the ICU discharge date for the Closed view,
+     * on the ICU admission date otherwise) and a search over patient name / phone / id and IPD
+     * number. Tenant-scoped on every table it touches.
+     */
+    @org.springframework.data.jpa.repository.Query(value = """
+        SELECT s FROM IcuStay s
+        WHERE s.hospitalId = :hospitalId
+          AND s.status IN :statuses
+          AND s.wardId IN :wardIds
+          AND (:doctorId IS NULL OR s.intensivistDoctorId = :doctorId
+               OR s.ipdAdmissionId IN (SELECT a.id FROM IpdAdmission a WHERE a.hospitalId = :hospitalId AND a.doctorId = :doctorId))
+          AND (:from IS NULL OR (CASE WHEN :byDischarge = true THEN s.dischargedAt ELSE s.admittedAt END) >= :from)
+          AND (:to IS NULL OR (CASE WHEN :byDischarge = true THEN s.dischargedAt ELSE s.admittedAt END) < :to)
+          AND (:q IS NULL
+               OR s.patientId IN (SELECT p.id FROM Patient p WHERE p.hospitalId = :hospitalId
+                                  AND (LOWER(p.name) LIKE :q OR p.phone LIKE :q OR LOWER(p.customId) LIKE :q))
+               OR s.ipdAdmissionId IN (SELECT a2.id FROM IpdAdmission a2 WHERE a2.hospitalId = :hospitalId AND LOWER(a2.ipdNumber) LIKE :q))
+        """)
+    org.springframework.data.domain.Page<IcuStay> searchHistory(
+            @org.springframework.data.repository.query.Param("hospitalId") Long hospitalId,
+            @org.springframework.data.repository.query.Param("statuses") Collection<String> statuses,
+            @org.springframework.data.repository.query.Param("wardIds") Collection<Long> wardIds,
+            @org.springframework.data.repository.query.Param("doctorId") Long doctorId,
+            @org.springframework.data.repository.query.Param("byDischarge") boolean byDischarge,
+            @org.springframework.data.repository.query.Param("from") java.time.LocalDateTime from,
+            @org.springframework.data.repository.query.Param("to") java.time.LocalDateTime to,
+            @org.springframework.data.repository.query.Param("q") String q,
+            org.springframework.data.domain.Pageable pageable);
 }

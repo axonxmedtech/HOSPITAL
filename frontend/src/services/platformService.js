@@ -84,8 +84,12 @@ const platformService = {
   /**
    * Permanently delete a hospital and all its data
    */
-  deleteHospital: async (id) => {
-    const response = await apiClient.delete(`/platform/hospitals/${id}`);
+  deleteHospital: async (id, { confirmName, reason } = {}) => {
+    // Refused by the server unless the facility is blocked, its exact name is typed and a
+    // reason is given.
+    const response = await apiClient.delete(`/platform/hospitals/${id}`, {
+      data: { confirmName, reason },
+    });
     return response.data;
   },
 

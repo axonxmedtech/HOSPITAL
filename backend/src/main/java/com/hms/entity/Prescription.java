@@ -70,7 +70,11 @@ public class Prescription {
     private Integer quantityPerDose;
 
     @Column(length = 50)
-    private String dosage; // e.g., "500mg"
+    private String dosage; // the dose taken each time, e.g. "1/2 tablet"
+
+    /** Strength of the medicine, e.g. "500 mg", "250 mg/5 ml". Empty on older prescriptions. */
+    @Column(name = "strength", length = 50)
+    private String strength;
 
     @Column(length = 50)
     private String frequency; // e.g., "1-0-1" (Morning-Afternoon-Night)
@@ -116,4 +120,23 @@ public class Prescription {
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    /**
+     * Duration is kept both as text ("5 Days", shown and printed) and as a number of days (used
+     * for the chart and stopping). Whichever one a screen filled in, the other is derived, so no
+     * list shows a medicine without its days.
+     */
+    @PrePersist
+    @PreUpdate
+    void alignDuration() {
+        boolean noText = duration == null || duration.isBlank();
+        if (noText && durationDays != null && durationDays > 0) {
+            duration = durationDays + (durationDays == 1 ? " Day" : " Days");
+        } else if (!noText && durationDays == null) {
+            java.util.regex.Matcher m = java.util.regex.Pattern
+                    .compile("(\\d{1,3})\\s*+(?:days?|d)?", java.util.regex.Pattern.CASE_INSENSITIVE)
+                    .matcher(duration.strip());
+            if (m.matches()) durationDays = Integer.parseInt(m.group(1));
+        }
+    }
 }

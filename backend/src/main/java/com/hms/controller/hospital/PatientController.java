@@ -1,5 +1,6 @@
 package com.hms.controller.hospital;
 
+import com.hms.audit.PatientRecordAccess;
 import com.hms.exception.ResourceNotFoundException;
 
 import com.hms.entity.Patient;
@@ -19,6 +20,12 @@ public class PatientController {
 
     @Autowired
     private PatientService patientService;
+
+    @Autowired
+    private com.hms.service.hospital.PatientFileService patientFileService;
+
+    @Autowired
+    private com.hms.service.hospital.PatientAccessLogService patientAccessLogService;
 
     @Autowired
     private com.hms.security.SecurityContextHelper securityHelper;
@@ -41,17 +48,16 @@ public class PatientController {
      * shared-phone workflow into an opt-out. Both roles that may register a patient may also
      * acknowledge a shared number — they are the people standing in front of the family.
      *
-     * <p>A doctor may act as the front desk only when the hospital says so: under
-     * HAS_RECEPTIONIST these mutations stay with reception, SOLO and BOTH open them to the
-     * doctor. Admins and receptionists are untouched. The dashboard hides the buttons, but that
-     * is convenience — {@link FrontDeskAccessGuard} is the boundary.
+     * <p>A doctor may always register a patient, whatever the hospital's reception mode: a
+     * walk-in seen by the doctor must be registrable so their OPD visit can be opened. The
+     * duplicate-phone check above still applies. Editing an existing patient's details remains
+     * front-desk work, gated by {@link FrontDeskAccessGuard} on the update below.
      */
     @PostMapping
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> addPatient(@Valid @RequestBody com.hms.dto.PatientRequest patient,
             @RequestParam(name = "acknowledgeDuplicatePhone", defaultValue = "false")
             boolean acknowledgeDuplicatePhone) {
-        frontDeskAccessGuard.require();
         Patient createdPatient = patientService.addPatient(patient.toEntity(), acknowledgeDuplicatePhone);
         return ResponseEntity.ok(createdPatient);
     }
@@ -83,6 +89,7 @@ public class PatientController {
         return ResponseEntity.ok(patientService.getAllPatients(null, view, date, pageable));
     }
 
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.PATIENT, action = PatientRecordAccess.Action.VIEW, label = "PATIENT_DETAILS")
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> getPatientById(@PathVariable String id) {
@@ -96,11 +103,38 @@ public class PatientController {
      * Clinical detail (diagnoses, medications, nursing notes), so scoped to the clinical roles
      * rather than the wider set PatientController otherwise uses.
      */
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.PATIENT, action = PatientRecordAccess.Action.VIEW, label = "CLINICAL_TIMELINE")
     @GetMapping("/{id}/timeline")
-    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR')")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'NURSE', 'NURSE_INCHARGE')")
     public ResponseEntity<?> getPatientTimeline(@PathVariable String id) {
-        Patient patient = patientService.getPatientByPublicId(id);
+        // Nurses only for a patient currently in their care; admin also for a deleted patient.
+        Patient patient = patientFileService.requireViewable(id);
         return ResponseEntity.ok(patientTimelineService.forPatient(patient.getId()));
+    }
+
+    /**
+     * The Patient File: every OPD visit, IPD stay, ICU stay, surgery, bill and document of one
+     * patient — current and finished — in one read. Read-only. Reception gets no clinical detail;
+     * nurses only patients in their care; bills follow the Billing Handler setting.
+     */
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.PATIENT, action = PatientRecordAccess.Action.VIEW, label = "PATIENT_FILE")
+    @GetMapping("/{id}/file")
+    @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST', 'NURSE', 'NURSE_INCHARGE')")
+    public ResponseEntity<?> getPatientFile(@PathVariable String id) {
+        return ResponseEntity.ok(patientFileService.fileFor(id));
+    }
+
+    /**
+     * Who opened, printed or downloaded this patient's records, newest first. Hospital admin
+     * only (also for a deleted patient). Reading the log is not itself logged.
+     */
+    @GetMapping("/{id}/access-log")
+    @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
+    public ResponseEntity<?> getPatientAccessLog(@PathVariable String id,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "25") int size) {
+        Patient patient = patientFileService.requireViewable(id);
+        return ResponseEntity.ok(patientAccessLogService.forPatient(patient.getId(), page, size));
     }
 
     @DeleteMapping("/{id}")
@@ -131,6 +165,7 @@ public class PatientController {
         return ResponseEntity.ok(updatedPatient);
     }
 
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.PATIENT, action = PatientRecordAccess.Action.VIEW, label = "CONSULTATION_DETAILS")
     @GetMapping("/{publicId}/consultation-details")
     @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> getPatientConsultationDetails(@PathVariable String publicId) {
@@ -144,6 +179,7 @@ public class PatientController {
         return ResponseEntity.ok(patientService.getLatestPrescription(publicId));
     }
 
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.OPD, action = PatientRecordAccess.Action.PRINT, label = "OPD_MEDICINES")
     @GetMapping("/opd/{opdId}/medicines/pdf")
     @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> getOpdMedicinesPdf(@PathVariable Long opdId) {
@@ -156,6 +192,7 @@ public class PatientController {
                 .body(new org.springframework.core.io.InputStreamResource(pdf));
     }
 
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.ADMISSION, action = PatientRecordAccess.Action.PRINT, label = "IPD_MEDICINES")
     @GetMapping("/ipd/{ipdId}/medicines/pdf")
     @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> getIpdMedicinesPdf(@PathVariable Long ipdId) {
@@ -168,6 +205,7 @@ public class PatientController {
                 .body(new org.springframework.core.io.InputStreamResource(pdf));
     }
 
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.ADMISSION, action = PatientRecordAccess.Action.PRINT, label = "IPD_PRESCRIPTION")
     @GetMapping("/ipd/{ipdId}/prescription/pdf")
     @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> getIpdPrescriptionPdf(@PathVariable Long ipdId) {

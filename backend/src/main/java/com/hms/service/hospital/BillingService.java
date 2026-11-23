@@ -28,6 +28,12 @@ public class BillingService {
     private static final String STATUS_CANCELLED = "CANCELLED";
     private static final String BILL_NOT_FOUND = "Bill not found";
     private static final String KIND_PAYMENT = "PAYMENT";
+    private static final String ROLE_ADMIN = "HOSPITAL_ADMIN";
+    private static final String AUDIT_CANCELLED = "BILLING_CANCELLED";
+    /** Money taken on an IPD bill ahead of the charges; it may exceed what is owed so far. */
+    public static final String KIND_ADVANCE = "ADVANCE";
+    /** Money from an insurer / TPA settling a claim. */
+    public static final String KIND_INSURANCE = "INSURANCE";
     private static final String BILL_LABEL = "Bill ";
     private static final String BILLING_MODULE = "BILLING";
 
@@ -171,22 +177,63 @@ public class BillingService {
      * Get all bills for current hospital with optional search
      */
     public Page<Billing> getAllBills(String search, String status, Pageable pageable) {
+        return getAllBills(search, status, null, pageable);
+    }
+
+    /** Bill categories offered by the list filter: what a bill is for. */
+    public static final java.util.List<String> CATEGORIES = java.util.List.of("OPD", "IPD");
+
+    /** The bills list, optionally narrowed to one category (OPD / IPD). */
+    public Page<Billing> getAllBills(String search, String status, String category, Pageable pageable) {
+        return getAllBills(search, status, category, null, null, pageable);
+    }
+
+    /**
+     * The bills list with all its filters: category (OPD / IPD), payment status, search and a
+     * bill-date window (inclusive dates). Read-only.
+     */
+    public Page<Billing> getAllBills(String search, String status, String category,
+                                     java.time.LocalDate from, java.time.LocalDate to, Pageable pageable) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         java.util.List<String> statuses = statusesForFilter(status);
-        if (search != null && !search.isEmpty()) {
-            // The status filter belongs in the query. Filtering one fetched page in memory
-            // dropped matching bills from later pages and reported a total of whatever survived
-            // on this page, so a search for "PENDING" bills could show a few and hide the rest.
-            if (statuses != null) {
-                return billingRepository.searchBillingsByStatus(hospitalId, search, statuses, pageable);
-            }
+        if (from != null && to != null && to.isBefore(from)) {
+            throw new IllegalArgumentException("The 'to' date is before the 'from' date");
+        }
+        String c = normaliseCategory(category);
+        if (c == null && from == null && to == null) {
+            return unfilteredByCategoryOrDate(hospitalId, search, statuses, pageable);
+        }
+        boolean anyStatus = statuses == null;
+        return billingRepository.findFiltered(hospitalId, c == null, c == null ? "" : c,
+                anyStatus, anyStatus ? java.util.List.of("") : statuses,
+                search == null ? "" : search.trim(),
+                from == null ? null : from.atStartOfDay(),
+                to == null ? null : to.plusDays(1).atStartOfDay(), pageable);
+    }
+
+    /** OPD / IPD, or null for "all categories". */
+    private static String normaliseCategory(String category) {
+        if (category == null || category.isBlank()) return null;
+        String c = category.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!CATEGORIES.contains(c)) {
+            throw new IllegalArgumentException("Unknown bill category: " + category);
+        }
+        return c;
+    }
+
+    /** The list with only search and status. Both are applied in the query, never per page. */
+    private Page<Billing> unfilteredByCategoryOrDate(Long hospitalId, String search,
+                                                     java.util.List<String> statuses, Pageable pageable) {
+        boolean hasSearch = search != null && !search.isEmpty();
+        if (hasSearch && statuses != null) {
+            return billingRepository.searchBillingsByStatus(hospitalId, search, statuses, pageable);
+        }
+        if (hasSearch) {
             return billingRepository.searchBillings(hospitalId, search, pageable);
         }
-
         if (statuses != null) {
             return billingRepository.findByHospitalIdAndPaymentStatusIn(hospitalId, statuses, pageable);
         }
-
         return billingRepository.findByHospitalId(hospitalId, pageable);
     }
 
@@ -490,7 +537,7 @@ public class BillingService {
     }
 
     private void requireAdmin(String message) {
-        if (!"HOSPITAL_ADMIN".equalsIgnoreCase(securityHelper.getCurrentUserRole())) {
+        if (!ROLE_ADMIN.equalsIgnoreCase(securityHelper.getCurrentUserRole())) {
             throw new org.springframework.security.access.AccessDeniedException(message);
         }
     }
@@ -706,8 +753,7 @@ public class BillingService {
         bill.setCancelledBy(currentActor());
         bill.setCancelledAt(java.time.LocalDateTime.now(java.time.ZoneId.systemDefault()));
         billingRepository.save(bill);
-        afterMoneyChange(bill, "BILLING_CANCELLED", "Cancelled bill " + bill.getCustomId() + ": " + reason.trim()
-                + (before.paid().signum() > 0 ? " (refunded " + before.paid() + ")" : "") + ".");
+        afterMoneyChange(bill, AUDIT_CANCELLED, cancelledNote(bill, ": " + reason.trim(), before.paid()));
         return moneyMap(bill, moneyFor(bill));
     }
 
@@ -731,7 +777,7 @@ public class BillingService {
         String why = "OPD visit cancelled: " + reason;
         BillMoney money = moneyFor(bill);
         if (money.paid().signum() > 0) {
-            if (!"HOSPITAL_ADMIN".equalsIgnoreCase(securityHelper.getCurrentUserRole())) {
+            if (!ROLE_ADMIN.equalsIgnoreCase(securityHelper.getCurrentUserRole())) {
                 return BILL_LABEL + bill.getCustomId() + " still holds the ₹" + money.paid().stripTrailingZeros().toPlainString()
                         + " collected. Ask the hospital admin to refund it from Billing.";
             }
@@ -746,11 +792,176 @@ public class BillingService {
         bill.setCancelledBy(currentActor());
         bill.setCancelledAt(java.time.LocalDateTime.now(java.time.ZoneId.systemDefault()));
         billingRepository.save(bill);
-        afterMoneyChange(bill, "BILLING_CANCELLED", "Cancelled bill " + bill.getCustomId() + " with its OPD visit"
-                + (money.paid().signum() > 0 ? " (refunded " + money.paid() + ")" : "") + ".");
+        afterMoneyChange(bill, AUDIT_CANCELLED, cancelledNote(bill, " with its OPD visit", money.paid()));
         return money.paid().signum() > 0
                 ? BILL_LABEL + bill.getCustomId() + " cancelled and ₹" + money.paid().stripTrailingZeros().toPlainString() + " refunded."
                 : BILL_LABEL + bill.getCustomId() + " cancelled.";
+    }
+
+    /**
+     * Voids the bills of an IPD admission that is being cancelled (made by mistake). Nothing
+     * collected: anyone allowed to cancel the admission voids them. Money collected: only the
+     * admin may, and it is refunded in the same step, so the bill ends with nothing held.
+     */
+    @Transactional
+    public void voidForCancelledAdmission(java.util.List<Billing> bills, String reason, String refundMode) {
+        Long hospitalId = securityHelper.getCurrentHospitalId();
+        String why = "IPD admission cancelled: " + reason;
+        for (Billing found : bills) {
+            if (java.util.Objects.equals(found.getHospitalId(), hospitalId)) {
+                voidOneForCancelledAdmission(found.getId(), hospitalId, why, refundMode);
+            }
+        }
+    }
+
+    private void voidOneForCancelledAdmission(Long billId, Long hospitalId, String why, String refundMode) {
+        Billing bill = billingRepository.findByIdAndHospitalIdForUpdate(billId, hospitalId).orElse(null);
+        if (bill == null || STATUS_CANCELLED.equalsIgnoreCase(bill.getPaymentStatus())) return;
+        BillMoney money = moneyFor(bill);
+        if (money.paid().signum() > 0) {
+            String amount = money.paid().stripTrailingZeros().toPlainString();
+            if (!ROLE_ADMIN.equalsIgnoreCase(securityHelper.getCurrentUserRole())) {
+                throw new org.springframework.security.access.AccessDeniedException(BILL_LABEL + bill.getCustomId()
+                        + " holds \u20B9" + amount + " collected. Only the hospital admin can cancel this admission, "
+                        + "because the money has to be refunded.");
+            }
+            if (refundMode == null || refundMode.isBlank()) {
+                throw new IllegalArgumentException("Choose how the \u20B9" + amount
+                        + " collected is refunded: Cash, Card or UPI.");
+            }
+            writeRefund(bill, money.paid(), normaliseMode(refundMode), why);
+        }
+        bill.setPaymentStatus(STATUS_CANCELLED);
+        bill.setCancelReason(why.length() > 255 ? why.substring(0, 255) : why);
+        bill.setCancelledBy(currentActor());
+        bill.setCancelledAt(java.time.LocalDateTime.now(java.time.ZoneId.systemDefault()));
+        billingRepository.save(bill);
+        afterMoneyChange(bill, AUDIT_CANCELLED, cancelledNote(bill, " with its IPD admission", money.paid()));
+    }
+
+    /** "Cancelled bill BIL-12 ... (refunded 500)." for the audit trail. */
+    private static String cancelledNote(Billing bill, String what, BigDecimal refunded) {
+        return "Cancelled bill " + bill.getCustomId() + what
+                + (refunded.signum() > 0 ? " (refunded " + refunded + ")" : "") + ".";
+    }
+
+    /**
+     * Takes an advance (deposit) on an IPD bill. Unlike a payment it may exceed what is owed so
+     * far — that is the point of an advance; the unused part is refunded at discharge. Taken
+     * under the bill's row lock so a double-clicked button can't post it twice.
+     */
+    @Transactional
+    public com.hms.entity.BillingPayment recordAdvance(Long billId, BigDecimal amount, String mode, String reference) {
+        Billing bill = lockedBill(billId);
+        if (!"IPD".equalsIgnoreCase(bill.getBillingType())) {
+            throw new IllegalArgumentException("An advance can only be taken on an IPD bill");
+        }
+        if (STATUS_CANCELLED.equalsIgnoreCase(bill.getPaymentStatus()) || STATUS_CLOSED.equalsIgnoreCase(bill.getPaymentStatus())) {
+            throw new IllegalArgumentException("This bill is " + bill.getPaymentStatus().toLowerCase() + " and can't take an advance");
+        }
+        if (amount == null || amount.signum() <= 0) {
+            throw new IllegalArgumentException("Enter an advance amount greater than zero");
+        }
+        if (amount.compareTo(new BigDecimal("10000000")) > 0) {
+            throw new IllegalArgumentException("The advance amount is too large");
+        }
+        String m = normaliseMode(mode);
+        String ref = reference == null || reference.isBlank() ? null : reference.trim();
+        if ("UPI".equals(m) && ref == null) {
+            throw new IllegalArgumentException("UTR / reference is required for UPI payments");
+        }
+        com.hms.entity.BillingPayment p = new com.hms.entity.BillingPayment();
+        p.setBillingId(bill.getId());
+        p.setHospitalId(bill.getHospitalId());
+        p.setAmount(amount.setScale(2, java.math.RoundingMode.HALF_UP));
+        p.setMode(m);
+        p.setReference(ref);
+        p.setKind(KIND_ADVANCE);
+        p.setNote("Advance deposit");
+        p.setRecordedBy(currentActor());
+        com.hms.entity.BillingPayment saved = billingPaymentRepository.save(p);
+
+        syncLiveStatus(bill, moneyFor(bill));
+        billingRepository.save(bill);
+        afterMoneyChange(bill, "BILLING_ADVANCE_RECORDED",
+                "Advance of " + amount + " (" + m + ") taken on bill " + bill.getCustomId() + ".");
+        return saved;
+    }
+
+    /**
+     * Returns the unused advance at discharge: whatever the patient paid beyond the final bill.
+     * Allowed to the front desk (not only the admin), because it is the patient's own deposit
+     * and no charge changes. Does nothing when nothing is owed back.
+     *
+     * @return the amount refunded (zero when there was no credit)
+     */
+    @Transactional
+    public BigDecimal refundUnusedAdvance(Billing found, String refundMode, String reason) {
+        return refundUnusedAdvance(found, refundMode, reason, BigDecimal.ZERO);
+    }
+
+    /**
+     * @param insurerShare what an insurer has approved and will pay: the patient's own share is
+     *                     the bill less this, so a deposit beyond that share is returned now
+     */
+    @Transactional
+    public BigDecimal refundUnusedAdvance(Billing found, String refundMode, String reason, BigDecimal insurerShare) {
+        Billing bill = lockedBill(found.getId());
+        BillMoney money = moneyFor(bill);
+        BigDecimal patientShare = money.net().subtract(insurerShare == null ? BigDecimal.ZERO : insurerShare).max(BigDecimal.ZERO);
+        BigDecimal credit = money.paid().subtract(patientShare);
+        if (credit.signum() <= 0) return BigDecimal.ZERO;
+        if (refundMode == null || refundMode.isBlank()) {
+            throw new IllegalArgumentException("\u20B9" + credit.stripTrailingZeros().toPlainString()
+                    + " of the advance is unused. Choose how it is returned to the patient: Cash, Card or UPI.");
+        }
+        writeRefund(bill, credit, normaliseMode(refundMode), reason);
+        syncLiveStatus(bill, moneyFor(bill));
+        billingRepository.save(bill);
+        afterMoneyChange(bill, "BILLING_REFUND_RECORDED",
+                "Returned unused advance of " + credit + " on bill " + bill.getCustomId() + " at discharge.");
+        return credit;
+    }
+
+    /**
+     * Posts an insurer's settlement to an IPD bill (kind and mode INSURANCE). The bill is kept
+     * open at discharge while a claim is pending, so this is normally a live bill; once the
+     * patient has left and nothing is owed, it is closed.
+     */
+    @Transactional
+    public com.hms.entity.BillingPayment recordInsuranceSettlement(Long billId, BigDecimal amount, String reference,
+                                                                    String note, boolean closeWhenSettled) {
+        Billing bill = lockedBill(billId);
+        if (STATUS_CANCELLED.equalsIgnoreCase(bill.getPaymentStatus())) {
+            throw new IllegalArgumentException("This bill is cancelled");
+        }
+        if (amount == null || amount.signum() <= 0) throw new IllegalArgumentException("Enter the amount the insurer paid");
+        com.hms.entity.BillingPayment p = new com.hms.entity.BillingPayment();
+        p.setBillingId(bill.getId());
+        p.setHospitalId(bill.getHospitalId());
+        p.setAmount(amount);
+        p.setMode(KIND_INSURANCE);
+        p.setReference(reference == null || reference.isBlank() ? null : reference.trim());
+        p.setKind(KIND_INSURANCE);
+        p.setNote(note == null || note.length() <= 255 ? note : note.substring(0, 255));
+        p.setRecordedBy(currentActor());
+        com.hms.entity.BillingPayment saved = billingPaymentRepository.save(p);
+        BillMoney after = moneyFor(bill);
+        syncLiveStatus(bill, after);
+        if (closeWhenSettled && after.balance().signum() <= 0) bill.setPaymentStatus(STATUS_CLOSED);
+        billingRepository.save(bill);
+        afterMoneyChange(bill, "BILLING_INSURANCE_SETTLED",
+                "Insurance settlement of " + amount + " posted to bill " + bill.getCustomId() + ".");
+        return saved;
+    }
+
+    /** The advances taken on a bill, oldest first (refunds and payments excluded). */
+    @Transactional(readOnly = true)
+    public java.util.List<com.hms.entity.BillingPayment> advancesOf(Long billId) {
+        return billingPaymentRepository.findByBillingId(billId).stream()
+                .filter(p -> KIND_ADVANCE.equals(p.getKind()))
+                .sorted(java.util.Comparator.comparing(com.hms.entity.BillingPayment::getId))
+                .toList();
     }
 
     /** Keeps an OPD visit's open bill under the doctor the patient now sees. */
@@ -774,6 +985,7 @@ public class BillingService {
         r.setRecordedBy(currentActor());
         billingPaymentRepository.save(r);
     }
+
 
     /** Live bills of this hospital; a legacy bill hand-marked PAID with no ledger counts as settled. */
     private boolean mayStillOwe(Billing b, Long hospitalId) {
@@ -804,6 +1016,12 @@ public class BillingService {
 
     /** Running totals for the daily collection report, by payment mode. */
     private static final class CollectionTally {
+        /** How a ledger row shows on the collection report: ADVANCE, INSURANCE or PAYMENT. */
+        private static String collectionKind(com.hms.entity.BillingPayment p) {
+            if (KIND_ADVANCE.equals(p.getKind()) || KIND_INSURANCE.equals(p.getKind())) return p.getKind();
+            return KIND_PAYMENT;
+        }
+
         final Map<String, BigDecimal> collected = new java.util.LinkedHashMap<>();
         final Map<String, BigDecimal> refunded = new java.util.LinkedHashMap<>();
         BigDecimal totalIn = BigDecimal.ZERO;
@@ -838,7 +1056,7 @@ public class BillingService {
             t.put("billingType", b.getBillingType());
             t.put("patientName", patientName);
             t.put("mode", mode);
-            t.put("kind", isRefund ? "REFUND" : KIND_PAYMENT);
+            t.put("kind", isRefund ? "REFUND" : collectionKind(p));
             t.put("amount", abs);
             t.put("reference", p.getReference());
             t.put("note", p.getNote());

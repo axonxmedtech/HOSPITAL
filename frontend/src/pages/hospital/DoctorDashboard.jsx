@@ -7,6 +7,7 @@ import DailyCollectionReport from '../../components/billing/DailyCollectionRepor
 import OpdBillCell from '../../components/billing/OpdBillCell';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import ConsultationModal from '../../components/ConsultationModal';
+import DataMenu from '../../components/DataMenu';
 import DataTable from '../../components/DataTable';
 import DateSelect from '../../components/DateSelect';
 import EmptyState from '../../components/EmptyState';
@@ -25,14 +26,20 @@ import OpdPaymentFields, {
 import PageHeader from '../../components/PageHeader';
 import PatientDetailsModal from '../../components/PatientDetailsModal';
 import PatientModal from '../../components/PatientModal';
+import PatientSearchPicker from '../../components/PatientSearchPicker';
 import PrescriptionViewModal from '../../components/PrescriptionViewModal';
 import ProfileModal from '../../components/ProfileModal';
+import IpdHistoryView from '../../components/records/IpdHistoryView';
+import { patientFilePath } from '../../components/records/patientFile';
+import PatientNameLink from '../../components/records/PatientNameLink';
+import { DateRangeFilter } from '../../components/RecordsFilterBar';
 import Sidebar from '../../components/Sidebar';
 import { SkeletonStatsGrid, SkeletonOverviewDual, SkeletonTable } from '../../components/Skeleton';
 import StatusBadge from '../../components/StatusBadge';
 import { useToast } from '../../context/ToastContext';
 import useDebounce from '../../hooks/useDebounce'; // BUG-017: standardised debounce hook
 import useEnabledVitals from '../../hooks/useEnabledVitals';
+import useOpdCreateError from '../../hooks/useOpdCreateError';
 import useOtPermissions from '../../hooks/useOtPermissions';
 import useWebSocket from '../../hooks/useWebSocket';
 import apiClient from '../../services/apiService';
@@ -41,6 +48,7 @@ import hospitalService from '../../services/hospitalService';
 import otService from '../../services/otService';
 import { safeLoadMessage, extractApiError } from '../../utils/apiError';
 import { canManageBilling } from '../../utils/billingAccess';
+import { rangeFor, rangeParams } from '../../utils/dateRange';
 import { createOptionalModuleFetcher } from '../../utils/optionalModule';
 import BillingTable from './BillingTable';
 import IcuBedBoard from './icu/IcuBedBoard';
@@ -133,6 +141,7 @@ const DoctorDashboard = () => {
 
   const { success, error: toastError, info } = useToast();
   const navigate = useNavigate();
+  const showOpdCreateError = useOpdCreateError();
 
   // Patient History Modal State (Removed in favor of HistoryDrawer)
   // const [historyModal, setHistoryModal] = useState({ isOpen: false, patient: null, history: [] });
@@ -180,6 +189,8 @@ const DoctorDashboard = () => {
   // Billing specific states
   const [billing, setBilling] = useState([]);
   const [billingStatus, setBillingStatus] = useState('PENDING');
+  const [billingCategory, setBillingCategory] = useState(''); // '' = all, 'OPD', 'IPD'
+  const [billingRange, setBillingRange] = useState(() => rangeFor('all')); // bill date window
 
   const [customFees, setCustomFees] = useState([]);
   const [standardFees, setStandardFees] = useState({ consultationFee: '0', casePaperFee: '0' });
@@ -200,7 +211,7 @@ const DoctorDashboard = () => {
   const [patientDetailsModal, setPatientDetailsModal] = useState({ isOpen: false, patient: null });
   const [isIpdAdmitOpen, setIsIpdAdmitOpen] = useState(false);
   const [ipdOpdForAdmit, setIpdOpdForAdmit] = useState(null);
-  const [ipdSubTab, setIpdSubTab] = useState('current'); // 'current' | 'requested'
+  const [ipdSubTab, setIpdSubTab] = useState('current'); // 'current' | 'requested' | 'history'
   // State for admit-to-IPD directly from appointment action
   const [ipdFromAppointment, setIpdFromAppointment] = useState({
     isOpen: false,
@@ -284,13 +295,14 @@ const DoctorDashboard = () => {
   });
   const { isOn, customs } = useEnabledVitals();
   const [patientSearchText, setPatientSearchText] = useState('');
-  const [showPatientDropdown, setShowPatientDropdown] = useState(false);
+  // "+ Register new patient" from the OPD form: the registration form opens over it with what
+  // was typed, and the saved patient is selected straight back into the OPD form.
+  const [opdRegisterPrefill, setOpdRegisterPrefill] = useState(null);
 
   // Reset OPD form on modal open/close
   useEffect(() => {
     if (!isOpdModalOpen) {
       setPatientSearchText('');
-      setShowPatientDropdown(false);
       setOpdForm((prev) => ({
         ...prev,
         patientId: null,
@@ -414,6 +426,8 @@ const DoctorDashboard = () => {
     searchTerm,
     viewFilter,
     billingStatus,
+    billingCategory,
+    billingRange,
     opdDateFilter,
     opdTabView,
     patientTabView,
@@ -530,7 +544,9 @@ const DoctorDashboard = () => {
           searchTerm,
           page - 1,
           ITEMS_PER_PAGE,
-          billingStatus
+          billingStatus,
+          billingCategory,
+          rangeParams(billingRange)
         );
         const billingArray = Array.isArray(data) ? data : data.content || [];
         setBilling(billingArray);
@@ -600,7 +616,10 @@ const DoctorDashboard = () => {
       }
 
       // IPD list for doctor (their own admissions or requested admissions if self-handler)
-      if (activeTab === 'ipd') {
+      if (activeTab === 'ipd' && ipdSubTab === 'history') {
+        // IpdHistoryView loads its own server-filtered, paged list.
+        setOpds([]);
+      } else if (activeTab === 'ipd') {
         try {
           if (canDoctorManageReception && ipdSubTab === 'requested') {
             const pending = await hospitalService.getPendingIpdRequests(page - 1, ITEMS_PER_PAGE);
@@ -1201,7 +1220,7 @@ const DoctorDashboard = () => {
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold text-gray-900">Overview</h2>
-                {canDoctorManageReception && (
+                {
                   <div className="flex items-center gap-3">
                     <button
                       onClick={() => setIsAddPatientModalOpen(true)}
@@ -1223,7 +1242,7 @@ const DoctorDashboard = () => {
                       Add Patient
                     </button>
                   </div>
-                )}
+                }
               </div>
               {/* Low stock warns the doctor early, so it is reordered before a dose is due. */}
               {(modules.includes('IPD') || modules.includes('HOSPITAL_INVENTORY')) && (
@@ -1430,7 +1449,7 @@ const DoctorDashboard = () => {
                       <h3 className="text-lg font-bold text-gray-955">Queue</h3>
                       <p className="text-xs text-gray-500 mt-0.5">Real-time OPD patient workflow</p>
                     </div>
-                    {canDoctorManageReception && (
+                    {
                       <button
                         onClick={() => setIsOpdModalOpen(true)}
                         className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-sky-700 hover:bg-sky-800 text-white text-xs font-semibold rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer animate-fade-in"
@@ -1450,7 +1469,7 @@ const DoctorDashboard = () => {
                         </svg>
                         OPD Intake
                       </button>
-                    )}
+                    }
                   </div>
 
                   {/* Queue Content */}
@@ -1566,14 +1585,19 @@ const DoctorDashboard = () => {
                               : 'admitted patients'
                             : 'patients'
                 } here.`}
-                onSearch={(e) => setSearchInput(e.target.value)}
+                onSearch={
+                  activeTab === 'ipd' && ipdSubTab === 'history'
+                    ? null
+                    : (e) => setSearchInput(e.target.value)
+                }
                 searchValue={searchInput}
                 searchPlaceholder={`Search ${activeTab}...`}
                 onAdd={
-                  canDoctorManageReception &&
-                  (activeTab === 'patients' ||
-                    activeTab === 'opd' ||
-                    (activeTab === 'appointments' && hasAppointments))
+                  // Registering a walk-in and opening their OPD visit is open to every doctor;
+                  // booking appointments stays front-desk work unless the mode allows it.
+                  activeTab === 'patients' ||
+                  activeTab === 'opd' ||
+                  (canDoctorManageReception && activeTab === 'appointments' && hasAppointments)
                     ? () => {
                         if (activeTab === 'patients') setIsAddPatientModalOpen(true);
                         if (activeTab === 'opd') setIsOpdModalOpen(true);
@@ -1609,23 +1633,46 @@ const DoctorDashboard = () => {
                       </div>
                     </div>
                   ) : activeTab === 'billing' ? (
-                    <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
-                      {['PENDING', 'PARTIAL', 'PAID', 'CANCELLED'].map((status) => (
-                        <button
-                          key={status}
-                          onClick={() => {
-                            setBillingStatus(status);
-                            setPage(1);
-                          }}
-                          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
-                            billingStatus === status
-                              ? 'bg-white text-primary-600 shadow-sm border border-gray-100'
-                              : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
-                          }`}
-                        >
-                          {status.charAt(0) + status.slice(1).toLowerCase()}
-                        </button>
-                      ))}
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
+                        {['PENDING', 'PARTIAL', 'PAID', 'CANCELLED'].map((status) => (
+                          <button
+                            key={status}
+                            onClick={() => {
+                              setBillingStatus(status);
+                              setPage(1);
+                            }}
+                            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
+                              billingStatus === status
+                                ? 'bg-white text-primary-600 shadow-sm border border-gray-100'
+                                : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
+                            }`}
+                          >
+                            {status.charAt(0) + status.slice(1).toLowerCase()}
+                          </button>
+                        ))}
+                      </div>
+                      <select
+                        aria-label="Bill category"
+                        value={billingCategory}
+                        onChange={(e) => {
+                          setBillingCategory(e.target.value);
+                          setPage(1);
+                        }}
+                        className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white text-gray-700"
+                      >
+                        <option value="">All categories</option>
+                        <option value="OPD">OPD</option>
+                        <option value="IPD">IPD</option>
+                      </select>
+                      <DateRangeFilter
+                        range={billingRange}
+                        label="Bill date"
+                        onChange={(r) => {
+                          setBillingRange(r);
+                          setPage(1);
+                        }}
+                      />
                     </div>
                   ) : activeTab === 'patients' ? (
                     <div className="flex items-center gap-2">
@@ -1659,28 +1706,19 @@ const DoctorDashboard = () => {
                           }}
                         />
                       )}
-                      <button
-                        type="button"
-                        onClick={handleDownloadPatientsReport}
-                        disabled={loading}
-                        className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px] whitespace-nowrap shrink-0"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-4 w-4"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                          />
-                        </svg>
-                        <span>Download PDF</span>
-                      </button>
+                      <DataMenu
+                        items={[
+                          user?.role === 'HOSPITAL_ADMIN' && {
+                            label: 'Import Patients',
+                            onClick: () => navigate('/hospital/patients/import'),
+                          },
+                          {
+                            label: 'Download PDF',
+                            onClick: handleDownloadPatientsReport,
+                            disabled: loading,
+                          },
+                        ]}
+                      />
                     </div>
                   ) : activeTab === 'opd' ? (
                     <div className="flex items-center gap-2">
@@ -1714,34 +1752,28 @@ const DoctorDashboard = () => {
                           }}
                         />
                       )}
-                      <button
-                        type="button"
-                        onClick={handleDownloadOpdReport}
-                        disabled={loading}
-                        className="bg-sky-700 hover:bg-sky-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-semibold shadow-sm transition flex items-center gap-1.5 h-[38px] whitespace-nowrap shrink-0"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-4 w-4"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                          />
-                        </svg>
-                        <span>Download PDF</span>
-                      </button>
+                      <DataMenu
+                        items={[
+                          user?.role === 'HOSPITAL_ADMIN' && {
+                            label: 'Import Patients',
+                            onClick: () => navigate('/hospital/patients/import'),
+                          },
+                          {
+                            label: 'Download PDF',
+                            onClick: handleDownloadOpdReport,
+                            disabled: loading,
+                          },
+                        ]}
+                      />
                     </div>
-                  ) : activeTab === 'ipd' && canDoctorManageReception ? (
+                  ) : activeTab === 'ipd' ? (
                     <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
                       {[
                         { value: 'current', label: 'Current Patients' },
-                        { value: 'requested', label: 'Requested Patients' },
+                        ...(canDoctorManageReception
+                          ? [{ value: 'requested', label: 'Requested Patients' }]
+                          : []),
+                        { value: 'history', label: 'Discharged / History' },
                       ].map((sub) => (
                         <button
                           key={sub.value}
@@ -1851,7 +1883,9 @@ const DoctorDashboard = () => {
                   />
                 ))}
 
+              {activeTab === 'ipd' && ipdSubTab === 'history' && <IpdHistoryView />}
               {activeTab === 'ipd' &&
+                ipdSubTab !== 'history' &&
                 (canDoctorManageReception && ipdSubTab === 'requested' ? (
                   opds.length > 0 ? (
                     <div className="p-4 overflow-x-auto">
@@ -1968,8 +2002,11 @@ const DoctorDashboard = () => {
                                       ADMITTED
                                     </span>
                                   ) : (
-                                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-700">
-                                      ADMISSION PENDING
+                                    <span
+                                      className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-800"
+                                      title="The patient is admitted and in the bed. The admission form still has to be completed (Complete Admission on the IPD case)."
+                                    >
+                                      ADMITTED · FORM PENDING
                                     </span>
                                   )}
                                   {status && status !== 'ADMITTED' && (
@@ -2341,7 +2378,7 @@ const DoctorDashboard = () => {
                     loadData();
                   } catch (err) {
                     console.error('Failed to create OPD', err);
-                    toastError('Failed to create OPD');
+                    await showOpdCreateError(err);
                   }
                 }}
                 className="p-6 space-y-4 max-h-[76vh] overflow-auto"
@@ -2351,80 +2388,18 @@ const DoctorDashboard = () => {
                     <span className="block text-sm font-semibold text-neutral-700 mb-2">
                       Patient <span className="text-red-600">*</span>
                     </span>
-                    <div className="relative">
-                      <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
-                        <svg
-                          className="w-5 h-5"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                          />
-                        </svg>
-                      </span>
-                      <input
-                        type="text"
-                        className="w-full border border-gray-300 rounded-xl pl-10 pr-4 py-2 focus:ring-2 focus:ring-primary-500 text-sm focus:border-transparent text-slate-800"
-                        value={patientSearchText}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setPatientSearchText(val);
-                          setShowPatientDropdown(true);
-                          setOpdForm((prev) => ({ ...prev, patientId: null }));
-                        }}
-                        onFocus={() => setShowPatientDropdown(true)}
-                        onBlur={() => {
-                          setTimeout(() => {
-                            setShowPatientDropdown(false);
-                          }, 250);
-                        }}
-                        placeholder="Type patient name to search..."
-                        autoComplete="off"
-                      />
-                    </div>
-
-                    {showPatientDropdown && patientSearchText.trim().length >= 2 && (
-                      <div className="absolute left-0 right-0 mt-1 bg-white border border-neutral-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto divide-y divide-neutral-100">
-                        {patients.filter((p) =>
-                          p.name?.toLowerCase().includes(patientSearchText.toLowerCase())
-                        ).length > 0 ? (
-                          patients
-                            .filter((p) =>
-                              p.name?.toLowerCase().includes(patientSearchText.toLowerCase())
-                            )
-                            .map((p) => (
-                              <button
-                                type="button"
-                                key={p.id}
-                                onMouseDown={() => {
-                                  setOpdForm((prev) => ({ ...prev, patientId: p.id }));
-                                  setPatientSearchText(
-                                    `${p.name}${p.phone ? ` (${p.phone})` : ''}`
-                                  );
-                                  setShowPatientDropdown(false);
-                                }}
-                                className="w-full px-4 py-3 hover:bg-neutral-50 cursor-pointer transition-colors duration-150 flex flex-col gap-0.5 text-left border-0"
-                              >
-                                <span className="font-semibold text-neutral-800 text-sm">
-                                  {p.name}
-                                </span>
-                                <span className="text-xs text-neutral-500">
-                                  {p.phone ? `📞 ${p.phone}` : ''} | {p.age} Yrs | {p.gender}
-                                </span>
-                              </button>
-                            ))
-                        ) : (
-                          <div className="px-4 py-4 text-sm text-neutral-500 text-center">
-                            No matching patients found
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    <PatientSearchPicker
+                      text={patientSearchText}
+                      onTextChange={setPatientSearchText}
+                      onSelect={(p) =>
+                        setOpdForm((prev) => ({ ...prev, patientId: p ? p.id : null }))
+                      }
+                      onRegisterNew={(typed) =>
+                        setOpdRegisterPrefill(
+                          /^[\d\s+-]+$/.test(typed) ? { phone: typed } : { name: typed }
+                        )
+                      }
+                    />
                   </div>
                   <div>
                     <span className="block text-sm font-semibold text-neutral-700 mb-2">
@@ -2650,6 +2625,21 @@ const DoctorDashboard = () => {
               </form>
             </div>
           </div>
+        )}
+
+        {/* Opened from the OPD form's patient search, so it is rendered after (above) that form. */}
+        {opdRegisterPrefill && (
+          <PatientModal
+            isOpen
+            prefill={opdRegisterPrefill}
+            onClose={() => setOpdRegisterPrefill(null)}
+            onSuccess={(saved) => {
+              if (saved?.id) {
+                setOpdForm((prev) => ({ ...prev, patientId: saved.id }));
+                setPatientSearchText(`${saved.name}${saved.phone ? ` (${saved.phone})` : ''}`);
+              }
+            }}
+          />
         )}
 
         {/* Payment Modal */}
@@ -3252,6 +3242,7 @@ const DoctorPatientsTable = ({
   startIndex = 0,
   pagination,
 }) => {
+  const navigate = useNavigate();
   // ... existing table code ...
   const columnHelper = createColumnHelper();
 
@@ -3268,7 +3259,9 @@ const DoctorPatientsTable = ({
     }),
     columnHelper.accessor('name', {
       header: 'NAME',
-      cell: (info) => <span className="font-medium text-gray-900">{info.getValue()}</span>,
+      cell: (info) => (
+        <PatientNameLink publicId={info.row.original.publicId} name={info.getValue()} />
+      ),
     }),
     columnHelper.accessor('age', {
       header: 'AGE/GENDER',
@@ -3294,6 +3287,15 @@ const DoctorPatientsTable = ({
 
         // Secondary actions for three-dot menu
         const secondaryActions = [
+          {
+            label: 'Patient file',
+            onClick: () => navigate(patientFilePath(info.row.original.publicId)),
+            icon: (
+              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path d="M4 3a2 2 0 012-2h5.586A2 2 0 0113 1.586L16.414 5A2 2 0 0117 6.414V17a2 2 0 01-2 2H6a2 2 0 01-2-2V3zm3 7a1 1 0 000 2h6a1 1 0 100-2H7zm0 4a1 1 0 100 2h6a1 1 0 100-2H7z" />
+              </svg>
+            ),
+          },
           {
             label: 'View Details',
             icon: (

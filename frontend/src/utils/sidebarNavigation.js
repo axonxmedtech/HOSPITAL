@@ -160,8 +160,11 @@ function getReceptionistTabs(user, tenantWord) {
     tabs.push({ id: 'follow-ups', label: 'Follow-ups', icon: null });
   }
   if (modules.includes('IPD')) {
-    tabs.push({ id: 'ipd', label: 'IPD', icon: null });
-    tabs.push({ id: 'icu', label: 'ICU', icon: null });
+    tabs.push(
+      { id: 'ipd', label: 'IPD', icon: null },
+      { id: 'icu', label: 'ICU', icon: null },
+      { id: 'beds', label: 'Beds', icon: null }
+    );
   }
   if (canManageBilling(user)) {
     tabs.push({ id: 'billing', label: 'Billing', icon: null });
@@ -225,6 +228,7 @@ function getOtInchargeConfig() {
       { id: 'board', label: 'OT Board' },
       { id: 'day', label: "Today's List" },
       { id: 'requests', label: 'Requests' },
+      { id: 'history', label: 'History' },
     ],
   };
 }
@@ -331,4 +335,39 @@ export function getRoleNavigateUrl(tabId, user, activeDashboard = null) {
     default:
       return `/hospital/admin?tab=${tabId}`;
   }
+}
+
+/**
+ * Every tab a role can have in this facility, for Settings → Sidebar. Front-desk tabs a doctor
+ * gets only in Solo / Both mode are included, so the admin can decide about them up front.
+ */
+export function tabsForRole(role, user) {
+  const tenantWord = user?.hospitalType === 'CLINIC' ? 'Clinic' : 'Hospital';
+  const u = { ...user, role, receptionMode: 'BOTH' };
+  switch (role) {
+    case 'HOSPITAL_ADMIN':
+      return getAdminTabs(user?.modules || [], tenantWord);
+    case 'DOCTOR':
+      return getDoctorTabs(u, tenantWord);
+    case 'RECEPTIONIST':
+      return getReceptionistTabs(u, tenantWord);
+    case 'NURSE':
+    case 'NURSE_INCHARGE':
+      return getNurseConfig(u, role).tabs;
+    case 'PHARMACIST':
+      return getPharmacistTabs(u);
+    case 'OT_INCHARGE':
+      return getOtInchargeConfig().tabs;
+    default:
+      return [];
+  }
+}
+
+/** The tabs minus hidden ones; a group whose items are all hidden disappears too. */
+export function withoutHidden(tabs, hidden) {
+  if (!hidden || hidden.size === 0) return tabs;
+  return (tabs || [])
+    .filter((t) => !hidden.has(t.id))
+    .map((t) => (t.subItems ? { ...t, subItems: t.subItems.filter((s) => !hidden.has(s.id)) } : t))
+    .filter((t) => !t.subItems || t.subItems.length > 0);
 }

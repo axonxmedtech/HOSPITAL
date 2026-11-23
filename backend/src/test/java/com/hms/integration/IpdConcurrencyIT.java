@@ -309,9 +309,11 @@ class IpdConcurrencyIT {
         String n1 = results.get(0).admission().getIpdNumber();
         String n2 = results.get(1).admission().getIpdNumber();
         assertThat(n1).as("IPD numbers must be distinct").isNotEqualTo(n2);
-        assertThat(ipdAdmissionRepository.findAll().stream().map(IpdAdmission::getIpdNumber).distinct().count())
-                .as("no duplicate IPD number exists anywhere")
-                .isEqualTo(ipdAdmissionRepository.count());
+        // Numbers run per hospital (V40), so IPD-1 may exist once in every hospital — but never twice in one.
+        List<IpdAdmission> all = ipdAdmissionRepository.findAll();
+        assertThat(all.stream().map(a -> a.getHospitalId() + "/" + a.getIpdNumber()).distinct().count())
+                .as("no duplicate IPD number exists within a hospital")
+                .isEqualTo(all.size());
     }
 
     // ── T6: two transfers onto one target bed ────────────────────────────────

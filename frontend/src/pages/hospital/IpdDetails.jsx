@@ -7,12 +7,14 @@ import EmptyState from '../../components/EmptyState';
 import FrequencyInput from '../../components/FrequencyInput';
 import IcuAdmitModal from '../../components/IcuAdmitModal';
 import IcuDischargeToIpdModal from '../../components/IcuDischargeToIpdModal';
-import {
-  ConfirmDischargeModal,
-  DischargeTypeFields,
-  dischargeNoteRequired,
-  dischargeTypeLabel,
-} from '../../components/ipd/DischargeType';
+import CancelAdmissionModal from '../../components/ipd/CancelAdmissionModal';
+import DietCard from '../../components/ipd/DietCard';
+import DischargeSummaryModal from '../../components/ipd/DischargeSummaryModal';
+import { ConfirmDischargeModal, dischargeTypeLabel } from '../../components/ipd/DischargeType';
+import DoctorRoundsTimeline from '../../components/ipd/DoctorRoundsTimeline';
+import InsurancePanel from '../../components/ipd/InsurancePanel';
+import InvestigationsPanel from '../../components/ipd/InvestigationsPanel';
+import IpdMoneyPanel from '../../components/ipd/IpdMoneyPanel';
 import Navbar from '../../components/Navbar';
 import { ChangeDoctorModal } from '../../components/opd/OpdVisitActions';
 import PageHeader from '../../components/PageHeader';
@@ -48,6 +50,7 @@ import VentilatorPanel from './nurse/VentilatorPanel';
 import VitalsPanel from './nurse/VitalsPanel';
 import VulnerabilityAssessmentPanel from './nurse/VulnerabilityAssessmentPanel';
 import SurgeryRequestModal from './ot/SurgeryRequestModal';
+import StayBillsSummary from './StayBillsSummary';
 
 const IpdDetails = () => {
   const { id } = useParams();
@@ -120,6 +123,12 @@ const IpdDetails = () => {
   const hasIcuModule = (authService.getCurrentUser()?.modules || []).includes('ICU');
   const tabs = [
     { id: 'overview', label: 'Overview' },
+    { id: 'investigations', label: 'Investigations' },
+    // Defined before hasBilling / isAdmin below, so worked out from the user directly.
+    ...(userCanManageBilling(user) &&
+    (isReceptionist || isDoctor || user?.role === 'HOSPITAL_ADMIN')
+      ? [{ id: 'insurance', label: 'Insurance' }]
+      : []),
     ...(verdictFor('vitals') !== 'HIDDEN' ? [{ id: 'vitals', label: 'Vitals' }] : []),
     ...(verdictFor('medication') !== 'HIDDEN' ? [{ id: 'medication', label: 'Medication' }] : []),
     ...(verdictFor('assessment') !== 'HIDDEN'
@@ -231,14 +240,9 @@ const IpdDetails = () => {
     notes: '',
     saving: false,
   });
-  const [dischargeModal, setDischargeModal] = useState({
-    isOpen: false,
-    finalDiagnosis: '',
-    treatmentGiven: '',
-    dischargeNotes: '',
-    followUpDate: '',
-    saving: false,
-  });
+  // The discharge summary form; editing = the discharge is already planned.
+  const [dischargeModal, setDischargeModal] = useState({ isOpen: false, editing: false });
+  const [printingSummary, setPrintingSummary] = useState(false);
   // Local calendar date as YYYY-MM-DD (en-CA), matching the <input type="date"> value and the
   // start-date validation. Prescriptions usually start the same day, so default to today.
   const todayStr = () => new Date().toLocaleDateString('en-CA');
@@ -454,18 +458,50 @@ const IpdDetails = () => {
   };
 
   const [confirmDischargeOpen, setConfirmDischargeOpen] = useState(false);
+  const [cancelAdmissionOpen, setCancelAdmissionOpen] = useState(false);
+  const [printingRx, setPrintingRx] = useState('');
 
-  const onPlanDischarge = () => {
-    setDischargeModal({
-      isOpen: true,
-      finalDiagnosis: '',
-      treatmentGiven: '',
-      dischargeNotes: '',
-      followUpDate: '',
-      dischargeType: 'NORMAL',
-      dischargeTypeNote: '',
-      saving: false,
-    });
+  const doCancelAdmission = async (reason, refundMode) => {
+    try {
+      await hospitalService.cancelIpdAdmission(id, reason, refundMode);
+      setCancelAdmissionOpen(false);
+      success('Admission cancelled. The bed is free and the request is back under Requested.');
+      setData(await hospitalService.getIpdDetails(id));
+    } catch (err) {
+      toastError(parseError(err, 'Failed to cancel the admission'));
+    }
+  };
+
+  /** Medication orders (what was prescribed) or medicines given (what reached the patient). */
+  const printMedicationPdf = async (which) => {
+    if (printingRx) return;
+    setPrintingRx(which);
+    try {
+      const blob =
+        which === 'orders'
+          ? await hospitalService.downloadIpdPrescription(id)
+          : await hospitalService.downloadIpdMedicinesList(id);
+      await printBlob(blob);
+    } catch (err) {
+      toastError(extractApiError(err, 'Failed to load the print-out'));
+    } finally {
+      setPrintingRx('');
+    }
+  };
+
+  const onPlanDischarge = () => setDischargeModal({ isOpen: true, editing: false });
+  const onEditDischargeSummary = () => setDischargeModal({ isOpen: true, editing: true });
+
+  const printDischargeSummary = async () => {
+    if (printingSummary) return;
+    setPrintingSummary(true);
+    try {
+      await printBlob(await hospitalService.downloadDischargeSummary(id));
+    } catch (err) {
+      toastError(extractApiError(err, 'Failed to load the discharge summary'));
+    } finally {
+      setPrintingSummary(false);
+    }
   };
 
   const onCancelDischargePlan = () => {
@@ -489,54 +525,34 @@ const IpdDetails = () => {
     });
   };
 
-  const savePlanDischarge = async () => {
-    if (!dischargeModal.finalDiagnosis) return toastError('Final diagnosis is required');
-    if (
-      dischargeNoteRequired(dischargeModal.dischargeType) &&
-      !dischargeModal.dischargeTypeNote?.trim()
-    )
-      return toastError(
-        dischargeModal.dischargeType === 'EXPIRED'
-          ? 'Enter the time and cause of death'
-          : 'Enter the hospital the patient is referred to'
-      );
-    setDischargeModal((prev) => ({ ...prev, saving: true }));
+  // Errors are shown by toast and re-thrown so the form stays open with what was typed.
+  const savePlanDischarge = async (payload) => {
     try {
-      const payload = {
-        finalDiagnosis: dischargeModal.finalDiagnosis,
-        treatmentGiven: dischargeModal.treatmentGiven,
-        dischargeNotes: dischargeModal.dischargeNotes,
-        followUpDate: dischargeModal.followUpDate || null,
-        dischargeType: dischargeModal.dischargeType || 'NORMAL',
-        dischargeTypeNote: dischargeModal.dischargeTypeNote?.trim() || null,
-      };
       await hospitalService.planDischarge(id, payload);
-      success('Discharge planned');
-      setDischargeModal({
-        isOpen: false,
-        finalDiagnosis: '',
-        treatmentGiven: '',
-        dischargeNotes: '',
-        followUpDate: '',
-        saving: false,
-      });
-      setLoading(true);
-      const resp = await hospitalService.getIpdDetails(id);
-      setData(resp);
+      success(dischargeModal.editing ? 'Discharge summary saved' : 'Discharge planned');
+      setDischargeModal({ isOpen: false, editing: false });
+      setData(await hospitalService.getIpdDetails(id));
     } catch (err) {
       console.error('Failed to plan discharge', err);
       toastError(parseError(err, 'Failed to plan discharge'));
-    } finally {
-      setDischargeModal((prev) => ({ ...prev, saving: false }));
-      setLoading(false);
     }
   };
 
   // Every unpaid bill of the patient blocks a normal discharge — the IPD bill and the OPD bill
   // from the consultation that led to admission. The server lists them; show them up front.
   const owingText = () => {
-    const owing = data?.billing?.outstandingBills || [];
-    const balance = Number(data?.billing?.balance) || 0;
+    // The insurer's approved share is not the patient's to pay at the desk.
+    let insurer = Number(data?.billing?.insuranceExpected) || 0;
+    const owing = (data?.billing?.outstandingBills || [])
+      .map((o) => {
+        if (o.billingType !== 'IPD' || insurer <= 0) return o;
+        const covered = Math.min(insurer, Number(o.balance) || 0);
+        insurer -= covered;
+        return { ...o, balance: (Number(o.balance) || 0) - covered };
+      })
+      .filter((o) => Number(o.balance) > 0);
+    const balance =
+      (Number(data?.billing?.balance) || 0) - (Number(data?.billing?.insuranceExpected) || 0);
     return owing.length
       ? owing.map((o) => `${o.customId} (${o.billingType}) ₹${o.balance}`).join(', ')
       : balance > 0
@@ -731,7 +747,17 @@ const IpdDetails = () => {
                         Admit to ICU
                       </button>
                     ))}
-                  {isDoctor && data.status === 'ADMITTED' && (
+                  {(isReceptionist || isAdmin || isSoloDoctor) && data.status === 'ADMITTED' && (
+                    <button
+                      type="button"
+                      onClick={() => setCancelAdmissionOpen(true)}
+                      title="Cancel an admission made by mistake"
+                      className="px-3 py-1.5 rounded-lg text-sm font-semibold text-red-700 bg-white border border-red-300 hover:bg-red-50 whitespace-nowrap"
+                    >
+                      Cancel Admission
+                    </button>
+                  )}
+                  {(isDoctor || isAdmin) && data.status === 'ADMITTED' && (
                     <button
                       onClick={onPlanDischarge}
                       className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white bg-yellow-600 hover:bg-yellow-700 whitespace-nowrap"
@@ -739,6 +765,26 @@ const IpdDetails = () => {
                       Plan Discharge
                     </button>
                   )}
+                  {(isDoctor || isAdmin) && data.status === 'DISCHARGE_PLANNED' && (
+                    <button
+                      type="button"
+                      onClick={onEditDischargeSummary}
+                      className="px-3 py-1.5 rounded-lg text-sm font-semibold text-yellow-800 bg-white border border-yellow-300 hover:bg-yellow-50 whitespace-nowrap"
+                    >
+                      Edit Summary
+                    </button>
+                  )}
+                  {data.dischargeSummary &&
+                    (data.status === 'DISCHARGE_PLANNED' || data.status === 'DISCHARGED') && (
+                      <button
+                        type="button"
+                        onClick={printDischargeSummary}
+                        disabled={printingSummary}
+                        className="px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-800 bg-white border border-gray-300 hover:bg-gray-50 whitespace-nowrap disabled:opacity-60"
+                      >
+                        {printingSummary ? 'Preparing…' : 'Print Discharge Summary'}
+                      </button>
+                    )}
                   {(isDoctor || isAdmin) && data.status === 'DISCHARGE_PLANNED' && (
                     <button
                       onClick={onCancelDischargePlan}
@@ -834,6 +880,27 @@ const IpdDetails = () => {
                   />
                 </div>
               )}
+              {tab === 'insurance' && (
+                <div className="mt-4 bg-white border rounded p-4">
+                  <InsurancePanel
+                    admissionId={admissionId}
+                    canEdit={isReceptionist || isAdmin || isSoloDoctor}
+                    onChanged={async () => setData(await hospitalService.getIpdDetails(id))}
+                  />
+                </div>
+              )}
+              {tab === 'investigations' && (
+                <div className="mt-4 bg-white border rounded p-4">
+                  <InvestigationsPanel
+                    admissionId={admissionId}
+                    canOrder={
+                      (isDoctor || isAdmin) &&
+                      (data.status === 'ADMITTED' || data.status === 'DISCHARGE_PLANNED')
+                    }
+                    canWork
+                  />
+                </div>
+              )}
               {tab === 'consent' && (
                 <div className="mt-4">
                   <ConsentFormsPanel admissionId={admissionId} formVerdicts={formVerdicts} />
@@ -911,36 +978,49 @@ const IpdDetails = () => {
                               </span>
                             )}
                         </div>
+                        {data.dischargeSummary?.followUpDate && (
+                          <div className="col-span-2 text-sm">
+                            <strong>Follow-up:</strong>{' '}
+                            {new Date(data.dischargeSummary.followUpDate).toLocaleDateString()}
+                            {data.dischargeSummary.followUpTime
+                              ? ` at ${String(data.dischargeSummary.followUpTime).slice(0, 5)}`
+                              : ''}
+                            {data.dischargeSummary.followUpAppointmentId
+                              ? ` — booked (${data.dischargeSummary.followUpAppointmentId})`
+                              : data.status === 'DISCHARGED'
+                                ? ' — not booked (no free slot); book it from Appointments'
+                                : ' — booked when the patient goes home'}
+                          </div>
+                        )}
+                        {data.status === 'CANCELLED' && (
+                          <div className="col-span-2 text-sm bg-red-50 border border-red-200 text-red-800 rounded p-2">
+                            <strong>Admission cancelled</strong>
+                            {data.cancelledAt
+                              ? ` on ${new Date(data.cancelledAt).toLocaleString()}`
+                              : ''}
+                            {data.cancelReason ? ` — ${data.cancelReason}` : ''}
+                          </div>
+                        )}
                       </div>
 
                       <hr className="my-4" />
 
-                      <h3 className="font-semibold mb-2">Daily Follow-ups</h3>
-                      {data.medicalRecords && data.medicalRecords.length > 0 ? (
-                        <ul className="space-y-2">
-                          {data.medicalRecords.map((m, i) => (
-                            <li key={i} className="p-2 border rounded">
-                              <div className="text-xs text-gray-500">
-                                {m.date} • {m.doctor}
-                              </div>
-                              <div className="text-sm font-medium">{m.diagnosis}</div>
-                              <div className="text-sm text-gray-700">{m.notes}</div>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <div className="text-sm text-gray-500">No follow-ups recorded.</div>
-                      )}
+                      <h3 className="font-semibold mb-2">Doctor&apos;s Rounds</h3>
+                      <DoctorRoundsTimeline
+                        admissionId={admissionId}
+                        refreshKey={`${panelRefreshKey}-${data.medicalRecords?.length || 0}`}
+                      />
 
                       <div className="mt-3 flex items-center gap-2">
-                        {isDoctor && data.status !== 'DISCHARGED' && (
-                          <button
-                            className="px-3 py-1 bg-green-700 text-white rounded hover:bg-green-800"
-                            onClick={onAddFollowUp}
-                          >
-                            + Add Follow-up
-                          </button>
-                        )}
+                        {isDoctor &&
+                          (data.status === 'ADMITTED' || data.status === 'DISCHARGE_PLANNED') && (
+                            <button
+                              className="px-3 py-1 bg-green-700 text-white rounded hover:bg-green-800"
+                              onClick={onAddFollowUp}
+                            >
+                              + Add Round
+                            </button>
+                          )}
                       </div>
                     </>
                   )}
@@ -948,7 +1028,7 @@ const IpdDetails = () => {
                   {followupModal.isOpen && (
                     <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
                       <div className="bg-white rounded-lg w-full max-w-lg p-6">
-                        <h3 className="text-lg font-semibold mb-3">Add Follow-up</h3>
+                        <h3 className="text-lg font-semibold mb-3">Add Round</h3>
                         <div className="mb-3">
                           <label htmlFor="fld-131" className="block text-sm font-medium mb-1">
                             Diagnosis
@@ -1407,7 +1487,27 @@ const IpdDetails = () => {
 
                   {tab === 'medication' && (
                     <>
-                      <h3 className="font-semibold mb-2">Current Medicines & Items</h3>
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                        <h3 className="font-semibold">Current Medicines & Items</h3>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => printMedicationPdf('orders')}
+                            disabled={!!printingRx}
+                            className="px-2.5 py-1 text-xs font-semibold rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-60"
+                          >
+                            {printingRx === 'orders' ? 'Preparing…' : 'Print medication orders'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => printMedicationPdf('given')}
+                            disabled={!!printingRx}
+                            className="px-2.5 py-1 text-xs font-semibold rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-60"
+                          >
+                            {printingRx === 'given' ? 'Preparing…' : 'Print medicines given'}
+                          </button>
+                        </div>
+                      </div>
 
                       {/* Prescribed Medicines — full history; stopped kept & struck-through */}
                       {(() => {
@@ -1543,6 +1643,14 @@ const IpdDetails = () => {
                 </div>
 
                 <aside className="bg-white border rounded p-4">
+                  <DietCard
+                    admissionId={admissionId}
+                    refreshKey={panelRefreshKey}
+                    canEdit={
+                      (isDoctor || isAdmin) &&
+                      (data.status === 'ADMITTED' || data.status === 'DISCHARGE_PLANNED')
+                    }
+                  />
                   {/* Discharge + Create Surgery Request now live in the case header (top right). */}
                   {/* ICU-10: renders nothing unless this admission has an ICU stay. */}
                   {hasIcuModule && (
@@ -1562,38 +1670,8 @@ const IpdDetails = () => {
                   )}
 
                   <div className="mb-4">
-                    <h3 className="font-semibold mb-2">Round Notes</h3>
+                    <h3 className="font-semibold mb-2">Nurse Notes</h3>
                     <div className="flex flex-col gap-2">
-                      <button
-                        type="button"
-                        className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-lg border border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100 transition shadow-sm"
-                        onClick={() => setNotesModal({ isOpen: true, category: 'DOCTOR' })}
-                      >
-                        <span className="flex items-center gap-1.5">
-                          <svg
-                            className="w-4 h-4 text-blue-600"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth="2"
-                              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                            />
-                          </svg>
-                          Doctors Round Notes
-                        </span>
-                        <span
-                          className={`text-[10px] uppercase tracking-wide font-bold px-1.5 py-0.5 rounded ${
-                            isDoctor ? 'bg-blue-200 text-blue-900' : 'bg-gray-100 text-gray-600'
-                          }`}
-                        >
-                          {isDoctor ? 'Write & Read' : 'Read Only'}
-                        </span>
-                      </button>
-
                       <button
                         type="button"
                         className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-lg border border-teal-200 bg-teal-50 text-teal-800 hover:bg-teal-100 transition shadow-sm"
@@ -1645,6 +1723,17 @@ const IpdDetails = () => {
                           <div>
                             <strong>Balance:</strong> ₹{data.billing.balance}
                           </div>
+                          <StayBillsSummary ipdId={id} />
+                          <IpdMoneyPanel
+                            ipdId={id}
+                            data={data}
+                            isAdmin={isAdmin}
+                            canAct={
+                              (isReceptionist || isAdmin || isSoloDoctor) &&
+                              (data.status === 'ADMITTED' || data.status === 'DISCHARGE_PLANNED')
+                            }
+                            onChanged={async () => setData(await hospitalService.getIpdDetails(id))}
+                          />
                         </div>
                       ) : (
                         <div className="text-sm text-gray-500">No billing records found.</div>
@@ -1757,104 +1846,30 @@ const IpdDetails = () => {
                   initialType={data.dischargeType}
                   initialNote={data.dischargeNote}
                   owing={owingText()}
+                  unusedAdvance={Math.max(
+                    0,
+                    -(
+                      Number(data.billing?.balance || 0) -
+                      Number(data.billing?.insuranceExpected || 0)
+                    )
+                  )}
                   onClose={() => setConfirmDischargeOpen(false)}
                   onConfirm={doConfirmDischarge}
                 />
               )}
 
-              {/* Discharge Modal */}
+              {/* Discharge summary (plan / edit) */}
               {dischargeModal.isOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
-                  <div className="bg-white rounded-lg w-full max-w-lg p-6">
-                    <h3 className="text-lg font-semibold mb-3">Plan Discharge</h3>
-                    <div className="mb-3">
-                      <label htmlFor="fld-123" className="block text-sm font-medium mb-1">
-                        Final Diagnosis
-                      </label>
-                      <textarea
-                        id="fld-123"
-                        value={dischargeModal.finalDiagnosis}
-                        onChange={(e) =>
-                          setDischargeModal((prev) => ({ ...prev, finalDiagnosis: e.target.value }))
-                        }
-                        className="w-full border p-2 rounded"
-                        rows={2}
-                      />
-                    </div>
-                    <div className="mb-3">
-                      <label htmlFor="fld-122" className="block text-sm font-medium mb-1">
-                        Treatment Given
-                      </label>
-                      <textarea
-                        id="fld-122"
-                        value={dischargeModal.treatmentGiven}
-                        onChange={(e) =>
-                          setDischargeModal((prev) => ({ ...prev, treatmentGiven: e.target.value }))
-                        }
-                        className="w-full border p-2 rounded"
-                        rows={3}
-                      />
-                    </div>
-                    <div className="mb-3">
-                      <label htmlFor="fld-121" className="block text-sm font-medium mb-1">
-                        Discharge Notes
-                      </label>
-                      <textarea
-                        id="fld-121"
-                        value={dischargeModal.dischargeNotes}
-                        onChange={(e) =>
-                          setDischargeModal((prev) => ({ ...prev, dischargeNotes: e.target.value }))
-                        }
-                        className="w-full border p-2 rounded"
-                        rows={3}
-                      />
-                    </div>
-                    <DischargeTypeFields
-                      type={dischargeModal.dischargeType || 'NORMAL'}
-                      note={dischargeModal.dischargeTypeNote || ''}
-                      onType={(v) => setDischargeModal((prev) => ({ ...prev, dischargeType: v }))}
-                      onNote={(v) =>
-                        setDischargeModal((prev) => ({ ...prev, dischargeTypeNote: v }))
-                      }
-                      idPrefix="plan-dt"
-                    />
-                    <div className="mb-3">
-                      <label htmlFor="fld-120" className="block text-sm font-medium mb-1">
-                        Follow-up Date
-                      </label>
-                      <DateSelect
-                        value={dischargeModal.followUpDate}
-                        onChange={(v) =>
-                          setDischargeModal((prev) => ({ ...prev, followUpDate: v }))
-                        }
-                      />
-                    </div>
-                    <div className="flex justify-end gap-3">
-                      <button
-                        onClick={() =>
-                          setDischargeModal({
-                            isOpen: false,
-                            finalDiagnosis: '',
-                            treatmentGiven: '',
-                            dischargeNotes: '',
-                            followUpDate: '',
-                            saving: false,
-                          })
-                        }
-                        className="px-3 py-1 bg-gray-100 rounded"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={savePlanDischarge}
-                        disabled={dischargeModal.saving}
-                        className="px-3 py-1 bg-yellow-600 text-white rounded"
-                      >
-                        {dischargeModal.saving ? 'Saving...' : 'Plan Discharge'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                <DischargeSummaryModal
+                  summary={dischargeModal.editing ? data.dischargeSummary : null}
+                  dischargeType={dischargeModal.editing ? data.dischargeType : 'NORMAL'}
+                  dischargeNote={dischargeModal.editing ? data.dischargeNote : ''}
+                  currentMedicines={data.activePrescriptions || []}
+                  admissionId={admissionId}
+                  editing={dischargeModal.editing}
+                  onClose={() => setDischargeModal({ isOpen: false, editing: false })}
+                  onSave={savePlanDischarge}
+                />
               )}
 
               {/* Bed Change Modal */}
@@ -2177,6 +2192,13 @@ const IpdDetails = () => {
           }}
         />
       )}
+      <CancelAdmissionModal
+        isOpen={cancelAdmissionOpen}
+        paidAmount={data?.billing?.paidAmount}
+        isAdmin={isAdmin}
+        onClose={() => setCancelAdmissionOpen(false)}
+        onConfirm={doCancelAdmission}
+      />
       <ConfirmationModal
         isOpen={confirmState.open}
         title={confirmState.title}

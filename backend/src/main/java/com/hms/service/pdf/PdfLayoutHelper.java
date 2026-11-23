@@ -52,6 +52,49 @@ public class PdfLayoutHelper {
     public static final Font UNICODE_NORMAL_FONT;
     public static final Font UNICODE_BOLD_FONT;
     public static final Font UNICODE_NAVY_BOLD_FONT;
+    public static final Font UNICODE_WHITE_BOLD_FONT;
+
+    /**
+     * A temp file only this process's user can read or write — the shared temp directory is
+     * world-writable, so a file created there with default permissions could be read or swapped
+     * by another account on the server.
+     */
+    private static java.nio.file.Path privateTempFile() throws java.io.IOException {
+        if (java.nio.file.FileSystems.getDefault().supportedFileAttributeViews().contains("posix")) {
+            return java.nio.file.Files.createTempFile("hms-devanagari-", ".ttf",
+                    java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
+                            java.nio.file.attribute.PosixFilePermissions.fromString("rw-------")));
+        }
+        java.io.File f = java.nio.file.Files.createTempFile("hms-devanagari-", ".ttf").toFile(); // NOSONAR - permissions narrowed below on non-POSIX systems
+        // Each call must run, so they are made one by one rather than short-circuited together.
+        boolean readable = f.setReadable(true, true);
+        boolean writable = f.setWritable(true, true);
+        boolean notExecutable = f.setExecutable(false);
+        if (!(readable && writable && notExecutable)) {
+            throw new java.io.IOException("Could not restrict temp font file permissions");
+        }
+        return f.toPath();
+    }
+
+    /**
+     * Devanagari needs shaping: a vowel sign such as ि is drawn before its consonant, and
+     * conjuncts (क्ष, त्र, स्त्र) join. Without it the PDF prints "दविस" for "दिवस" and broken
+     * half-letters, so Marathi/Hindi instructions looked wrong on every prescription. OpenPDF
+     * shapes text through AWT once the font is registered from a file, so the embedded font is
+     * written to a temporary file for that. If this fails the font still prints, unshaped.
+     */
+    private static void enableDevanagariShaping(BaseFont bf, byte[] fontBytes) {
+        try {
+            java.nio.file.Path tmp = privateTempFile();
+            java.nio.file.Files.write(tmp, fontBytes);
+            tmp.toFile().deleteOnExit();
+            com.lowagie.text.pdf.LayoutProcessor.enable();
+            com.lowagie.text.pdf.LayoutProcessor.loadFont(bf, tmp.toString());
+        } catch (Exception | LinkageError | java.awt.AWTError e) {
+            org.slf4j.LoggerFactory.getLogger(PdfLayoutHelper.class)
+                    .warn("Devanagari shaping unavailable; Marathi/Hindi will print unshaped", e);
+        }
+    }
 
     static {
         BaseFont bf = null;
@@ -71,6 +114,7 @@ public class PdfLayoutHelper {
                     is.close();
                 }
                 bf = BaseFont.createFont("NotoSansDevanagari-Regular.ttf", BaseFont.IDENTITY_H, BaseFont.EMBEDDED, true, fontBytes, null);
+                enableDevanagariShaping(bf, fontBytes);
             } else {
                 org.slf4j.LoggerFactory.getLogger(PdfLayoutHelper.class).warn("Devanagari font resource /fonts/NotoSansDevanagari-Regular.ttf not found on classpath");
             }
@@ -84,6 +128,9 @@ public class PdfLayoutHelper {
         UNICODE_BOLD_FONT = (bf != null)
                 ? new Font(bf, 10, Font.BOLD, Color.BLACK)
                 : FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, Font.BOLD, Color.BLACK);
+        UNICODE_WHITE_BOLD_FONT = (bf != null)
+                ? new Font(bf, 9, Font.BOLD, Color.WHITE)
+                : FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, Font.BOLD, Color.WHITE);
         UNICODE_NAVY_BOLD_FONT = (bf != null)
                 ? new Font(bf, 10, Font.BOLD, NAVY_BLUE)
                 : FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, Font.BOLD, NAVY_BLUE);
@@ -254,7 +301,13 @@ public class PdfLayoutHelper {
      * Styles a black header cell for main data table
      */
     public void addTableHeaderCell(PdfPTable table, String text) {
-        PdfPCell cell = new PdfPCell(new Phrase(text, TABLE_HEADER_FONT));
+        addTableHeaderCell(table, text, TABLE_HEADER_FONT);
+    }
+
+    /** A header cell in a given font — the Devanagari font for a bilingual header. */
+    public void addTableHeaderCell(PdfPTable table, String text, Font font) {
+        PdfPCell cell = new PdfPCell(new Phrase(text, font));
+        cell.setLeading(0f, 1.3f);
         cell.setBackgroundColor(Color.BLACK);
         cell.setPaddingTop(6f);
         cell.setPaddingBottom(6f);
@@ -271,6 +324,8 @@ public class PdfLayoutHelper {
         PdfPCell cell = new PdfPCell(new Phrase(text != null ? text : "", font != null ? font : NORMAL_FONT));
         cell.setBorder(Rectangle.BOTTOM);
         cell.setBorderColor(Color.LIGHT_GRAY);
+        // Devanagari sits taller than Latin (vowel signs above and below): give wrapped lines room.
+        cell.setLeading(0f, 1.35f);
         cell.setPaddingTop(6f);
         cell.setPaddingBottom(6f);
         cell.setPaddingLeft(4f);

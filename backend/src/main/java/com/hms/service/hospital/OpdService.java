@@ -41,7 +41,13 @@ public class OpdService {
     private BillingService billingService;
     @org.springframework.beans.factory.annotation.Autowired
     private com.hms.repository.HospitalSettingRepository hospitalSettingRepository;
+    private final IpdAdmissionRepository ipdAdmissionRepository;
     private final HospitalStaffing staffing;
+
+    /** In hospital: an OPD visit is never opened alongside these. */
+    private static final java.util.List<String> IPD_IN_HOSPITAL = java.util.List.of("ADMITTED", "DISCHARGE_PLANNED");
+    /** Still open in a doctor's queue. */
+    private static final java.util.List<Opd.Status> OPD_OPEN = java.util.List.of(Opd.Status.QUEUED, Opd.Status.CONSULTED);
 
     private static final com.fasterxml.jackson.databind.ObjectMapper VITALS_JSON =
             new com.fasterxml.jackson.databind.ObjectMapper();
@@ -56,8 +62,10 @@ public class OpdService {
                       AuditLogService auditLogService,
                       HospitalWebSocketHandler webSocketHandler,
                       VitalSettingsService vitalSettingsService,
-                      HospitalStaffing staffing) {
+                      HospitalStaffing staffing,
+                      IpdAdmissionRepository ipdAdmissionRepository) {
         this.staffing = staffing;
+        this.ipdAdmissionRepository = ipdAdmissionRepository;
         this.opdRepository = opdRepository;
         this.queueEntryRepository = queueEntryRepository;
         this.patientRepository = patientRepository;
@@ -85,6 +93,49 @@ public class OpdService {
             logger.warn("Could not serialize custom vitals; storing none", e);
             return null;
         }
+    }
+
+    /**
+     * One open visit at a time. A patient admitted to IPD is treated on the IPD case, never in a
+     * parallel OPD visit; and a patient already waiting in a doctor's queue today is not queued for
+     * that doctor a second time (a double click, or two desks registering them at once). The
+     * patient row is locked first so two simultaneous requests are decided one after the other.
+     * Past visits and admissions are history and never block anything.
+     */
+    private void assertNoOpenEncounter(Patient patient, Doctor doctor) {
+        Long hospitalId = patient.getHospitalId();
+        patientRepository.findByIdAndHospitalIdForUpdate(patient.getId(), hospitalId);
+        if (ipdAdmissionRepository != null) {
+            ipdAdmissionRepository.findFirstByHospitalIdAndPatientIdAndStatusInOrderByIdDesc(
+                    hospitalId, patient.getId(), IPD_IN_HOSPITAL).ifPresent(ipd -> {
+                java.util.Map<String, String> where = new java.util.HashMap<>();
+                where.put("encounter", "IPD");
+                where.put("ipdAdmissionId", String.valueOf(ipd.getId()));
+                if (ipd.getIpdNumber() != null) where.put("ipdNumber", ipd.getIpdNumber());
+                throw new com.hms.exception.ActiveEncounterConflictException(
+                        patient.getName() + " is admitted in IPD"
+                                + (ipd.getIpdNumber() != null ? " (" + ipd.getIpdNumber() + ")" : "")
+                                + ". Record this visit on the IPD case instead of a new OPD entry.",
+                        where);
+            });
+        }
+        java.time.LocalDateTime today = java.time.LocalDate.now(java.time.ZoneId.systemDefault()).atStartOfDay();
+        opdRepository.findOpenVisits(patient.getId(), hospitalId, doctor.getId(), OPD_OPEN, today)
+                .stream().findFirst().ifPresent(open -> {
+            java.util.Map<String, String> where = new java.util.HashMap<>();
+            where.put("encounter", "OPD");
+            where.put("opdId", String.valueOf(open.getId()));
+            if (open.getCaseId() != null) where.put("caseId", open.getCaseId());
+            throw new com.hms.exception.ActiveEncounterConflictException(
+                    patient.getName() + " is already in " + doctorLabel(doctor) + "'s queue today"
+                            + (open.getCaseId() != null ? " (" + open.getCaseId() + ")" : "") + ".",
+                    where);
+        });
+    }
+
+    private static String doctorLabel(Doctor d) {
+        String n = d.getName() == null ? "the doctor" : d.getName().trim();
+        return n.toLowerCase().startsWith("dr") ? n : "Dr " + n;
     }
 
     @Transactional
@@ -167,6 +218,8 @@ public class OpdService {
                     ? "Select the doctor the patient will see."
                     : "That doctor is not available in this hospital. Select another doctor.");
         }
+
+        assertNoOpenEncounter(patient, opd.getDoctor());
 
         // Only vitals the hospital has switched ON are captured. Disabled built-ins are
         // dropped server-side, and submitted custom vitals are filtered to enabled keys.

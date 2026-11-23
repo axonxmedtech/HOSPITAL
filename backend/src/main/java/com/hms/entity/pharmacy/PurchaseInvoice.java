@@ -57,7 +57,20 @@ public class PurchaseInvoice {
     private String paymentStatus; // PENDING, PAID, PARTIAL
 
     @Column(name = "posting_status")
-    private String postingStatus; // DRAFT, POSTED
+    private String postingStatus; // DRAFT, POSTED, CANCELLED
+
+    /** Paid to the supplier so far (sum of purchase_payments). */
+    @Column(name = "paid_amount", precision = 12, scale = 2)
+    private BigDecimal paidAmount = BigDecimal.ZERO;
+
+    @Column(name = "cancel_reason", length = 255)
+    private String cancelReason;
+
+    @Column(name = "cancelled_at")
+    private LocalDateTime cancelledAt;
+
+    @Column(name = "cancelled_by")
+    private Long cancelledBy;
 
     @Column(name = "created_by")
     private Long createdBy;

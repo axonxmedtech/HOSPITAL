@@ -23,7 +23,8 @@ class ProductionConfigurationValidatorTest {
     private ProductionConfigurationValidator validator(String[] profiles, String secret, String origins) {
         MockEnvironment env = new MockEnvironment();
         env.setActiveProfiles(profiles);
-        return new ProductionConfigurationValidator(env, secret, origins);
+        return new ProductionConfigurationValidator(env, secret, origins,
+                "jdbc:mysql://db.internal.example.com:3306/hms?useSSL=false");
     }
 
     // ------------------------------------------------------------- production accepted
@@ -145,5 +146,41 @@ class ProductionConfigurationValidatorTest {
         assertThatThrownBy(() -> ProductionConfigurationValidator.validateJwtSecret(distinctive))
                 .isInstanceOf(IllegalStateException.class)
                 .satisfies(e -> assertThat(e.getMessage()).doesNotContain(distinctive));
+    }
+
+    // ------------------------------------------------------------- database transport
+
+    @Test
+    void aDatabaseOnTheSameServerMayUsePlainConnections() {
+        assertThat(ProductionConfigurationValidator.plaintextRemoteDatabase(
+                "jdbc:mysql://localhost:3306/hms?useSSL=false&allowPublicKeyRetrieval=true")).isNull();
+        assertThat(ProductionConfigurationValidator.plaintextRemoteDatabase(
+                "jdbc:mysql://127.0.0.1/hms?useSSL=false")).isNull();
+        // the Docker network: a single-label service name never leaves the server
+        assertThat(ProductionConfigurationValidator.plaintextRemoteDatabase(
+                "jdbc:mysql://db:3306/hms?useSSL=false")).isNull();
+    }
+
+    @Test
+    void aRemoteDatabaseWithoutEncryptionIsReported() {
+        assertThat(ProductionConfigurationValidator.plaintextRemoteDatabase(
+                "jdbc:mysql://mysql.example.com:3306/hms?useSSL=false"))
+                .contains("mysql.example.com").contains("sslMode=REQUIRED");
+        assertThat(ProductionConfigurationValidator.plaintextRemoteDatabase(
+                "jdbc:mysql://10.0.0.5:3306/hms")).isNotNull();
+    }
+
+    @Test
+    void aRemoteDatabaseWithEncryptionRequiredIsAccepted() {
+        assertThat(ProductionConfigurationValidator.plaintextRemoteDatabase(
+                "jdbc:mysql://mysql.example.com:3306/hms?sslMode=REQUIRED")).isNull();
+        assertThat(ProductionConfigurationValidator.plaintextRemoteDatabase(
+                "jdbc:mysql://mysql.example.com/hms?sslMode=VERIFY_IDENTITY&serverTimezone=UTC")).isNull();
+    }
+
+    @Test
+    void aPlaintextRemoteDatabaseIsReportedButDoesNotStopStartup() {
+        assertThatCode(() -> validator(new String[]{"prod"}, STRONG_SECRET, REAL_ORIGIN).validate())
+                .doesNotThrowAnyException();
     }
 }

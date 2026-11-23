@@ -39,7 +39,7 @@ const hospitalService = {
 
   getPatients: async (search, page = 0, size = 10, date = '', view = '') => {
     let query = `?page=${page}&size=${size}`;
-    if (search) query += `&search=${search}`;
+    if (search) query += `&search=${encodeURIComponent(search)}`;
     if (view) query += `&view=${view}`;
     if (date) query += `&date=${date}`;
     const response = await apiClient.get(`/hospital/patients${query}`);
@@ -638,10 +638,13 @@ const hospitalService = {
   },
 
   // --- Billing ---
-  getBills: async (search = '', page = 0, size = 10, status) => {
+  getBills: async (search = '', page = 0, size = 10, status, category, range = {}) => {
     let url = `/hospital/billing?page=${page}&size=${size}`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
     if (status) url += `&status=${encodeURIComponent(status)}`;
+    if (category) url += `&category=${encodeURIComponent(category)}`;
+    if (range.from) url += `&from=${encodeURIComponent(range.from)}`;
+    if (range.to) url += `&to=${encodeURIComponent(range.to)}`;
     const response = await apiClient.get(url);
     return response.data; // Returns Page object with { content: [...], totalElements: ..., totalPages: ... }
   },
@@ -810,8 +813,134 @@ const hospitalService = {
     const response = await apiClient.post(`/hospital/ipd/${id}/confirm-discharge`, body);
     return response.data;
   },
+  /** Insurance / TPA claims of an admission (latest first), each with its timeline. */
+  getIpdClaims: async (id) => {
+    const response = await apiClient.get(`/hospital/ipd/${id}/insurance`);
+    return response.data;
+  },
+  openIpdClaim: async (id, payload) => {
+    const response = await apiClient.post(`/hospital/ipd/${id}/insurance`, payload);
+    return response.data;
+  },
+  updateIpdClaim: async (publicId, payload) => {
+    const response = await apiClient.put(`/hospital/ipd/insurance/${publicId}`, payload);
+    return response.data;
+  },
+  /** payload: { status, amount?, claimNumber?, note? } */
+  stepIpdClaim: async (publicId, payload) => {
+    const response = await apiClient.post(`/hospital/ipd/insurance/${publicId}/step`, payload);
+    return response.data;
+  },
+  /** payload: { amount, deduction?, deductionReason?, reference? } */
+  settleIpdClaim: async (publicId, payload) => {
+    const response = await apiClient.post(`/hospital/ipd/insurance/${publicId}/settle`, payload);
+    return response.data;
+  },
+  getOpenClaims: async () => {
+    const response = await apiClient.get('/hospital/ipd/insurance/open');
+    return response.data;
+  },
+  /** The doctor's rounds on an admission, one timeline (newest first). Nurses may read it too. */
+  getIpdRounds: async (id) => {
+    const response = await apiClient.get(`/hospital/ipd/${id}/rounds`);
+    return response.data;
+  },
+  getIpdInvestigations: async (id) => {
+    const response = await apiClient.get(`/hospital/ipd/${id}/investigations`);
+    return response.data;
+  },
+  /** payload: { tests: ['CBC', 'LFT'], priority: 'ROUTINE' | 'URGENT', notes } */
+  orderIpdInvestigations: async (id, payload) => {
+    const response = await apiClient.post(`/hospital/ipd/${id}/investigations`, payload);
+    return response.data;
+  },
+  markInvestigationSample: async (publicId) => {
+    const response = await apiClient.post(`/hospital/ipd/investigations/${publicId}/sample`, {});
+    return response.data;
+  },
+  recordInvestigationResult: async (publicId, result) => {
+    const response = await apiClient.post(`/hospital/ipd/investigations/${publicId}/result`, {
+      result,
+    });
+    return response.data;
+  },
+  cancelInvestigation: async (publicId, reason) => {
+    const response = await apiClient.post(`/hospital/ipd/investigations/${publicId}/cancel`, {
+      reason,
+    });
+    return response.data;
+  },
+  /** Diet orders of an admission, current first. */
+  getIpdDiet: async (id) => {
+    const response = await apiClient.get(`/hospital/ipd/${id}/diet`);
+    return response.data;
+  },
+  setIpdDiet: async (id, payload) => {
+    const response = await apiClient.post(`/hospital/ipd/${id}/diet`, payload);
+    return response.data;
+  },
+  downloadDietSheet: async (wardId) => {
+    const response = await apiClient.get('/hospital/ipd/diet-sheet/pdf', {
+      params: wardId ? { wardId } : {},
+      responseType: 'blob',
+      timeout: 60000,
+    });
+    return response.data;
+  },
+  /** IPD billing rules: bedChargeRule (CALENDAR_DAY | HOURS_24), graceHours, minAdvance, doctorVisitFee. */
+  getIpdBillingSettings: async () => {
+    const response = await apiClient.get('/hospital/settings/ipd-billing');
+    return response.data;
+  },
+  updateIpdBillingSettings: async (payload) => {
+    const response = await apiClient.put('/hospital/settings/ipd-billing', payload);
+    return response.data;
+  },
+  /** Active IPD packages; all=true also lists retired ones (admin settings). */
+  getIpdPackages: async (all = false) => {
+    const response = await apiClient.get('/hospital/ipd/packages', { params: { all } });
+    return response.data;
+  },
+  createIpdPackage: async (payload) => {
+    const response = await apiClient.post('/hospital/ipd/packages', payload);
+    return response.data;
+  },
+  updateIpdPackage: async (packageId, payload) => {
+    const response = await apiClient.put(`/hospital/ipd/packages/${packageId}`, payload);
+    return response.data;
+  },
+  applyIpdPackage: async (id, packageId) => {
+    const response = await apiClient.post(`/hospital/ipd/${id}/package`, { packageId });
+    return response.data;
+  },
+  removeIpdPackage: async (id, reason) => {
+    const response = await apiClient.post(`/hospital/ipd/${id}/package/remove`, { reason });
+    return response.data;
+  },
+  /** An advance (deposit); may exceed the charges so far. Returns { paymentId, amount }. */
+  takeIpdAdvance: async (id, payload) => {
+    const response = await apiClient.post(`/hospital/ipd/${id}/advance`, payload);
+    return response.data;
+  },
+  downloadAdvanceReceipt: async (paymentId) => {
+    const response = await apiClient.get(`/hospital/ipd/advances/${paymentId}/receipt/pdf`, {
+      responseType: 'blob',
+      timeout: 60000,
+    });
+    return response.data;
+  },
+  /** Cancels an admission made by mistake; refundMode only when money was collected. */
+  cancelIpdAdmission: async (id, reason, refundMode) => {
+    const response = await apiClient.post(`/hospital/ipd/${id}/cancel`, { reason, refundMode });
+    return response.data;
+  },
   cancelDischargePlan: async (id, reason) => {
     const response = await apiClient.post(`/hospital/ipd/${id}/cancel-discharge-plan`, { reason });
+    return response.data;
+  },
+  /** The IPD bill plus the bill of the OPD visit that led to the admission, with combined totals. */
+  getIpdRelatedBills: async (ipdId) => {
+    const response = await apiClient.get(`/hospital/billing/ipd/${ipdId}/related-bills`);
     return response.data;
   },
   getIpdBill: async (ipdId) => {
@@ -1382,6 +1511,15 @@ const hospitalService = {
 
   downloadIpdPrescription: async (ipdId) => {
     const response = await apiClient.get(`/hospital/patients/ipd/${ipdId}/prescription/pdf`, {
+      responseType: 'blob',
+      timeout: 60000,
+    });
+    return response.data;
+  },
+
+  /** The printable discharge summary (once the doctor has planned the discharge). */
+  downloadDischargeSummary: async (ipdId) => {
+    const response = await apiClient.get(`/hospital/ipd/${ipdId}/discharge-summary/pdf`, {
       responseType: 'blob',
       timeout: 60000,
     });
