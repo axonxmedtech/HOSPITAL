@@ -45,7 +45,7 @@ public class NurseInchargeController {
      * assigned to patients. The staff-nurse endpoint at {@code /hospital/nurse/patients/...} is
      * untouched.
      */
-    @PatientRecordAccess(record = PatientRecordAccess.Kind.ADMISSION, action = PatientRecordAccess.Action.VIEW, label = "NURSING_CHART")
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.ADMISSION, action = PatientRecordAccess.Action.VIEW, label = "NURSING_CHART")
     @GetMapping("/patients/{admissionId}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN','NURSE_INCHARGE')")
     public ResponseEntity<?> wardPatientDetail(@PathVariable Long admissionId) {

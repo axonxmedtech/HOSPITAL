@@ -46,7 +46,7 @@ public class PatientAccessLogService {
 
     /** Record one access. Its own transaction, so it never rides on (or rolls back) the read. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void record(Kind kind, String ref, Action action, String label) {
+    public void logAccess(Kind kind, String ref, Action action, String label) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (hospitalId == null) {
             return; // platform user: not a hospital record access
@@ -136,7 +136,7 @@ public class PatientAccessLogService {
         return byPublicId.isEmpty() ? byNumber(ref, id -> repository.patientOfAppointmentPk(id, hospitalId)) : byPublicId;
     }
 
-    private static List<Long> byNumber(String ref, Function<Long, List<Long>> lookup) {
+    private static List<Long> byNumber(String ref, java.util.function.LongFunction<List<Long>> lookup) {
         try {
             return lookup.apply(Long.parseLong(ref));
         } catch (NumberFormatException e) {

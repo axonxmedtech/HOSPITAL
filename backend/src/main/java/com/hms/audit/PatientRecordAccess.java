@@ -11,7 +11,7 @@ import java.lang.annotation.Target;
  * returns successfully, {@link PatientAccessAspect} records who did it in {@code patient_access_logs}.
  * A refused or failed request (exception, 4xx, 5xx) is not recorded as an access.
  *
- * <p>The record is identified by the method's FIRST {@code @PathVariable}; {@link #record()} says
+ * <p>The record is identified by the method's FIRST {@code @PathVariable}; {@link #kind()} says
  * what kind of id that is, so it can be traced to the patient.
  */
 @Target(ElementType.METHOD)
@@ -20,7 +20,7 @@ import java.lang.annotation.Target;
 public @interface PatientRecordAccess {
 
     /** What the first path variable identifies. */
-    Kind record();
+    Kind kind();
 
     /** What the user did with it. */
     Action action() default Action.VIEW;

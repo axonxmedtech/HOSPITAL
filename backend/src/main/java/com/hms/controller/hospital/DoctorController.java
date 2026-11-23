@@ -159,7 +159,7 @@ public class DoctorController {
     }
 
 
-    @PatientRecordAccess(record = PatientRecordAccess.Kind.APPOINTMENT, action = PatientRecordAccess.Action.VIEW, label = "CONSULTATION")
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.APPOINTMENT, action = PatientRecordAccess.Action.VIEW, label = "CONSULTATION")
     @GetMapping("/consultation/{appointmentId}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> getConsultationDetails(@PathVariable String appointmentId) {
@@ -211,7 +211,7 @@ public class DoctorController {
      * which carries hospital_id directly — the same check {@code downloadPrescriptionByOpd} makes.
      * Another tenant's OPD is reported as not found, indistinguishable from one that never existed.
      */
-    @PatientRecordAccess(record = PatientRecordAccess.Kind.OPD, action = PatientRecordAccess.Action.VIEW, label = "CONSULTATION")
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.OPD, action = PatientRecordAccess.Action.VIEW, label = "CONSULTATION")
     @GetMapping("/consultation/opd/{opdId}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> getConsultationDetailsByOpd(@PathVariable Long opdId) {
@@ -252,7 +252,7 @@ public class DoctorController {
 
     // Same readership as /consultation/{appointmentId} above: the PDF is that consultation in
     // another format, so it carries the same rule rather than a looser one.
-    @PatientRecordAccess(record = PatientRecordAccess.Kind.APPOINTMENT, action = PatientRecordAccess.Action.PRINT, label = "PRESCRIPTION")
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.APPOINTMENT, action = PatientRecordAccess.Action.PRINT, label = "PRESCRIPTION")
     @GetMapping("/prescription/{appointmentId}/pdf")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> downloadPrescription(
@@ -305,7 +305,7 @@ public class DoctorController {
     }
 
         // Same readership as /consultation/opd/{opdId} above.
-        @PatientRecordAccess(record = PatientRecordAccess.Kind.OPD, action = PatientRecordAccess.Action.PRINT, label = "PRESCRIPTION")
+        @PatientRecordAccess(kind = PatientRecordAccess.Kind.OPD, action = PatientRecordAccess.Action.PRINT, label = "PRESCRIPTION")
         @GetMapping("/prescription/opd/{opdId}/pdf")
         @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
         public ResponseEntity<?> downloadPrescriptionByOpd(

@@ -89,7 +89,7 @@ public class PatientController {
         return ResponseEntity.ok(patientService.getAllPatients(null, view, date, pageable));
     }
 
-    @PatientRecordAccess(record = PatientRecordAccess.Kind.PATIENT, action = PatientRecordAccess.Action.VIEW, label = "PATIENT_DETAILS")
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.PATIENT, action = PatientRecordAccess.Action.VIEW, label = "PATIENT_DETAILS")
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> getPatientById(@PathVariable String id) {
@@ -103,7 +103,7 @@ public class PatientController {
      * Clinical detail (diagnoses, medications, nursing notes), so scoped to the clinical roles
      * rather than the wider set PatientController otherwise uses.
      */
-    @PatientRecordAccess(record = PatientRecordAccess.Kind.PATIENT, action = PatientRecordAccess.Action.VIEW, label = "CLINICAL_TIMELINE")
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.PATIENT, action = PatientRecordAccess.Action.VIEW, label = "CLINICAL_TIMELINE")
     @GetMapping("/{id}/timeline")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'NURSE', 'NURSE_INCHARGE')")
     public ResponseEntity<?> getPatientTimeline(@PathVariable String id) {
@@ -117,7 +117,7 @@ public class PatientController {
      * patient — current and finished — in one read. Read-only. Reception gets no clinical detail;
      * nurses only patients in their care; bills follow the Billing Handler setting.
      */
-    @PatientRecordAccess(record = PatientRecordAccess.Kind.PATIENT, action = PatientRecordAccess.Action.VIEW, label = "PATIENT_FILE")
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.PATIENT, action = PatientRecordAccess.Action.VIEW, label = "PATIENT_FILE")
     @GetMapping("/{id}/file")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST', 'NURSE', 'NURSE_INCHARGE')")
     public ResponseEntity<?> getPatientFile(@PathVariable String id) {
@@ -165,7 +165,7 @@ public class PatientController {
         return ResponseEntity.ok(updatedPatient);
     }
 
-    @PatientRecordAccess(record = PatientRecordAccess.Kind.PATIENT, action = PatientRecordAccess.Action.VIEW, label = "CONSULTATION_DETAILS")
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.PATIENT, action = PatientRecordAccess.Action.VIEW, label = "CONSULTATION_DETAILS")
     @GetMapping("/{publicId}/consultation-details")
     @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> getPatientConsultationDetails(@PathVariable String publicId) {
@@ -179,7 +179,7 @@ public class PatientController {
         return ResponseEntity.ok(patientService.getLatestPrescription(publicId));
     }
 
-    @PatientRecordAccess(record = PatientRecordAccess.Kind.OPD, action = PatientRecordAccess.Action.PRINT, label = "OPD_MEDICINES")
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.OPD, action = PatientRecordAccess.Action.PRINT, label = "OPD_MEDICINES")
     @GetMapping("/opd/{opdId}/medicines/pdf")
     @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> getOpdMedicinesPdf(@PathVariable Long opdId) {
@@ -192,7 +192,7 @@ public class PatientController {
                 .body(new org.springframework.core.io.InputStreamResource(pdf));
     }
 
-    @PatientRecordAccess(record = PatientRecordAccess.Kind.ADMISSION, action = PatientRecordAccess.Action.PRINT, label = "IPD_MEDICINES")
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.ADMISSION, action = PatientRecordAccess.Action.PRINT, label = "IPD_MEDICINES")
     @GetMapping("/ipd/{ipdId}/medicines/pdf")
     @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> getIpdMedicinesPdf(@PathVariable Long ipdId) {
@@ -205,7 +205,7 @@ public class PatientController {
                 .body(new org.springframework.core.io.InputStreamResource(pdf));
     }
 
-    @PatientRecordAccess(record = PatientRecordAccess.Kind.ADMISSION, action = PatientRecordAccess.Action.PRINT, label = "IPD_PRESCRIPTION")
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.ADMISSION, action = PatientRecordAccess.Action.PRINT, label = "IPD_PRESCRIPTION")
     @GetMapping("/ipd/{ipdId}/prescription/pdf")
     @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST', 'HOSPITAL_ADMIN')")
     public ResponseEntity<?> getIpdPrescriptionPdf(@PathVariable Long ipdId) {
