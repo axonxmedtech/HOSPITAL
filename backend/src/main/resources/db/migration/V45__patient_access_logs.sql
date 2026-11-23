@@ -1,6 +1,6 @@
 -- Patient access log: who opened, printed or downloaded which patient's record, and when.
 -- Append-only (never updated or deleted) and kept when a facility is purged, like audit_logs.
--- Kept apart from audit_logs: reads far outnumber changes and would bury the change history.
+-- Kept apart from audit_logs: reads far outnumber edits and would bury the edit history.
 --
 -- Idempotent: DatabaseMigrationRunner creates the same table on non-Flyway (dev) profiles.
 --
