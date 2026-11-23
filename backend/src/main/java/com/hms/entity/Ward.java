@@ -27,6 +27,10 @@ public class Ward {
     @Column(name = "bed_price", nullable = false)
     private java.math.BigDecimal bedPrice;
 
+    /** Nursing charge per day in this ward; null or 0 = none. */
+    @Column(name = "nursing_charge", precision = 10, scale = 2)
+    private java.math.BigDecimal nursingCharge;
+
     @Column(name = "total_beds", nullable = false)
     private Integer totalBeds;
 

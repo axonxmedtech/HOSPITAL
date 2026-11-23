@@ -10,6 +10,7 @@ import java.util.List;
 public interface BillingPaymentRepository extends JpaRepository<BillingPayment, Long> {
     List<BillingPayment> findByBillingId(Long billingId);
     List<BillingPayment> findByBillingIdIn(List<Long> billingIds);
+    java.util.Optional<BillingPayment> findByIdAndHospitalId(Long id, Long hospitalId);
 
     /** One day's ledger rows (payments and refunds), oldest first — the daily cash-closing report. */
     List<BillingPayment> findByHospitalIdAndCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtAsc(

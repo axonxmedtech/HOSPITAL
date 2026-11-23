@@ -73,9 +73,17 @@ export function DischargeTypeFields({ type, note, onType, onNote, idPrefix = 'dt
  * Confirms a discharge with its type. Unpaid bills are listed up front: they block a normal,
  * LAMA or referral discharge, while a death or absconding leaves the bill open to collect later.
  */
-export function ConfirmDischargeModal({ initialType, initialNote, owing, onClose, onConfirm }) {
+export function ConfirmDischargeModal({
+  initialType,
+  initialNote,
+  owing,
+  unusedAdvance = 0,
+  onClose,
+  onConfirm,
+}) {
   const [type, setType] = useState(initialType || 'NORMAL');
   const [note, setNote] = useState(initialNote || '');
+  const [refundMode, setRefundMode] = useState('CASH');
   const [saving, setSaving] = useState(false);
   const missingNote = dischargeNoteRequired(type) && !note.trim();
   const blockedByDues = owing && !leavesWithDues(type);
@@ -83,7 +91,11 @@ export function ConfirmDischargeModal({ initialType, initialNote, owing, onClose
   const submit = async () => {
     setSaving(true);
     try {
-      await onConfirm({ dischargeType: type, dischargeNote: note.trim() || null });
+      await onConfirm({
+        dischargeType: type,
+        dischargeNote: note.trim() || null,
+        ...(unusedAdvance > 0 ? { refundMode } : {}),
+      });
     } finally {
       setSaving(false);
     }
@@ -116,6 +128,26 @@ export function ConfirmDischargeModal({ initialType, initialNote, owing, onClose
               ? 'Collect these (Take Payment here, or Collect on the Billing / OPD screen) first — the discharge will be refused until every bill is settled.'
               : 'The bill stays open so the balance can still be collected.'}
           </p>
+        )}
+        {unusedAdvance > 0 && (
+          <div className="text-sm rounded p-2 mb-3 bg-emerald-50 text-emerald-900">
+            <p className="mb-2">
+              ₹{unusedAdvance} of the advance is unused and will be returned to the patient.
+            </p>
+            <label htmlFor="confirm-refund-mode" className="block font-medium mb-1">
+              Return it by
+            </label>
+            <select
+              id="confirm-refund-mode"
+              value={refundMode}
+              onChange={(e) => setRefundMode(e.target.value)}
+              className="w-full border p-2 rounded bg-white"
+            >
+              <option value="CASH">Cash</option>
+              <option value="UPI">UPI</option>
+              <option value="CARD">Card</option>
+            </select>
+          </div>
         )}
         <p className="text-sm text-gray-600 mb-4">
           This finalises the admission, stops running infusions and sends the bed for cleaning.

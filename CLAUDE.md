@@ -146,6 +146,30 @@ Each hospital picks which vitals are captured at OPD entry and can define its ow
 - **Branches:** every pharmacy query takes `securityHelper.getCurrentBranchId()` (null = whole pharmacy); new queries must too. Money / stock changes outside a sale go through `PharmacyAuditTrail` (shown in the pharmacy Audit Logs).
 - A `PHARMACY` facility cannot reach doctor / receptionist / patient endpoints (`FacilityAccessAspect.NOT_FOR_PHARMACY`).
 
+### IPD rules (admission → discharge)
+
+- **Numbers & cancel:** IPD numbers run per hospital (`uk_ipd_admission_hospital_ipd_number`; the admission locks the hospital row). A mistaken admission is **cancelled** (`POST /hospital/ipd/{id}/cancel`, status `CANCELLED`), never discharged. Cancelling frees the bed, voids the bill and reopens the doctor's request. It is refused once a stock dose was given, a surgery is booked, or a discharge is planned.
+- **Bed charges:** all bed, nursing and visit days come from `IpdChargePeriods` (`CALENDAR_DAY` or `HOURS_24` + grace).
+  - The rule is snapshotted on `ipd_admission` at admission and set in `ipd_billing_settings`.
+  - Line descriptions name the day, which makes them idempotent and lets packages find them.
+  - `BillingSchedulerService` is the only place that adds day 2+ charges.
+- **Packages:** `ipd_packages` cover bed, nursing and visits for N days. Applying one later credits the covered lines with a negative adjustment line, and removal is reversed by opposite lines; nothing is deleted.
+- **Money:**
+  - **Advances** are `billing_payments` of kind `ADVANCE` and may exceed the balance. The unused part is refunded at `confirm-discharge` (`refundMode`).
+  - **Insurance:** `ipd_insurance_claims` follow a state machine in `IpdInsuranceService`. The approved amount is the insurer's share at discharge, and the bill stays open for it. The settlement is posted as kind/mode `INSURANCE`.
+- **Discharge summary:**
+  - Structured (`DischargeSummaryRules`: diagnosis, course and condition required) and editable while `DISCHARGE_PLANNED`.
+  - PDF via `ClinicalPdfService.generateDischargeSummaryPdf`.
+  - A NORMAL discharge books the follow-up appointment (best effort, next free 15-minute slot).
+- **Care orders:** `IpdCareAccess` decides who may read and write.
+  - **Rounds:** one timeline (`/rounds`) that nurses can read.
+  - **Investigations:** stored on `lab_orders` with `ipd_admission_id` (ORDERED → SAMPLE_COLLECTED → COMPLETED/CANCELLED). A result may be recorded after discharge.
+  - **Diet:** `diet_orders` (history kept), plus a diet sheet PDF.
+- **Bed reservations:** `bed_reservations` hold a free bed until `reserved_until`.
+  - `BedReservationService.claimFor` is called by admit and change-bed. Only the reserved patient may enter, matched by `patientId`, or by `reservationId` for a hold made by name.
+  - Expired holds are ignored.
+- **Desk role:** reception, the admin, or a doctor in Solo/Both mode (`FrontDeskAccess`).
+
 ### Design docs
 
 Specs and phase plans live under `docs/superpowers/specs/` and `docs/superpowers/plans/` (dated markdown). Consult the latest `nursing-mgmt-phase*` docs before extending the nurse module.

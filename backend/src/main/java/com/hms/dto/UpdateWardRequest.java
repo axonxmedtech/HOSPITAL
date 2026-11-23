@@ -17,6 +17,9 @@ public class UpdateWardRequest {
     @PositiveOrZero(message = "bedPrice must be >= 0")
     private BigDecimal bedPrice;
 
+    @PositiveOrZero(message = "nursingCharge must be >= 0")
+    private BigDecimal nursingCharge;
+
     private Integer floorNumber;
 
     /**

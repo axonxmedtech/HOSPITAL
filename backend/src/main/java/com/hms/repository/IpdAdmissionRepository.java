@@ -12,7 +12,6 @@ import org.springframework.data.jpa.repository.Lock;
 public interface IpdAdmissionRepository extends JpaRepository<IpdAdmission, Long> {
     boolean existsByWardIdAndHospitalId(Long wardId, Long hospitalId);
 
-    Optional<IpdAdmission> findByIpdNumber(String ipdNumber);
 
     /**
      * Portable across MySQL (production) and H2 (test profile). MySQL's CAST accepts
@@ -22,9 +21,10 @@ public interface IpdAdmissionRepository extends JpaRepository<IpdAdmission, Long
      * any realistic sequence and keeps the value exact.
      */
     @org.springframework.data.jpa.repository.Query(
-        value = "SELECT COALESCE(MAX(CAST(SUBSTRING(ipd_number, 5) AS DECIMAL(20,0))), 0) FROM ipd_admission WHERE ipd_number LIKE 'IPD-%'",
+        value = "SELECT COALESCE(MAX(CAST(SUBSTRING(ipd_number, 5) AS DECIMAL(20,0))), 0) FROM ipd_admission "
+                + "WHERE hospital_id = :hospitalId AND ipd_number LIKE 'IPD-%'",
         nativeQuery = true)
-    Long findMaxIpdSequence();
+    Long findMaxIpdSequence(@org.springframework.data.repository.query.Param("hospitalId") Long hospitalId);
     boolean existsByHospitalIdAndPatientIdAndStatusIn(Long hospitalId, Long patientId,
             java.util.Collection<String> statuses);
 

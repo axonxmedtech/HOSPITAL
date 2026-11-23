@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useState } from 'react';
 import { useToast } from '../context/ToastContext';
+import authService from '../services/authService';
 import hospitalService from '../services/hospitalService';
 import wardService from '../services/wardService';
 import { extractApiError } from '../utils/apiError';
@@ -22,8 +23,31 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
   const [optionsLoaded, setOptionsLoaded] = useState(false);
 
   const [primaryDiagnosis, setPrimaryDiagnosis] = useState(initialDiagnosis || opd?.problem || '');
+  // Money at admission (billing hospitals only): optional package and advance.
+  const hasBilling = (authService.getCurrentUser()?.modules || []).includes('BILLING');
+  const [packages, setPackages] = useState([]);
+  const [packageId, setPackageId] = useState('');
+  const [minAdvance, setMinAdvance] = useState(0);
+  const [advanceAmount, setAdvanceAmount] = useState('');
+  const [advanceMode, setAdvanceMode] = useState('CASH');
+  const [advanceReference, setAdvanceReference] = useState('');
+  // A bed held by name (no registered patient): reception confirms this is the reserved patient.
+  const [useReservation, setUseReservation] = useState(false);
   const [loading, setLoading] = useState(false);
   const { success, error: toastError } = useToast();
+
+  useEffect(() => {
+    if (!isOpen || !hasBilling) return;
+    // Optional extras: the admission still works if either call fails.
+    hospitalService
+      .getIpdPackages()
+      .then((list) => setPackages(list || []))
+      .catch(() => setPackages([]));
+    hospitalService
+      .getIpdBillingSettings()
+      .then((s) => setMinAdvance(Number(s?.minAdvance) || 0))
+      .catch(() => setMinAdvance(0));
+  }, [isOpen, hasBilling]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -129,17 +153,39 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
 
   if (!isOpen) return null;
 
+  const heldBed = beds.find((b) => Number(b.bedId) === Number(selectedBed) && b.reservedFor);
+
+  const advance = Number(advanceAmount) || 0;
+
+  /** The first problem with the form, or null when it can be sent. */
+  const formProblem = () => {
+    if (!selectedWard || !selectedBed) return 'Please select ward and bed';
+    if (!opd && !selectedPatientId) return 'Please select a patient for admission';
+    if (!opd && !selectedDoctorId) return 'Select the doctor the patient is admitted under';
+    if (hasBilling && admissionType === 'ELECTIVE' && minAdvance > 0 && advance < minAdvance)
+      return `A planned admission needs an advance of at least ₹${minAdvance}`;
+    if (advance > 0 && advanceMode === 'UPI' && !advanceReference.trim())
+      return 'Enter the UPI reference (UTR) for the advance';
+    return null;
+  };
+
+  /** Package, reservation and advance are sent only when they apply. */
+  const extras = () => {
+    const out = {};
+    if (hasBilling && packageId) out.packageId = Number(packageId);
+    if (useReservation && heldBed?.reservationId) out.reservationId = heldBed.reservationId;
+    if (hasBilling && advance > 0) {
+      out.advanceAmount = advance;
+      out.advanceMode = advanceMode;
+      out.advanceReference = advanceReference.trim() || null;
+    }
+    return out;
+  };
+
   const handleSubmit = async () => {
-    if (!selectedWard || !selectedBed) {
-      toastError('Please select ward and bed');
-      return;
-    }
-    if (!opd && !selectedPatientId) {
-      toastError('Please select a patient for admission');
-      return;
-    }
-    if (!opd && !selectedDoctorId) {
-      toastError('Select the doctor the patient is admitted under');
+    const problem = formProblem();
+    if (problem) {
+      toastError(problem);
       return;
     }
 
@@ -153,6 +199,7 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
         bedId: selectedBed,
         admissionType,
         primaryDiagnosis,
+        ...extras(),
       };
       const res = await hospitalService.createIpdAdmission(payload);
       success('Patient admitted');
@@ -329,11 +376,30 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
                 {beds.map((b) => (
                   <option key={b.bedId} value={b.bedId}>
                     {b.bedCode} ({b.status})
+                    {b.reservedFor ? ` — reserved for ${b.reservedFor}` : ''}
                   </option>
                 ))}
               </select>
             )}
           </div>
+
+          {heldBed && (
+            <div className="text-sm rounded-xl p-3 bg-sky-50 text-sky-900">
+              This bed is reserved for <strong>{heldBed.reservedFor}</strong>.
+              {heldBed.reservedPatientId ? (
+                ' Only that patient can be admitted into it.'
+              ) : (
+                <label className="flex items-center gap-2 mt-2">
+                  <input
+                    type="checkbox"
+                    checked={useReservation}
+                    onChange={(e) => setUseReservation(e.target.checked)}
+                  />{' '}
+                  This is the reserved patient
+                </label>
+              )}
+            </div>
+          )}
 
           {/* Admission Type */}
           <div>
@@ -353,6 +419,74 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
               <option value="ELECTIVE">Elective Admission</option>
             </select>
           </div>
+
+          {hasBilling && packages.length > 0 && (
+            <div>
+              <label
+                htmlFor={`${formId}-package`}
+                className="block text-xs font-semibold text-gray-700 mb-1"
+              >
+                Package (optional)
+              </label>
+              <select
+                id={`${formId}-package`}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                value={packageId}
+                onChange={(e) => setPackageId(e.target.value)}
+              >
+                <option value="">No package (charged per day)</option>
+                {packages.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} — ₹{Number(p.price).toLocaleString('en-IN')}, {p.includedDays} day
+                    {p.includedDays === 1 ? '' : 's'}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {hasBilling && (
+            <div>
+              <label
+                htmlFor={`${formId}-advance`}
+                className="block text-xs font-semibold text-gray-700 mb-1"
+              >
+                Advance (₹)
+                {admissionType === 'ELECTIVE' && minAdvance > 0
+                  ? ` — at least ₹${minAdvance} for a planned admission`
+                  : ' (optional)'}
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                <input
+                  id={`${formId}-advance`}
+                  type="number"
+                  min="0"
+                  className="col-span-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                  value={advanceAmount}
+                  onChange={(e) => setAdvanceAmount(e.target.value)}
+                />
+                <select
+                  aria-label="Advance paid by"
+                  className="col-span-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                  value={advanceMode}
+                  onChange={(e) => setAdvanceMode(e.target.value)}
+                >
+                  <option value="CASH">Cash</option>
+                  <option value="UPI">UPI</option>
+                  <option value="CARD">Card</option>
+                </select>
+                <input
+                  aria-label="Advance reference"
+                  placeholder={advanceMode === 'UPI' ? 'UTR *' : 'Reference'}
+                  disabled={advanceMode === 'CASH'}
+                  maxLength={100}
+                  className="col-span-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:outline-none disabled:bg-gray-50"
+                  value={advanceReference}
+                  onChange={(e) => setAdvanceReference(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Primary Diagnosis */}
           <div>

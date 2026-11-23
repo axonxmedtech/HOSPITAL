@@ -15,8 +15,13 @@ const WardCard = ({
       <div>
         <h3 className="text-lg font-semibold text-slate-800">{ward.wardName}</h3>
         <p className="text-sm text-slate-500">Beds: {ward.totalBeds}</p>
-        <p className="text-sm text-slate-500">Price: ₹{ward.bedPrice}</p>
-        <p className={`mt-2 inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${ward.staffed ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+        <p className="text-sm text-slate-500">
+          Price: ₹{ward.bedPrice}
+          {Number(ward.nursingCharge) > 0 ? ` · Nursing: ₹${ward.nursingCharge}/day` : ''}
+        </p>
+        <p
+          className={`mt-2 inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${ward.staffed ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}
+        >
           {ward.staffed ? 'STAFFED' : 'UNSTAFFED — No Nurse Incharge assigned'}
         </p>
         {ward.floorNumber !== null && (

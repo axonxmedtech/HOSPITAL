@@ -9,7 +9,8 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "ipd_admission")
+@Table(name = "ipd_admission", uniqueConstraints = @UniqueConstraint(
+        name = "uk_ipd_admission_hospital_ipd_number", columnNames = {"hospital_id", "ipd_number"}))
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -19,7 +20,8 @@ public class IpdAdmission {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "ipd_number", nullable = false, unique = true)
+    /** IPD-1, IPD-2 ... numbered per hospital (unique with hospital_id). */
+    @Column(name = "ipd_number", nullable = false)
     private String ipdNumber;
 
     @Column(name = "patient_id", nullable = false)
@@ -83,4 +85,30 @@ public class IpdAdmission {
     /** users.id of the receptionist/admin who admitted the patient (assigned ward/bed). */
     @Column(name = "admitted_by_user_id")
     private Long admittedByUserId;
+
+    /** Why an admission made by mistake was cancelled (status CANCELLED). */
+    @Column(name = "cancel_reason", length = 255)
+    private String cancelReason;
+
+    @Column(name = "cancelled_at")
+    private LocalDateTime cancelledAt;
+
+    /** Role and email of whoever cancelled the admission. */
+    @Column(name = "cancelled_by", length = 255)
+    private String cancelledBy;
+
+    /** CALENDAR_DAY or HOURS_24: the hospital's bed-charge rule when the patient was admitted. Null = CALENDAR_DAY. */
+    @Column(name = "bed_charge_rule", length = 20)
+    private String bedChargeRule;
+
+    /** Grace hours of the HOURS_24 rule, as it was at admission. */
+    @Column(name = "grace_hours")
+    private Integer graceHours;
+
+    /** The fixed-price package covering this stay, if any. */
+    @Column(name = "package_id")
+    private Long packageId;
+
+    @Column(name = "package_applied_at")
+    private LocalDateTime packageAppliedAt;
 }

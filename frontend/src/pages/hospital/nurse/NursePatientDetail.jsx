@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import DietCard from '../../../components/ipd/DietCard';
+import DoctorRoundsTimeline from '../../../components/ipd/DoctorRoundsTimeline';
+import InvestigationsPanel from '../../../components/ipd/InvestigationsPanel';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import PatientDocumentsPanel from '../../../components/PatientDocumentsPanel';
 import { useToast } from '../../../context/ToastContext';
@@ -139,6 +142,8 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
     { id: 'overview', label: 'Overview' },
     ...(verdictFor('vitals') !== 'HIDDEN' ? [{ id: 'vitals', label: 'Vitals' }] : []),
     { id: 'medication', label: 'Medication' },
+    { id: 'rounds', label: "Doctor's Rounds" },
+    { id: 'investigations', label: 'Investigations' },
     ...(verdictFor('notes') !== 'HIDDEN' ? [{ id: 'notes', label: 'Notes' }] : []),
     ...(verdictFor('assessment') !== 'HIDDEN'
       ? [{ id: 'assessment', label: 'Initial Assessment' }]
@@ -261,6 +266,18 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
         </div>
       )}
 
+      {tab === 'rounds' && (
+        <div className="bg-white border rounded-xl p-4">
+          <DoctorRoundsTimeline admissionId={admissionId} refreshKey={refreshKey} />
+        </div>
+      )}
+
+      {tab === 'investigations' && (
+        <div className="bg-white border rounded-xl p-4">
+          <InvestigationsPanel admissionId={admissionId} canWork />
+        </div>
+      )}
+
       {tab === 'notes' && (
         <NotesPanel admissionId={admissionId} readOnly={verdictFor('notes') === 'READ_ONLY'} />
       )}
@@ -311,6 +328,7 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
             </Section>
 
             <Section title="Admission">
+              <DietCard admissionId={admissionId} refreshKey={refreshKey} />
               <div className="grid grid-cols-2 gap-4">
                 <Field label="IPD No." value={d.ipdNumber} />
                 <Field label="Type" value={d.admissionType} />

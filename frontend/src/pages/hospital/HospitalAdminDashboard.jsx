@@ -106,6 +106,8 @@ import IcuBedBoard from './icu/IcuBedBoard';
 import IcuDashboard from './icu/IcuDashboard';
 import IcuWardsAndBeds from './icu/IcuWardsAndBeds';
 import IcuDashboardView from './IcuDashboardView';
+import IpdBillingSettingsCard from './IpdBillingSettingsCard';
+import IpdPackagesCard from './IpdPackagesCard';
 import OtAnalyticsCard from './OtAnalyticsCard';
 import OtPermissionsCard from './OtPermissionsCard';
 import OtPoliciesCard from './OtPoliciesCard';
@@ -4088,6 +4090,16 @@ const HospitalAdminDashboard = () => {
                               },
                             ]
                           : []),
+                        ...(modules.includes('IPD') && modules.includes('BILLING')
+                          ? [
+                              {
+                                view: 'ipd-billing',
+                                title: 'IPD Billing & Packages',
+                                desc: 'How bed days are counted, the advance for a planned admission, doctor visit fee and packages.',
+                                iconClass: 'bg-emerald-50 text-emerald-600',
+                              },
+                            ]
+                          : []),
                         {
                           view: 'print-payment',
                           title: 'Print & Payment',
@@ -4608,6 +4620,12 @@ const HospitalAdminDashboard = () => {
                   {!isPharmacyTenant && settingsView === 'sidebar' && (
                     <div className="max-w-4xl mx-auto my-4">
                       <SidebarSettingsCard user={user} adminTabs={tabs} />
+                    </div>
+                  )}
+                  {!isPharmacyTenant && settingsView === 'ipd-billing' && (
+                    <div className="max-w-4xl mx-auto my-4">
+                      <IpdBillingSettingsCard />
+                      <IpdPackagesCard />
                     </div>
                   )}
                   {!isPharmacyTenant && settingsView === 'vitals' && (

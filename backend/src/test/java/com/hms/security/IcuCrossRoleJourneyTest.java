@@ -533,7 +533,7 @@ class IcuCrossRoleJourneyTest {
 
         // Discharge is two steps in production: the doctor plans it, reception confirms it.
         ok(post("/hospital/ipd/" + admissionId + "/plan-discharge", doctorToken,
-                "{\"dischargeType\":\"NORMAL\",\"summary\":\"Recovered\"}"),
+                "{\"dischargeType\":\"NORMAL\",\"finalDiagnosis\":\"Recovered\",\"treatmentGiven\":\"Treated\",\"conditionAtDischarge\":\"IMPROVED\"}"),
                 "the doctor plans the discharge");
 
         ResponseEntity<String> discharged = rest.exchange(

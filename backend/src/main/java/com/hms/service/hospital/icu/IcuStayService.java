@@ -49,7 +49,8 @@ public class IcuStayService {
 
     private static final List<String> DISPOSITIONS = List.of(
             IcuStay.DISP_WARD, IcuStay.DISP_HOME, IcuStay.DISP_LAMA,
-            IcuStay.DISP_REFERRED_OUT, IcuStay.DISP_EXPIRED, IcuStay.DISP_ANOTHER_ICU);
+            IcuStay.DISP_REFERRED_OUT, IcuStay.DISP_EXPIRED, IcuStay.DISP_ANOTHER_ICU,
+            IcuStay.DISP_CANCELLED);
 
     @Autowired private IcuStayRepository icuStayRepository;
     @Autowired private com.hms.repository.IcuWardRepository icuWardRepository;

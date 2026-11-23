@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import EmptyState from '../../components/EmptyState';
+import { DietSheetButton } from '../../components/ipd/DietCard';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import Navbar from '../../components/Navbar';
 import NotificationBell from '../../components/NotificationBell';
@@ -154,6 +155,7 @@ const NurseInchargeDashboard = () => {
               <div className="w-1 h-6 bg-gray-900 rounded-full"></div>
               <h2 className="text-lg font-bold text-gray-800">{titleFor()}</h2>
             </div>
+            <DietSheetButton />
           </div>
           {renderContent()}
         </main>
@@ -330,12 +332,20 @@ export const UnassignedPatientsView = ({ refreshKey }) => {
   useEffect(() => {
     let active = true;
     setLoading(true);
-    nurseService.getUnassignedPatients().then((data) => {
-      if (active) setPatients(Array.isArray(data) ? data : []);
-    }).catch((error) => {
-      if (active) toastError(extractApiError(error, 'Failed to load unassigned patients'));
-    }).finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+    nurseService
+      .getUnassignedPatients()
+      .then((data) => {
+        if (active) setPatients(Array.isArray(data) ? data : []);
+      })
+      .catch((error) => {
+        if (active) toastError(extractApiError(error, 'Failed to load unassigned patients'));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [refreshKey, refresh, toastError]);
 
   const openAssign = async (patient) => {
@@ -360,16 +370,99 @@ export const UnassignedPatientsView = ({ refreshKey }) => {
     } catch (error) {
       // Preserve the dialog and selection so an operator can correct/retry the action.
       toastError(extractApiError(error, 'Failed to assign nurse'));
-    } finally { setSaving(false); }
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (loading) return <LoadingSpinner />;
-  if (!patients.length) return <EmptyState icon={null} title="No unassigned patients" message="All active patients in your wards have a primary nurse." />;
+  if (!patients.length)
+    return (
+      <EmptyState
+        icon={null}
+        title="No unassigned patients"
+        message="All active patients in your wards have a primary nurse."
+      />
+    );
   return (
     <div className="space-y-4">
-      <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">These patients are visible to ward staff but need a primary nurse for worklist ownership.</p>
-      <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto"><table className="min-w-full text-sm"><thead><tr className="text-left text-xs font-semibold text-gray-500 border-b border-gray-200"><th className="px-4 py-3">PATIENT</th><th className="px-4 py-3">IPD NO.</th><th className="px-4 py-3">WARD / BED</th><th className="px-4 py-3">ADMITTED</th><th className="px-4 py-3 text-right">ACTION</th></tr></thead><tbody>{patients.map((patient) => <tr key={patient.ipdAdmissionId} className="border-b border-gray-100"><td className="px-4 py-3 font-medium">{patient.patientName || '—'}</td><td className="px-4 py-3">{patient.ipdNumber || '—'}</td><td className="px-4 py-3">{patient.wardName || '—'} {patient.bedCode ? ` / ${patient.bedCode}` : ''}</td><td className="px-4 py-3">{patient.admissionDateTime ? new Date(patient.admissionDateTime).toLocaleString('en-IN') : '—'}</td><td className="px-4 py-3 text-right"><button onClick={() => openAssign(patient)} className="px-3 py-1 text-xs font-semibold rounded-lg bg-gray-900 text-white">Assign nurse</button></td></tr>)}</tbody></table></div>
-      {selected && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"><div className="bg-white rounded-xl p-5 w-full max-w-md space-y-4"><h3 className="font-bold">Assign primary nurse</h3><p className="text-sm text-gray-600">{selected.patientName || selected.ipdNumber}</p><select aria-label="Primary nurse" value={nurseProfileId} onChange={(event) => setNurseProfileId(event.target.value)} className="w-full border rounded-lg p-2"><option value="">Select nurse</option>{nurses.map((nurse) => <option key={nurse.id} value={nurse.id}>{nurse.name}</option>)}</select><div className="flex justify-end gap-2"><button onClick={() => setSelected(null)} disabled={saving} className="px-3 py-2 text-sm">Cancel</button><button onClick={assign} disabled={!nurseProfileId || saving} className="px-3 py-2 text-sm rounded-lg bg-gray-900 text-white">{saving ? 'Assigning…' : 'Assign'}</button></div></div></div>}
+      <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+        These patients are visible to ward staff but need a primary nurse for worklist ownership.
+      </p>
+      <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
+        <table className="min-w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs font-semibold text-gray-500 border-b border-gray-200">
+              <th className="px-4 py-3">PATIENT</th>
+              <th className="px-4 py-3">IPD NO.</th>
+              <th className="px-4 py-3">WARD / BED</th>
+              <th className="px-4 py-3">ADMITTED</th>
+              <th className="px-4 py-3 text-right">ACTION</th>
+            </tr>
+          </thead>
+          <tbody>
+            {patients.map((patient) => (
+              <tr key={patient.ipdAdmissionId} className="border-b border-gray-100">
+                <td className="px-4 py-3 font-medium">{patient.patientName || '—'}</td>
+                <td className="px-4 py-3">{patient.ipdNumber || '—'}</td>
+                <td className="px-4 py-3">
+                  {patient.wardName || '—'} {patient.bedCode ? ` / ${patient.bedCode}` : ''}
+                </td>
+                <td className="px-4 py-3">
+                  {patient.admissionDateTime
+                    ? new Date(patient.admissionDateTime).toLocaleString('en-IN')
+                    : '—'}
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <button
+                    onClick={() => openAssign(patient)}
+                    className="px-3 py-1 text-xs font-semibold rounded-lg bg-gray-900 text-white"
+                  >
+                    Assign nurse
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {selected && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="bg-white rounded-xl p-5 w-full max-w-md space-y-4">
+            <h3 className="font-bold">Assign primary nurse</h3>
+            <p className="text-sm text-gray-600">{selected.patientName || selected.ipdNumber}</p>
+            <select
+              aria-label="Primary nurse"
+              value={nurseProfileId}
+              onChange={(event) => setNurseProfileId(event.target.value)}
+              className="w-full border rounded-lg p-2"
+            >
+              <option value="">Select nurse</option>
+              {nurses.map((nurse) => (
+                <option key={nurse.id} value={nurse.id}>
+                  {nurse.name}
+                </option>
+              ))}
+            </select>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setSelected(null)}
+                disabled={saving}
+                className="px-3 py-2 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={assign}
+                disabled={!nurseProfileId || saving}
+                className="px-3 py-2 text-sm rounded-lg bg-gray-900 text-white"
+              >
+                {saving ? 'Assigning…' : 'Assign'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

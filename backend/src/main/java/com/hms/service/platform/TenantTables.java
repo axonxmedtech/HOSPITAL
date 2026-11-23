@@ -287,6 +287,15 @@ public final class TenantTables {
         // Supplier payments and return notes: financial documents.
         retain("purchase_payments", Ownership.DIRECT);
         retain("supplier_return_notes", Ownership.DIRECT);
+        // IPD billing rules and packages: what the hospital charged by, kept with its bills.
+        retain("ipd_billing_settings", Ownership.DIRECT);
+        retain("ipd_packages", Ownership.DIRECT);
+        // Diet orders: part of the inpatient clinical record.
+        retain("diet_orders", Ownership.DIRECT);
+        // Insurance claims are financial records; reservations are kept with the bed history.
+        retain("ipd_insurance_claims", Ownership.DIRECT);
+        retain("ipd_insurance_claim_events", Ownership.DIRECT);
+        retain("bed_reservations", Ownership.DIRECT);
         retain("bed_status_audits", Ownership.DIRECT);
         retain("support_tickets", Ownership.DIRECT);
 
