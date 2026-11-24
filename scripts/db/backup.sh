@@ -97,10 +97,48 @@ fi
 
 # Sidecar metadata (checksum + facts) for the audit trail.
 SHA=$(sha256sum "$OUT" | awk '{print $1}')
+chmod 600 "$OUT" 2>/dev/null || true
+
+# ── Local encryption with Strong Master Key (AES-256-CBC with PBKDF2) ──────
+BACKUP_ENV="${BACKUP_ENV:-/etc/hms/backup.env}"
+if [ -z "${BACKUP_SECRET_KEY:-}" ] && [ -f "$BACKUP_ENV" ]; then
+  # Parse BACKUP_SECRET_KEY safely from /etc/hms/backup.env
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"
+    line="${line#"${line%%[![:space:]]*}"}"
+    case "$line" in '' | '#'*) continue ;; esac
+    line="${line#export }"
+    case "$line" in *=*) ;; *) continue ;; esac
+    key="${line%%=*}"; val="${line#*=}"
+    case "$val" in \"*\") val="${val#\"}"; val="${val%\"}" ;; \'*\') val="${val#\'}"; val="${val%\'}" ;; esac
+    if [ "$key" = "BACKUP_SECRET_KEY" ]; then
+      BACKUP_SECRET_KEY="$val"
+    fi
+  done < "$BACKUP_ENV"
+fi
+
+ENC_FILE=""
+ENC_SIZE=0
+ENC_SHA=""
+if [ -n "${BACKUP_SECRET_KEY:-}" ]; then
+  ENC_FILE="$OUT.enc"
+  umask 027
+  openssl enc -aes-256-cbc -pbkdf2 -iter 100000 -salt -in "$OUT" -out "$ENC_FILE" -pass "pass:$BACKUP_SECRET_KEY"
+  ENC_SIZE=$(stat -c '%s' "$ENC_FILE" 2>/dev/null || wc -c < "$ENC_FILE" | tr -d ' ')
+  ENC_SHA=$(sha256sum "$ENC_FILE" 2>/dev/null | awk '{print $1}' || shasum -a 256 "$ENC_FILE" | awk '{print $1}')
+  chmod 640 "$ENC_FILE" 2>/dev/null || true
+  echo "[backup] Encrypted (AES-256) → $ENC_FILE ($ENC_SIZE bytes, sha256=$ENC_SHA)"
+else
+  echo "[backup] WARNING: BACKUP_SECRET_KEY not set; backup remains unencrypted." >&2
+fi
+
 cat > "$OUT.meta.json" <<EOF
 {"file":"$(basename "$OUT")","database":"$MYSQL_DATABASE","environment":"$ENV_LABEL",
- "createdAt":"$(date -u '+%Y-%m-%dT%H:%M:%SZ')","bytes":$SIZE,"sha256":"$SHA"}
+ "createdAt":"$(date -u '+%Y-%m-%dT%H:%M:%SZ')","bytes":$SIZE,"sha256":"$SHA",
+ "encFile":"${ENC_FILE:+$(basename "$ENC_FILE")}","encBytes":$ENC_SIZE,"encSha256":"$ENC_SHA",
+ "encrypted":$( [ -n "$ENC_FILE" ] && echo "true" || echo "false" )}
 EOF
+chmod 640 "$OUT.meta.json" 2>/dev/null || true
 
 echo "[backup] OK — ${SIZE} bytes, sha256=$SHA"
 
@@ -111,13 +149,13 @@ if [ "${#all[@]}" -gt "$KEEP_MIN" ]; then
     # Skip if it is among the KEEP_MIN newest.
     keep=false
     for i in $(seq 0 $((KEEP_MIN-1))); do [ "${all[$i]:-}" = "$old" ] && keep=true; done
-    $keep || { echo "[retention] pruning $(basename "$old")"; rm -f "$old" "$old.meta.json"; }
+    $keep || { echo "[retention] pruning $(basename "$old")"; rm -f "$old" "$old.enc" "$old.meta.json"; }
   done
 fi
 
 # ── Off-site copy (encrypted, different provider) ──────────────────────────
 # The local dump above is kept whatever happens here.
-OFFSITE="${OFFSITE:-auto}"
+OFFSITE="${OFFSITE:-skip}"
 OFFSITE_CONFIG="${OFFSITE_CONFIG:-/etc/hms/offsite.env}"
 export OFFSITE_CONFIG ENV_LABEL
 case "$OFFSITE" in

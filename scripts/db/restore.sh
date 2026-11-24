@@ -13,6 +13,42 @@ set -euo pipefail
 SRC="${1:?backup file required}"
 [ -f "$SRC" ] || { echo "ERROR: not found: $SRC" >&2; exit 2; }
 
+CLEANUP_FILES=()
+cleanup() { rm -f "${CLEANUP_FILES[@]}" "${CNF:-}" 2>/dev/null || true; }
+trap cleanup EXIT
+
+# Decrypt if input is an encrypted backup (.enc)
+PLAIN_SRC="$SRC"
+if [[ "$SRC" == *.enc ]]; then
+  BACKUP_ENV="${BACKUP_ENV:-/etc/hms/backup.env}"
+  if [ -z "${BACKUP_SECRET_KEY:-}" ] && [ -f "$BACKUP_ENV" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      line="${line%$'\r'}"
+      line="${line#"${line%%[![:space:]]*}"}"
+      case "$line" in '' | '#'*) continue ;; esac
+      line="${line#export }"
+      case "$line" in *=*) ;; *) continue ;; esac
+      key="${line%%=*}"; val="${line#*=}"
+      case "$val" in \"*\") val="${val#\"}"; val="${val%\"}" ;; \'*\') val="${val#\'}"; val="${val%\'}" ;; esac
+      if [ "$key" = "BACKUP_SECRET_KEY" ]; then
+        BACKUP_SECRET_KEY="$val"
+      fi
+    done < "$BACKUP_ENV"
+  fi
+  if [ -z "${BACKUP_SECRET_KEY:-}" ]; then
+    echo "ERROR: backup file $SRC is encrypted (.enc) but BACKUP_SECRET_KEY is not set." >&2
+    exit 11
+  fi
+  TMP_DEC="$(mktemp)"; chmod 600 "$TMP_DEC"
+  CLEANUP_FILES+=("$TMP_DEC")
+  echo "[restore] Decrypting $SRC (AES-256)..."
+  if ! openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 -in "$SRC" -out "$TMP_DEC" -pass "pass:$BACKUP_SECRET_KEY"; then
+    echo "ERROR: decryption failed — invalid key or corrupt backup file." >&2
+    exit 12
+  fi
+  PLAIN_SRC="$TMP_DEC"
+fi
+
 # Load the app env file safely — never `.` it (unquoted `&` in the JDBC URL backgrounds the
 # assignment and leaves it empty). See scripts/db/load-env.sh.
 # shellcheck source=scripts/db/load-env.sh
@@ -48,9 +84,10 @@ fi
 
 # Verify the backup before trusting it.
 DIR="$(cd "$(dirname "$0")" && pwd)"
-bash "$DIR/verify-backup.sh" "$SRC"
+bash "$DIR/verify-backup.sh" "$PLAIN_SRC"
 
 CNF="$(mktemp)"; chmod 600 "$CNF"
+CLEANUP_FILES+=("$CNF")
 cat > "$CNF" <<EOF
 [client]
 host=$MYSQL_HOST
@@ -58,11 +95,10 @@ port=$MYSQL_PORT
 user=$MYSQL_USER
 password=$MYSQL_PASSWORD
 EOF
-trap 'rm -f "$CNF"' EXIT
 
 echo "[restore] $SRC → database '$TARGET' (scratch)"
 mysql --defaults-extra-file="$CNF" -e "CREATE DATABASE IF NOT EXISTS \`$TARGET\`;"
-gzip -dc "$SRC" | grep -viE '^\s*(CREATE DATABASE|USE )' | mysql --defaults-extra-file="$CNF" "$TARGET"
+gzip -dc "$PLAIN_SRC" | grep -viE '^\s*(CREATE DATABASE|USE )' | mysql --defaults-extra-file="$CNF" "$TARGET"
 
 # ── Restore validation ─────────────────────────────────────────────────────
 TABLES=$(mysql --defaults-extra-file="$CNF" -N -e \

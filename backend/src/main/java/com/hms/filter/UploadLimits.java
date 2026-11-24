@@ -35,6 +35,13 @@ public final class UploadLimits {
     /** 6,291,456 — every other multipart request in total, as before. */
     public static final long DEFAULT_REQUEST_BYTES = 6L * MEBIBYTE;
 
+    /** 524,288,000 — the disaster recovery backup archive itself (500 MiB). */
+    public static final long BACKUP_FILE_BYTES = 500L * MEBIBYTE;
+    /** 529,530,880 — the whole backup upload request (505 MiB). */
+    public static final long BACKUP_REQUEST_BYTES = 505L * MEBIBYTE;
+
+    private static final String BACKUP_UPLOAD_PATH = "/platform/backups/upload";
+
     private static final Set<String> IMPORT_UPLOAD_PATHS = Set.of(
             "/hospital/patients/import/preview",
             "/hospital/patients/import/commit",
@@ -60,7 +67,21 @@ public final class UploadLimits {
         return IMPORT_UPLOAD_PATHS.contains(uri);
     }
 
+    public static boolean isBackupUploadRoute(HttpServletRequest request) {
+        if (!"POST".equalsIgnoreCase(request.getMethod())) return false;
+        String uri = request.getRequestURI();
+        if (uri == null) return false;
+        String ctx = request.getContextPath();
+        if (ctx != null && !ctx.isEmpty()) {
+            if (!uri.startsWith(ctx)) return false;
+            uri = uri.substring(ctx.length());
+        }
+        if (uri.contains("%") || uri.contains("..") || uri.contains("//") || uri.contains(";") || uri.contains("\\")) return false;
+        return BACKUP_UPLOAD_PATH.equals(uri);
+    }
+
     public static long requestLimitFor(HttpServletRequest request) {
+        if (isBackupUploadRoute(request)) return BACKUP_REQUEST_BYTES;
         return isImportUploadRoute(request) ? IMPORT_REQUEST_BYTES : DEFAULT_REQUEST_BYTES;
     }
 }

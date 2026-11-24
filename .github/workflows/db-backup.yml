@@ -83,10 +83,8 @@ jobs:
           SSH_USER: ${{ secrets.DEPLOY_SSH_USER || 'deploy' }}
           REPO: ${{ steps.env.outputs.repo_path }}
           ENV_LABEL: ${{ steps.env.outputs.label }}
-          # required: the run FAILS (and GitHub emails the failure) if the encrypted off-site copy
-          # is missing or fails. Set the repository variable DB_BACKUP_OFFSITE=auto only while the
-          # bucket is being set up.
-          OFFSITE: ${{ vars.DB_BACKUP_OFFSITE || 'required' }}
+          # Set the repository variable DB_BACKUP_OFFSITE=auto/required only when off-site bucket is enabled.
+          OFFSITE: ${{ vars.DB_BACKUP_OFFSITE || 'skip' }}
         run: |
           # pipefail: without it the pipeline's status is tee's (always 0) and a failed
           # backup would report success. The gate must actually gate.

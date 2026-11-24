@@ -10,6 +10,7 @@ import PageHeader from '../../components/PageHeader';
 import PlansTab from '../../components/PlansTab';
 import HelpInsightsTab from '../../components/platform/HelpInsightsTab';
 import HospitalPlanControls from '../../components/platform/HospitalPlanControls';
+import PlatformBackupsTab from '../../components/platform/PlatformBackupsTab';
 import SubscriptionBadge from '../../components/platform/SubscriptionBadge';
 import SubscriptionOverview from '../../components/platform/SubscriptionOverview';
 import PlatformInventoryItemsTab from '../../components/PlatformInventoryItemsTab';
@@ -222,6 +223,16 @@ const PlatformDashboard = () => {
 
   // UI State - removed local activeTab state, now using URL params
   // const [activeTab, setActiveTab] = useState('dashboard');
+  const [backupOverdue, setBackupOverdue] = useState(false);
+
+  const checkBackupStatus = async () => {
+    try {
+      const data = await platformService.getBackups();
+      setBackupOverdue(Boolean(data?.hasOverdueDownload ?? data?.overdue7Days));
+    } catch {
+      // Best-effort check; do not block dashboard load
+    }
+  };
 
   // Edit Hospital State
   const [editHospitalModal, setEditHospitalModal] = useState({
@@ -279,6 +290,7 @@ const PlatformDashboard = () => {
     if (activeTab === 'dashboard') {
       loadHospitals();
       loadHospitalStats();
+      checkBackupStatus();
     } else if (subtab === 'hospitals' || subtab === 'clinics' || subtab === 'pharmacies') {
       // BUG-015: use PLATFORM_PAGE_SIZE constant instead of hard-coded 10
       loadHospitals(0, PLATFORM_PAGE_SIZE, getEntityType(activeTab));
@@ -785,6 +797,7 @@ const PlatformDashboard = () => {
     { id: 'audit_logs', label: 'Audit Logs', isTopLevel: true },
     // What users could not find in in-app help, and how answers were rated.
     { id: 'help_insights', label: 'Help Insights', isTopLevel: true },
+    { id: 'backups', label: 'Backups', isTopLevel: true },
   ];
 
   // Helper: Get display label for active tab
@@ -901,6 +914,48 @@ const PlatformDashboard = () => {
           {/* Dashboard Tab */}
           {activeTab === 'dashboard' && (
             <div className="space-y-6">
+              {backupOverdue && (
+                <div
+                  role="alert"
+                  className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-lg flex items-center justify-between shadow-sm"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-amber-100 rounded-lg text-amber-800 shrink-0">
+                      <svg
+                        className="w-5 h-5"
+                        aria-hidden="true"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                        />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-amber-900">
+                        Weekly Backup Routine Overdue
+                      </p>
+                      <p className="text-xs text-amber-800 mt-0.5">
+                        No backup has been downloaded in the last 7 days. Download the latest
+                        encrypted backup to keep an offline copy in case of server failure.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('backups')}
+                    className="px-3 py-1.5 bg-amber-800 hover:bg-amber-900 text-white rounded-lg text-xs font-semibold shrink-0 transition-colors"
+                  >
+                    Go to Backups
+                  </button>
+                </div>
+              )}
+
               {/* Welcome Section */}
               <div className="bg-white border border-gray-200 p-6">
                 <h1 className="text-2xl font-bold text-gray-900 mb-2">Platform Overview</h1>
@@ -1080,6 +1135,9 @@ const PlatformDashboard = () => {
 
           {/* Help Insights — unanswered help questions and answer ratings */}
           {activeTab === 'help_insights' && <HelpInsightsTab />}
+
+          {/* Backups Tab — encrypted server dumps & disaster recovery */}
+          {activeTab === 'backups' && <PlatformBackupsTab />}
 
           {/* Inventory Items Tab */}
           {(() => {

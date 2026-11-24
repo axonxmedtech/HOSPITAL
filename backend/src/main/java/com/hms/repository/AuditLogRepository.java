@@ -22,6 +22,10 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
 
     List<AuditLog> findByEntityTypeAndEntityIdOrderByTimestampDesc(String entityType, String entityId);
 
+    List<AuditLog> findByActionOrderByTimestampDesc(String action);
+
+    List<AuditLog> findByEntityTypeAndActionOrderByTimestampDesc(String entityType, String action);
+
     List<AuditLog> findByHospitalIdAndPerformedByRoleOrderByTimestampDesc(Long hospitalId, String performedByRole);
 
     List<AuditLog> findByHospitalIdAndPerformedByRoleAndActionContainingIgnoreCaseOrderByTimestampDesc(Long hospitalId, String performedByRole, String action);

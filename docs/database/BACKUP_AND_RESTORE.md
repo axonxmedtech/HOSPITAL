@@ -40,14 +40,74 @@ them trustworthy.
    VPS: source app .env (SPRING_DATASOURCE_*) ─► backup.sh
         │  mysqldump --single-transaction | gzip
         ▼
-   /var/backups/hms/‹db›-‹env›-‹ts›.sql.gz  (+ .meta.json)
+   /var/backups/hms/‹db›-‹env›-‹ts›.sql.gz  (mode 600, root/mysql only)
         │  gzip -t · size · footer · sha256
         ▼
-   verified ✔  → retention prune (keep RETENTION_DAYS, never below KEEP_MIN newest)
-        │  offsite-copy.sh: age-encrypt (public key) → S3 daily/ (+ monthly/ once a month)
+   verified ✔
+        │  OpenSSL AES-256-CBC PBKDF2 (100k iter) using BACKUP_SECRET_KEY (/etc/hms/backup.env)
         ▼
-   off-site copy verified ✔ (size)   metadata (no PHI) → GitHub step summary / log artifact
+   /var/backups/hms/‹db›-‹env›-‹ts›.sql.gz.enc  (mode 640, app group readable) + .meta.json
+        │  retention prune (keep RETENTION_DAYS, never below KEEP_MIN newest)
+        ▼
+   Super Admin Portal (GET /platform/backups) ─► offline copy on admin laptop & external drive
+        │  (Optional S3 offsite copy when enabled: OFFSITE=s3)
+        ▼
+   off-site copy verified ✔   metadata (no PHI) → audit log & monitoring
 ```
+
+---
+
+## Strong Master Key & Server File Permissions
+
+Every backup archive is encrypted directly on the server before storage or download.
+
+### 1. Master Secret Key Setup
+
+The server uses AES-256-CBC PBKDF2 (100,000 iterations) with SHA-256 key derivation.
+Configure the key in `/etc/hms/backup.env`:
+
+```bash
+sudo mkdir -p /etc/hms
+sudo bash -c 'cat > /etc/hms/backup.env <<EOF
+BACKUP_SECRET_KEY="<generate-64-char-random-key>"
+EOF'
+sudo chmod 600 /etc/hms/backup.env
+sudo chown root:root /etc/hms/backup.env
+```
+
+### 2. File Ownership and Permissions
+
+The app user (`hms-app`) must be able to read `.enc` and `.meta.json` files for Super Admin downloads, but must **never** have read access to the plain `.sql.gz` dumps:
+
+```bash
+# Plain database dumps: accessible ONLY to root / mysql
+sudo chown root:root /var/backups/hms/*.sql.gz
+sudo chmod 600 /var/backups/hms/*.sql.gz
+
+# Encrypted archives & metadata: group-readable by app user
+sudo chgrp hms-app /var/backups/hms/*.sql.gz.enc /var/backups/hms/*.meta.json
+sudo chmod 640 /var/backups/hms/*.sql.gz.enc /var/backups/hms/*.meta.json
+```
+
+---
+
+## Super Admin Weekly Routine & Offline Storage
+
+All hospital patient data sits on the server. To protect against total server loss, ransomware, or host failure:
+
+1. **Weekly Download**:
+   - Super Admin opens **Platform Portal** → **Backups** tab (`/platform/dashboard?tab=backups`).
+   - Downloads the latest encrypted `.sql.gz.enc` file.
+   - Rate limit: max 5 downloads/hour per user.
+   - Audit trail: each download writes an immutable `BACKUP_DOWNLOADED` entry in `audit_logs` (user, IP, filename, timestamp).
+2. **Two-Location Offline Rule**:
+   - Save Copy 1 to the Super Admin laptop.
+   - Save Copy 2 to a detached external drive.
+   - Without the master key, the file cannot be decrypted even if the drive or laptop is lost.
+3. **7-Day Overdue Warning**:
+   - The Super Admin Dashboard displays a prominent warning banner if no backup has been downloaded in the last 7 days.
+
+---
 
 ### Retention policy
 
@@ -77,10 +137,38 @@ data** — this is the drill that makes backups trustworthy.
 
 ### Restore procedure (drill — do this regularly)
 
+#### Method 1: Super Admin UI (Recommended for drills and disaster recovery)
+
+1. Navigate to **Platform Dashboard** → **Backups** tab.
+2. Under **Disaster Recovery (Upload & Restore)**:
+   - If the server has existing backups, select the archive from the dropdown.
+   - If recovering after a server wipe, select **Upload Backup from Device** and upload your offline `.sql.gz.enc` file.
+3. Enter your **Strong Master Key**.
+4. Click **1. Test in Scratch DB**:
+   - The server streams the decryptor directly into a temporary scratch database (`hms_restore_check`).
+   - Verifies all tables and records, checks core tables (`patients`, `users`), and counts restored rows.
+   - Leaves the live database completely untouched.
+5. If an emergency live restore is needed:
+   - Click **2. Restore to Live DB**.
+   - Type the required safety confirmation phrase: `RESTORE-LIVE-DATABASE`.
+   - The server performs the live database restore and logs an audit trail.
+
+#### Method 2: On the VPS via CLI
+
 ```bash
 # On the VPS. Do NOT `. ./backend/.env` by hand — see the warning below; the scripts load it.
 cd <repo>
-ls -1t /var/backups/hms/*.sql.gz | head             # pick the latest
+
+# Option A: Restore directly from encrypted archive (.enc)
+# restore.sh automatically reads BACKUP_SECRET_KEY from /etc/hms/backup.env or env
+bash scripts/db/restore.sh /var/backups/hms/<file>.sql.gz.enc
+
+# Option B: Manual decryption via OpenSSL CLI if needed
+openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 \
+  -pass pass:"$BACKUP_SECRET_KEY" \
+  -in /var/backups/hms/<file>.sql.gz.enc \
+  -out /var/backups/hms/<file>.sql.gz
+
 bash scripts/db/restore.sh /var/backups/hms/<file>.sql.gz     # → scratch DB + validation
 # When satisfied:  mysql -e "DROP DATABASE \`<db>_restore_check\`;"
 ```

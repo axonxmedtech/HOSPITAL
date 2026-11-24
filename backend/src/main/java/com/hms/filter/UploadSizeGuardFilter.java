@@ -71,9 +71,13 @@ public class UploadSizeGuardFilter extends OncePerRequestFilter {
         if (declared > limit) {
             log.info("Upload refused before parsing: {} bytes declared on {} {} (limit {})",
                     declared, request.getMethod(), request.getRequestURI(), limit);
-            refuse(response, ErrorCode.PAYLOAD_TOO_LARGE, UploadLimits.isImportUploadRoute(request)
-                    ? "The import file is too large. The maximum is 50 MB."
-                    : "The upload is too large. The maximum is 5 MB.");
+            String message = "The upload is too large. The maximum is 5 MB.";
+            if (UploadLimits.isBackupUploadRoute(request)) {
+                message = "The backup file is too large. The maximum is 500 MB.";
+            } else if (UploadLimits.isImportUploadRoute(request)) {
+                message = "The import file is too large. The maximum is 50 MB.";
+            }
+            refuse(response, ErrorCode.PAYLOAD_TOO_LARGE, message);
             return;
         }
         chain.doFilter(request, response);

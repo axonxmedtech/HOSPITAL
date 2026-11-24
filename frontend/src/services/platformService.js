@@ -377,6 +377,47 @@ const platformService = {
     });
     return response.data;
   },
+
+  getBackups: async () => {
+    const response = await apiClient.get('/platform/backups');
+    return response.data;
+  },
+
+  downloadBackup: async (fileName) => {
+    const response = await apiClient.get(
+      `/platform/backups/${encodeURIComponent(fileName)}/download`,
+      {
+        responseType: 'blob',
+      }
+    );
+    return response.data;
+  },
+
+  uploadBackup: async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await apiClient.post('/platform/backups/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+
+  validateBackupRestore: async (fileName, backupKey) => {
+    const response = await apiClient.post('/platform/backups/validate-restore', {
+      fileName,
+      backupKey,
+    });
+    return response.data;
+  },
+
+  executeBackupRestore: async (fileName, backupKey, confirmation) => {
+    const response = await apiClient.post('/platform/backups/execute-restore', {
+      fileName,
+      backupKey,
+      confirmation,
+    });
+    return response.data;
+  },
 };
 
 export default platformService;

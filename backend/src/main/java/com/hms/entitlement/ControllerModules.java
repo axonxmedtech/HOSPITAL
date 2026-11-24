@@ -104,7 +104,7 @@ public final class ControllerModules {
             "PlatformAuthController", "PlatformHospitalController", "PlatformPlanController",
             "PlatformUserController", "PlatformTicketController", "PlatformFaqController",
             "PlatformMedicineController", "PlatformInventoryItemController", "PlatformAuditController",
-            "PlatformStatementController",
+            "PlatformStatementController", "PlatformBackupController",
             "HealthController");
 
     /** The module this controller belongs to, or null if it has not been declared. */

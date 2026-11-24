@@ -839,6 +839,22 @@ const menuIcons = {
       />
     </svg>
   ),
+  Backups: (
+    <svg
+      className="w-5 h-5 mr-3"
+      aria-hidden="true"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7M4 7c0-2 1-3 3-3h10c2 0 3 1 3 3M4 7h16m-5 4v6m-4-6v6"
+      />
+    </svg>
+  ),
 };
 
 const variants = {
