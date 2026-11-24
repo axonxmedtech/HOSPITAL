@@ -11,6 +11,7 @@ import CancelAdmissionModal from '../../components/ipd/CancelAdmissionModal';
 import DietCard from '../../components/ipd/DietCard';
 import DischargeSummaryModal from '../../components/ipd/DischargeSummaryModal';
 import DischargeCheckoutModal from '../../components/ipd/DischargeCheckoutModal';
+import GroupedTabs from '../../components/ipd/GroupedTabs';
 import { dischargeTypeLabel } from '../../components/ipd/DischargeType';
 import DoctorRoundsTimeline from '../../components/ipd/DoctorRoundsTimeline';
 import InsurancePanel from '../../components/ipd/InsurancePanel';
@@ -686,7 +687,7 @@ const IpdDetails = () => {
                 </button>
               </div>
               {/* Case header — the only top-right actions are Discharge and Create Surgery Request. */}
-              <div className="flex items-start justify-between gap-4">
+              <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3 lg:gap-4">
                 <div className="flex-1 min-w-0">
                   <PageHeader
                     title={
@@ -698,7 +699,7 @@ const IpdDetails = () => {
                     subtitle={`${data.patient?.name || ''} • ${data.patient?.age || ''} • ${data.patient?.gender || ''}`}
                   />
                 </div>
-                <div className="flex items-center gap-2 shrink-0 pt-1">
+                <div className="flex flex-wrap items-center gap-2 lg:justify-end lg:pt-1">
                   {(isDoctor || isAdmin) &&
                     (data.status === 'ADMITTED' || data.status === 'DISCHARGE_PLANNED') && (
                       <button
@@ -865,18 +866,8 @@ const IpdDetails = () => {
                 </div>
               </div>
 
-              {/* Sub-tabs — same set the nurse sees; form tabs respect Files & Access. */}
-              <div className="mt-4 border-b border-gray-200 flex gap-1 overflow-x-auto overflow-y-hidden">
-                {tabs.map((t) => (
-                  <button
-                    key={t.id}
-                    onClick={() => setTab(t.id)}
-                    className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap ${tab === t.id ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
+              {/* Tabs, grouped — same set the nurse sees; form tabs respect Files & Access. */}
+              <GroupedTabs tabs={tabs} value={tab} onChange={setTab} />
 
               {tab === 'vitals' && (
                 <div className="mt-4">
