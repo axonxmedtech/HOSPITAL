@@ -878,41 +878,64 @@ const SidebarContent = ({
 
     {/* Navigation */}
     <nav className={`flex-1 overflow-y-auto ${isCollapsed ? 'p-2' : 'p-6'} space-y-1`}>
-      {tabs.map((tab) => {
-        const hasSubItems = tab.subItems && tab.subItems.length > 0;
-        const isExpanded = !isCollapsed && tab.isExpanded; // Could also use internal state if preferred, but this will respect state passed from parent page
+      {tabs
+        // A group holding one screen is just that screen: no extra click to open it.
+        .map((t) => (t.subItems?.length === 1 ? { ...t.subItems[0], subItems: undefined } : t))
+        .map((tab) => {
+          const hasSubItems = tab.subItems && tab.subItems.length > 0;
+          const isExpanded = !isCollapsed && tab.isExpanded; // Could also use internal state if preferred, but this will respect state passed from parent page
 
-        return (
-          <div key={tab.id} className="space-y-1">
-            <button
-              type="button"
-              onClick={() =>
-                hasSubItems && onToggleGroup ? onToggleGroup(tab.id) : onTabChange(tab.id)
-              }
-              className={`w-full flex items-center ${isCollapsed ? 'justify-center px-2' : 'px-3'} py-2 text-sm font-medium transition-colors duration-200 relative ${
-                activeTab === tab.id || tab.subItems?.some((s) => s.id === activeTab)
-                  ? `${theme.activeBg} ${theme.activeText}`
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-              }`}
-              title={isCollapsed ? tab.label : ''}
-              aria-label={isCollapsed ? tab.label : undefined}
-              aria-expanded={hasSubItems ? Boolean(isExpanded) : undefined}
-              aria-current={activeTab === tab.id ? 'page' : undefined}
-            >
-              {/* Active indicator */}
-              {(activeTab === tab.id || tab.subItems?.some((s) => s.id === activeTab)) && (
-                <div className="absolute left-0 top-0 bottom-0 w-1 bg-gray-900"></div>
-              )}
+          return (
+            <div key={tab.id} className="space-y-1">
+              <button
+                type="button"
+                onClick={() =>
+                  hasSubItems && onToggleGroup ? onToggleGroup(tab.id) : onTabChange(tab.id)
+                }
+                className={`w-full flex items-center ${isCollapsed ? 'justify-center px-2' : 'px-3'} py-2 text-sm font-medium transition-colors duration-200 relative ${
+                  activeTab === tab.id || tab.subItems?.some((s) => s.id === activeTab)
+                    ? `${theme.activeBg} ${theme.activeText}`
+                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                }`}
+                title={isCollapsed ? tab.label : ''}
+                aria-label={isCollapsed ? tab.label : undefined}
+                aria-expanded={hasSubItems ? Boolean(isExpanded) : undefined}
+                aria-current={activeTab === tab.id ? 'page' : undefined}
+              >
+                {/* Active indicator */}
+                {(activeTab === tab.id || tab.subItems?.some((s) => s.id === activeTab)) && (
+                  <div className="absolute left-0 top-0 bottom-0 w-1 bg-gray-900"></div>
+                )}
 
-              {/* Icon */}
-              <div className={isCollapsed ? '' : 'mr-3'}>
-                {menuIcons[tab.label] ? (
-                  React.cloneElement(menuIcons[tab.label], {
-                    className: `w-5 h-5 ${isCollapsed ? '' : 'mr-0'}`,
-                  })
-                ) : (
+                {/* Icon */}
+                <div className={isCollapsed ? '' : 'mr-3'}>
+                  {menuIcons[tab.label] ? (
+                    React.cloneElement(menuIcons[tab.label], {
+                      className: `w-5 h-5 ${isCollapsed ? '' : 'mr-0'}`,
+                    })
+                  ) : (
+                    <svg
+                      className="w-5 h-5"
+                      aria-hidden="true"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                      />
+                    </svg>
+                  )}
+                </div>
+
+                {!isCollapsed && <span className="flex-1 text-left">{tab.label}</span>}
+
+                {!isCollapsed && hasSubItems && (
                   <svg
-                    className="w-5 h-5"
+                    className={`w-4 h-4 transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
                     aria-hidden="true"
                     fill="none"
                     viewBox="0 0 24 24"
@@ -922,55 +945,35 @@ const SidebarContent = ({
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       strokeWidth={2}
-                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                      d="M19 9l-7 7-7-7"
                     />
                   </svg>
                 )}
-              </div>
+              </button>
 
-              {!isCollapsed && <span className="flex-1 text-left">{tab.label}</span>}
-
-              {!isCollapsed && hasSubItems && (
-                <svg
-                  className={`w-4 h-4 transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
-                  aria-hidden="true"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
+              {/* Sub Items */}
+              {!isCollapsed && hasSubItems && isExpanded && (
+                <div className="pl-8 space-y-1">
+                  {tab.subItems.map((subItem) => (
+                    <button
+                      type="button"
+                      key={subItem.id}
+                      onClick={() => onTabChange(subItem.id)}
+                      aria-current={activeTab === subItem.id ? 'page' : undefined}
+                      className={`w-full flex items-center px-3 py-1.5 text-sm font-medium transition-colors duration-200 ${
+                        activeTab === subItem.id
+                          ? 'text-gray-900 font-semibold'
+                          : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+                      }`}
+                    >
+                      {subItem.label}
+                    </button>
+                  ))}
+                </div>
               )}
-            </button>
-
-            {/* Sub Items */}
-            {!isCollapsed && hasSubItems && isExpanded && (
-              <div className="pl-8 space-y-1">
-                {tab.subItems.map((subItem) => (
-                  <button
-                    type="button"
-                    key={subItem.id}
-                    onClick={() => onTabChange(subItem.id)}
-                    aria-current={activeTab === subItem.id ? 'page' : undefined}
-                    className={`w-full flex items-center px-3 py-1.5 text-sm font-medium transition-colors duration-200 ${
-                      activeTab === subItem.id
-                        ? 'text-gray-900 font-semibold'
-                        : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
-                    }`}
-                  >
-                    {subItem.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })}
+            </div>
+          );
+        })}
       <button
         type="button"
         onClick={() => helpStore.openPanel('assistant')}

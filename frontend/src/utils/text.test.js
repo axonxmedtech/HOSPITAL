@@ -22,3 +22,17 @@ describe('titleCase', () => {
     expect(titleCase(123)).toBe('123');
   });
 });
+
+describe('humanizeCode', () => {
+  it('turns stored codes into words', async () => {
+    const { humanizeCode } = await import('./text');
+    expect(humanizeCode('DISCHARGE_PLANNED')).toBe('Discharge planned');
+    expect(humanizeCode('BILL_PAYMENT')).toBe('Bill payment');
+    expect(humanizeCode('PAID')).toBe('Paid');
+    expect(humanizeCode('Patient')).toBe('Patient');
+    expect(humanizeCode('Admitted to ward A')).toBe('Admitted to ward A');
+    expect(humanizeCode(null)).toBe('');
+    expect(humanizeCode('IPD_DISCHARGE_PLANNED')).toBe('IPD discharge planned');
+    expect(humanizeCode('Ipd')).toBe('Ipd');
+  });
+});

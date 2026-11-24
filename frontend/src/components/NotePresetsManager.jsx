@@ -257,7 +257,7 @@ const NotePresetsManager = ({
         </div>
       )}
 
-      <form onSubmit={handleAdd} className="flex gap-2">
+      <form onSubmit={handleAdd} className="flex flex-wrap gap-2">
         <input
           type="text"
           value={newText}
@@ -271,13 +271,13 @@ const NotePresetsManager = ({
           }}
           placeholder={placeholder}
           maxLength={255}
-          className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+          className="flex-1 min-w-[12rem] border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
         />
         {isAdmin && (
           <select
             value={newDoctorId}
             onChange={(e) => setNewDoctorId(e.target.value)}
-            className="border border-gray-300 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="max-w-full border border-gray-300 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
           >
             <option value="">Shared (all doctors)</option>
             {doctors.map((d) => (
@@ -290,7 +290,7 @@ const NotePresetsManager = ({
         <button
           type="submit"
           disabled={adding || !newText.trim()}
-          className="bg-gray-950 text-white text-xs font-semibold px-4 py-2 rounded-lg hover:bg-gray-800 transition disabled:opacity-50"
+          className="bg-gray-950 text-white text-xs font-semibold px-4 py-2 rounded-lg hover:bg-gray-800 transition disabled:opacity-50 whitespace-nowrap"
         >
           + Add
         </button>

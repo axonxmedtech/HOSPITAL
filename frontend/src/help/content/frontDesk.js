@@ -311,7 +311,7 @@ const frontDesk = [
     modules: ['BILLING'],
     screens: ['billing'],
     q: 'Can the patient pay part of the bill now?',
-    a: 'Yes. In Collect Payment, change the amount to what the patient pays now. The bill shows as Partial with the balance, and you collect the rest later the same way.',
+    a: 'Yes. Click Collect on the bill and change the amount to what the patient pays now. The bill shows as Partial with the balance, and you collect the rest later the same way.',
     tags: ['partial', 'advance', 'deposit', 'installment', 'balance'],
   },
   {

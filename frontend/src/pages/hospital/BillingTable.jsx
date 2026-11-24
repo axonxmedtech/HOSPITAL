@@ -146,6 +146,11 @@ const BillingTable = ({
         const paid = Number(bill.paidAmount || 0);
         const menu = [
           {
+            label: 'Edit charges',
+            onClick: () => onEditItems(bill),
+            hidden: !open || !onEditItems,
+          },
+          {
             label: 'Discount',
             onClick: () => setAction({ type: 'discount', bill }),
             hidden: !open,
@@ -164,20 +169,12 @@ const BillingTable = ({
         ];
         return (
           <div className="flex justify-end items-center gap-2">
-            {open && onEditItems && (
-              <button
-                onClick={() => onEditItems(bill)}
-                className="px-3 py-1 rounded-md text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
-              >
-                Edit Charges
-              </button>
-            )}
             {open && (
               <button
                 onClick={() => setAction({ type: 'pay', bill })}
                 className="px-3 py-1 rounded-md text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
               >
-                Collect Payment
+                Collect
               </button>
             )}
             {(paid > 0 || st === 'PAID' || st === 'CLOSED' || st === 'CANCELLED') && (

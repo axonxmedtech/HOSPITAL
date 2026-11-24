@@ -123,6 +123,7 @@ import TimeSlotsView from './TimeSlotsView';
 import VentilatorSettingsCard from './VentilatorSettingsCard';
 import VitalsSettingsCard from './VitalsSettingsCard';
 import WardsAndBeds from './WardsAndBeds';
+import { humanizeCode } from '../../utils/text';
 /**
  * HospitalAdminDashboard - Hospital Admin dashboard
  *
@@ -3337,7 +3338,7 @@ const HospitalAdminDashboard = () => {
                       />
                     </div>
                   ) : activeTab === 'audit-logs' ? (
-                    <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 gap-1">
+                    <div className="flex flex-wrap bg-gray-100 rounded-lg p-1 border border-gray-200 gap-1">
                       {(isPharmacyTenant
                         ? [
                             { id: 'ALL', label: 'All Pharmacy Users' },
@@ -3351,6 +3352,16 @@ const HospitalAdminDashboard = () => {
                             ...(operationsSettings.receptionMode !== 'SOLO'
                               ? [{ id: 'RECEPTIONIST', label: 'Reception' }]
                               : []),
+                            ...(modules.includes('PHARMACY')
+                              ? [{ id: 'PHARMACIST', label: 'Pharmacist' }]
+                              : []),
+                            ...(modules.includes('NURSING')
+                              ? [
+                                  { id: 'NURSE_INCHARGE', label: 'Nurse in-charge' },
+                                  { id: 'NURSE', label: 'Nurse' },
+                                ]
+                              : []),
+                            ...(modules.includes('OT') ? [{ id: 'OT_INCHARGE', label: 'OT' }] : []),
                           ]
                       ).map((item) => (
                         <button
@@ -3772,8 +3783,7 @@ const HospitalAdminDashboard = () => {
                                   Custom Charges
                                 </h3>
                                 <p className="text-xs text-gray-500">
-                                  Custom rates available for selection when editing hospital billing
-                                  items.
+                                  Custom rates you can pick when editing a bill items.
                                 </p>
                               </div>
                               {user?.role === 'HOSPITAL_ADMIN' && (
@@ -5809,10 +5819,12 @@ const HospitalAdminDashboard = () => {
                                 />
                               </svg>
                               <p className="text-sm font-medium text-gray-600">
-                                No matching FAQs found
+                                {faqSearch ? 'No matching FAQs found' : 'No FAQs yet'}
                               </p>
                               <p className="text-xs text-gray-400 mt-1">
-                                Try searching for other keywords
+                                {faqSearch
+                                  ? 'Try searching for other keywords'
+                                  : 'Use the ? at the top right for help on any screen, or raise a ticket below.'}
                               </p>
                             </div>
                           ) : (
@@ -7405,6 +7417,7 @@ const PatientsTable = ({
     }),
     columnHelper.accessor('gender', {
       header: 'Gender',
+      cell: (info) => humanizeCode(info.getValue()),
     }),
     columnHelper.accessor('phone', {
       header: 'Phone',
@@ -10098,9 +10111,10 @@ const AuditLogsTable = ({ auditLogs, startIndex = 0 }) => {
       header: 'ACTION',
       cell: (info) => (
         <span
-          className={`px-2 py-1 rounded-full text-xs font-semibold ${getActionBadgeColor(info.getValue())}`}
+          title={info.getValue()}
+          className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${getActionBadgeColor(info.getValue())}`}
         >
-          {info.getValue()}
+          {humanizeCode(info.getValue())}
         </span>
       ),
     }),
@@ -10115,7 +10129,7 @@ const AuditLogsTable = ({ auditLogs, startIndex = 0 }) => {
     columnHelper.accessor('entityType', {
       header: 'ENTITY TYPE',
       cell: (info) => (
-        <span className="text-xs text-gray-500 uppercase">{info.getValue() || 'N/A'}</span>
+        <span className="text-xs text-gray-500">{humanizeCode(info.getValue()) || '—'}</span>
       ),
     }),
     columnHelper.accessor('reason', {

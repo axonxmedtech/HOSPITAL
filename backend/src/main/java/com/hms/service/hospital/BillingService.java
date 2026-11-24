@@ -296,8 +296,8 @@ public class BillingService {
                 logger.warn("Failed to set markedPaidBy during billing payment status update: {}", e.getMessage());
             }
         }
-        if (paymentMethod != null && !paymentMethod.isEmpty()) {
-            bill.setPaymentMethod(paymentMethod);
+        if (paymentMethod != null && !paymentMethod.isBlank()) {
+            bill.setPaymentMethod(normaliseMode(paymentMethod));
         }
         if (paymentReference != null && !paymentReference.isEmpty()) {
             bill.setPaymentReference(paymentReference);
@@ -1251,8 +1251,8 @@ public class BillingService {
 
         String status = "PAID".equalsIgnoreCase(paymentStatus) ? "PAID" : "PENDING";
         bill.setPaymentStatus(status);
-        if (paymentMethod != null && !paymentMethod.isEmpty()) {
-            bill.setPaymentMethod(paymentMethod);
+        if (paymentMethod != null && !paymentMethod.isBlank()) {
+            bill.setPaymentMethod(normaliseMode(paymentMethod));
         }
         if (paymentReference != null && !paymentReference.isEmpty()) {
             bill.setPaymentReference(paymentReference);

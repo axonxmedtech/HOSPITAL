@@ -28,6 +28,7 @@ import { backdropProps } from '../../utils/modalA11y';
 import { validateForm } from '../../utils/validation';
 
 import { formatDay } from '../../utils/date';
+import { humanizeCode } from '../../utils/text';
 /**
  * PlatformDashboard - Super Admin dashboard
  *
@@ -2916,7 +2917,15 @@ const HospitalsTable = ({
     columnHelper.accessor((row) => row.customId || row.id, {
       id: 'id',
       header: 'ID',
-      cell: (info) => <span title="Serial Number">{info.getValue()}</span>,
+      // Long internal ids are cut to their last 8 characters; the full id is on hover.
+      cell: (info) => {
+        const v = String(info.getValue() ?? '');
+        return (
+          <span title={v} className="font-mono text-xs text-gray-600 whitespace-nowrap">
+            {v.length > 12 ? `…${v.slice(-8)}` : v}
+          </span>
+        );
+      },
     }),
     columnHelper.accessor('type', {
       header: 'Type',
@@ -2931,7 +2940,7 @@ const HospitalsTable = ({
           <span
             className={`px-2 py-0.5 rounded-full text-xs font-semibold ${colors[type] || 'bg-gray-100'}`}
           >
-            {type}
+            {humanizeCode(type)}
           </span>
         );
       },

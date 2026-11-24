@@ -172,7 +172,8 @@ const NurseInchargeDashboard = () => {
               <div className="w-1 h-6 bg-gray-900 rounded-full"></div>
               <h2 className="text-lg font-bold text-gray-800">{titleFor()}</h2>
             </div>
-            <DietSheetButton />
+            {/* The kitchen sheet belongs with the patient lists, not on schedules or attendance. */}
+            {DIET_SHEET_TABS.has(activeTab) && <DietSheetButton />}
           </div>
           {renderContent()}
         </main>
@@ -182,6 +183,8 @@ const NurseInchargeDashboard = () => {
     </div>
   );
 };
+
+const DIET_SHEET_TABS = new Set(['dashboard', 'my-ward-patients']);
 
 /**
  * WardPatientsView - active admissions across the incharge's wards, with an

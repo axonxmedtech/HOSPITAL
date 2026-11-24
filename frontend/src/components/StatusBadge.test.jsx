@@ -10,7 +10,7 @@ describe('StatusBadge', () => {
 
   it('falls back to a default style for an unknown status', () => {
     render(<StatusBadge status="WEIRD_STATUS" />);
-    expect(screen.getByText('WEIRD_STATUS')).toBeInTheDocument();
+    expect(screen.getByText('WEIRD STATUS')).toBeInTheDocument();
   });
 
   it('opens the dropdown and reports the chosen option when interactive', () => {

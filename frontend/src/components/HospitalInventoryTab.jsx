@@ -244,7 +244,7 @@ const HospitalInventoryTab = () => {
   return (
     <div className="p-6 bg-white rounded-2xl border border-gray-200/80 shadow-sm space-y-6">
       {/* Header and Toggle Controls */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-100 pb-4">
+      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 border-b border-gray-100 pb-4">
         <div>
           <h2 className="text-xl font-bold text-gray-900">
             Hospital Equipment & Service Inventory
@@ -256,7 +256,7 @@ const HospitalInventoryTab = () => {
         </div>
 
         {/* Segmented Top-Tab Toggle */}
-        <div className="flex bg-gray-100 p-1 rounded-xl w-full sm:w-auto overflow-x-auto whitespace-nowrap scrollbar-none">
+        <div className="flex bg-gray-100 p-1 rounded-xl w-full xl:w-auto shrink-0 overflow-x-auto whitespace-nowrap scrollbar-none">
           <button
             type="button"
             onClick={() => setSubTab('inventory')}
@@ -378,7 +378,10 @@ const HospitalInventoryTab = () => {
                           </span>
                         ) : (
                           <span className="px-2 py-1 text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full">
-                            Good (Min: {item.minStockLevel})
+                            Good
+                            {item.minStockLevel != null && item.minStockLevel !== ''
+                              ? ` (Min: ${item.minStockLevel})`
+                              : ''}
                           </span>
                         )}
                       </td>

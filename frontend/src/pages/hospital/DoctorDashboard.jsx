@@ -58,6 +58,7 @@ import OtBoard from './ot/OtBoard';
 import OtWorkspace from './ot/OtWorkspace';
 
 import { formatWhen } from '../../utils/date';
+import { humanizeCode } from '../../utils/text';
 /**
  * DoctorDashboard - Doctor dashboard
  *
@@ -1897,21 +1898,21 @@ const DoctorDashboard = () => {
                 (canDoctorManageReception && ipdSubTab === 'requested' ? (
                   opds.length > 0 ? (
                     <div className="p-4 overflow-x-auto">
-                      <table className="w-full text-sm text-left">
-                        <thead>
+                      <table className="w-full text-sm text-left border border-gray-200 rounded-xl overflow-hidden">
+                        <thead className="bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500">
                           <tr>
-                            <th className="px-4 py-2">S.No.</th>
-                            <th className="px-4 py-2">OPD Case No.</th>
-                            <th className="px-4 py-2">Patient</th>
-                            <th className="px-4 py-2">Doctor</th>
-                            <th className="px-4 py-2">Problem / Diagnosis</th>
-                            <th className="px-4 py-2">Date Recommended</th>
-                            <th className="px-4 py-2">Actions</th>
+                            <th className="px-4 py-3 whitespace-nowrap">S.No.</th>
+                            <th className="px-4 py-3 whitespace-nowrap">OPD Case No.</th>
+                            <th className="px-4 py-3 whitespace-nowrap">Patient</th>
+                            <th className="px-4 py-3 whitespace-nowrap">Doctor</th>
+                            <th className="px-4 py-3 whitespace-nowrap">Problem / Diagnosis</th>
+                            <th className="px-4 py-3 whitespace-nowrap">Date Recommended</th>
+                            <th className="px-4 py-3 whitespace-nowrap">Actions</th>
                           </tr>
                         </thead>
-                        <tbody>
+                        <tbody className="divide-y divide-gray-100 bg-white">
                           {opds.map((o, idx) => (
-                            <tr key={o.id} className="border-t">
+                            <tr key={o.id} className="hover:bg-gray-50">
                               <td className="px-4 py-3">{(page - 1) * ITEMS_PER_PAGE + idx + 1}</td>
                               <td className="px-4 py-3">{o.caseId}</td>
                               <td className="px-4 py-3">{o.patient?.name}</td>
@@ -1927,7 +1928,7 @@ const DoctorDashboard = () => {
                                     setIpdOpdForAdmit(o);
                                     setIsIpdAdmitOpen(true);
                                   }}
-                                  className="px-3 py-1 bg-green-700 text-white rounded text-xs font-semibold hover:bg-green-800 transition"
+                                  className="px-3 py-1.5 bg-success-600 text-white rounded-lg text-xs font-semibold hover:bg-success-700 transition whitespace-nowrap"
                                 >
                                   Admit to IPD
                                 </button>
@@ -1948,8 +1949,8 @@ const DoctorDashboard = () => {
                   <div className="p-4 overflow-x-auto">
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                       <p className="text-sm text-gray-600">
-                        Round mode shows one patient at a time, everything on one screen, then
-                        Save &amp; next.
+                        Round mode shows one patient at a time, everything on one screen, then Save
+                        &amp; next.
                       </p>
                       <button
                         type="button"
@@ -1959,21 +1960,26 @@ const DoctorDashboard = () => {
                         Start ward round ({opds.length})
                       </button>
                     </div>
-                    <table className="w-full text-sm text-left">
-                      <thead>
+                    <DoctorIpdCards
+                      rows={opds}
+                      onOpen={(id) => navigate(`/ipd/${id}`)}
+                      onRound={(id) => startRound(id)}
+                    />
+                    <table className="hidden md:table w-full text-sm text-left border border-gray-200 rounded-xl overflow-hidden">
+                      <thead className="bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500">
                         <tr>
-                          <th className="px-4 py-2">S.No.</th>
-                          <th className="px-4 py-2">IPD No.</th>
-                          <th className="px-4 py-2">Patient</th>
-                          <th className="px-4 py-2">Doctor</th>
-                          <th className="px-4 py-2">Ward</th>
-                          <th className="px-4 py-2">Bed</th>
-                          <th className="px-4 py-2">Admitted</th>
-                          <th className="px-4 py-2">Status</th>
-                          <th className="px-4 py-2 text-right">Round</th>
+                          <th className="px-4 py-3 whitespace-nowrap">S.No.</th>
+                          <th className="px-4 py-3 whitespace-nowrap">IPD No.</th>
+                          <th className="px-4 py-3 whitespace-nowrap">Patient</th>
+                          <th className="px-4 py-3 whitespace-nowrap">Doctor</th>
+                          <th className="px-4 py-3 whitespace-nowrap">Ward</th>
+                          <th className="px-4 py-3 whitespace-nowrap">Bed</th>
+                          <th className="px-4 py-3 whitespace-nowrap">Admitted</th>
+                          <th className="px-4 py-3 whitespace-nowrap">Status</th>
+                          <th className="px-4 py-3 whitespace-nowrap text-right">Round</th>
                         </tr>
                       </thead>
-                      <tbody>
+                      <tbody className="divide-y divide-gray-100 bg-white">
                         {opds.map((o, idx) => {
                           const row = o.ipd || o;
                           const ipdNumber = row.ipdNumber || row.ipd?.ipdNumber || row.ipdNumber;
@@ -1994,14 +2000,17 @@ const DoctorDashboard = () => {
                           const theId =
                             row.ipdId || row.id || row.ipd?.id || row.ipd?.ipdId || null;
                           return (
-                            <tr key={row.ipdId || row.id || ipdNumber || idx} className="border-t">
+                            <tr
+                              key={row.ipdId || row.id || ipdNumber || idx}
+                              className="hover:bg-gray-50"
+                            >
                               <td className="px-4 py-3">{(page - 1) * ITEMS_PER_PAGE + idx + 1}</td>
                               <td className="px-4 py-3">{ipdNumber || row.id}</td>
                               <td className="px-4 py-3">
                                 {theId ? (
                                   <button
                                     type="button"
-                                    className="font-medium text-blue-600 hover:text-blue-800 hover:underline text-left cursor-pointer"
+                                    className="font-medium text-primary-700 hover:text-primary-900 hover:underline text-left cursor-pointer"
                                     onClick={() => navigate(`/ipd/${theId}`)}
                                     title="Open IPD case"
                                   >
@@ -2027,19 +2036,21 @@ const DoctorDashboard = () => {
                               <td className="px-4 py-3">
                                 <div className="flex flex-col gap-1 items-start">
                                   {(row.admissionConfirmed ?? row.ipd?.admissionConfirmed) ? (
-                                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-green-100 text-green-700">
-                                      ADMITTED
+                                    <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full whitespace-nowrap bg-green-100 text-green-700">
+                                      Admitted
                                     </span>
                                   ) : (
                                     <span
-                                      className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-800"
+                                      className="px-2 py-0.5 text-[11px] font-semibold rounded-full whitespace-nowrap bg-amber-100 text-amber-800"
                                       title="The patient is admitted and in the bed. The admission form still has to be completed (Complete Admission on the IPD case)."
                                     >
-                                      ADMITTED · FORM PENDING
+                                      Admitted · form pending
                                     </span>
                                   )}
                                   {status && status !== 'ADMITTED' && (
-                                    <span className="text-[10px] text-gray-500">{status}</span>
+                                    <span className="text-[11px] text-amber-700 font-medium">
+                                      {humanizeCode(status)}
+                                    </span>
                                   )}
                                 </div>
                               </td>
@@ -2048,7 +2059,7 @@ const DoctorDashboard = () => {
                                   <button
                                     type="button"
                                     onClick={() => startRound(theId)}
-                                    className="px-2.5 py-1 rounded border border-gray-300 text-xs font-semibold hover:bg-gray-50"
+                                    className="px-3 py-1.5 rounded-lg border border-gray-300 text-xs font-semibold text-gray-700 hover:bg-gray-100"
                                   >
                                     Round
                                   </button>
@@ -3646,3 +3657,74 @@ const DoctorQueueTable = ({ queueEntries, startIndex = 0, pagination }) => {
 
   return <DataTable data={queueEntries} columns={columns} pagination={pagination} />;
 };
+
+/** The doctor's admitted patients as cards on a phone, where the nine-column table can't fit. */
+function DoctorIpdCards({ rows, onOpen, onRound }) {
+  return (
+    <ul className="md:hidden space-y-3">
+      {rows.map((o, idx) => {
+        const row = o.ipd || o;
+        const id = row.ipdId || row.id || row.ipd?.id || null;
+        const bed = row.bedNumber || row.bed?.bedNumber || row.bed?.bedCode || row.bed?.name;
+        const ward = row.wardName || row.ward?.name;
+        const admittedAt = row.admissionDateTime || row.admissionDatetime;
+        const confirmed = row.admissionConfirmed ?? row.ipd?.admissionConfirmed;
+        const status = row.status || 'ADMITTED';
+        return (
+          <li
+            key={id || row.ipdNumber || idx}
+            className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <button
+                  type="button"
+                  disabled={!id}
+                  onClick={() => id && onOpen(id)}
+                  className="font-semibold text-primary-700 hover:underline text-left"
+                >
+                  {row.patientName || row.patient?.name || '-'}
+                </button>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {row.ipdNumber || id}
+                  {admittedAt ? ` · ${formatWhen(admittedAt)}` : ''}
+                </p>
+              </div>
+              {id && (
+                <button
+                  type="button"
+                  onClick={() => onRound(id)}
+                  className="shrink-0 px-3 py-1.5 rounded-lg border border-gray-300 text-xs font-semibold text-gray-700 hover:bg-gray-100"
+                >
+                  Round
+                </button>
+              )}
+            </div>
+            <p className="text-sm text-gray-700 mt-2">
+              {[ward, bed].filter(Boolean).join(' · ') || '-'}
+              {row.inIcu && (
+                <span className="ml-1.5 px-1.5 py-0.5 text-[11px] font-semibold rounded bg-rose-100 text-rose-700">
+                  ICU
+                </span>
+              )}
+            </p>
+            <div className="flex flex-wrap gap-2 mt-2">
+              <span
+                className={`px-2 py-0.5 text-[11px] font-semibold rounded-full ${
+                  confirmed ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-800'
+                }`}
+              >
+                {confirmed ? 'Admitted' : 'Admitted · form pending'}
+              </span>
+              {status !== 'ADMITTED' && (
+                <span className="text-[11px] font-medium text-amber-700">
+                  {humanizeCode(status)}
+                </span>
+              )}
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}

@@ -1047,9 +1047,7 @@ const IpdDetails = () => {
                         {data.status === 'CANCELLED' && (
                           <div className="col-span-2 text-sm bg-red-50 border border-red-200 text-red-800 rounded p-2">
                             <strong>Admission cancelled</strong>
-                            {data.cancelledAt
-                              ? ` on ${formatWhen(data.cancelledAt)}`
-                              : ''}
+                            {data.cancelledAt ? ` on ${formatWhen(data.cancelledAt)}` : ''}
                             {data.cancelReason ? ` — ${data.cancelReason}` : ''}
                           </div>
                         )}

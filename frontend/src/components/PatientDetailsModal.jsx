@@ -231,9 +231,7 @@ const PatientDetailsModal = ({ patient, onClose, initialTab = 'info' }) => {
                   <InfoField label="Blood Group" value={patient.bloodGroup || 'N/A'} />
                   <InfoField
                     label="Registration Date"
-                    value={
-                      patient.createdAt ? formatDay(patient.createdAt) : 'N/A'
-                    }
+                    value={patient.createdAt ? formatDay(patient.createdAt) : 'N/A'}
                   />
                 </div>
               </div>
@@ -876,9 +874,7 @@ const PatientDetailsModal = ({ patient, onClose, initialTab = 'info' }) => {
                             <td className="px-4 py-3 font-semibold text-gray-800">
                               {bill.customId || bill.id}
                             </td>
-                            <td className="px-4 py-3 text-gray-500">
-                              {formatDay(bill.createdAt)}
-                            </td>
+                            <td className="px-4 py-3 text-gray-500">{formatDay(bill.createdAt)}</td>
                             <td className="px-4 py-3">
                               <span
                                 className={`px-2 py-0.5 text-xs font-semibold rounded-full ${

@@ -210,7 +210,7 @@ const StatusBadge = ({ status, options = [], onUpdate, type = 'default', showIco
         {showIcon && config.icon && (
           <span className="mr-1.5 text-xs opacity-80">{config.icon}</span>
         )}
-        <span className="font-medium">{status}</span>
+        <span className="font-medium">{String(status ?? '').replace(/_/g, ' ')}</span>
         <div className={`w-1.5 h-1.5 rounded-full ${config.dot} ml-2 animate-pulse`}></div>
       </span>
     );
@@ -236,7 +236,7 @@ const StatusBadge = ({ status, options = [], onUpdate, type = 'default', showIco
             {config.icon}
           </span>
         )}
-        <span className="font-medium">{status}</span>
+        <span className="font-medium">{String(status ?? '').replace(/_/g, ' ')}</span>
         <svg
           xmlns="http://www.w3.org/2000/svg"
           className={`h-3 w-3 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}

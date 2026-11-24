@@ -59,9 +59,7 @@ export default function DietCard({ admissionId, canEdit = false, refreshKey = 0 
           {dietLabel(current.dietType)}
         </span>
         {current.instructions && <span className="text-gray-700"> — {current.instructions}</span>}
-        <div className="text-xs text-gray-500">
-          since {formatWhen(current.startedAt)}
-        </div>
+        <div className="text-xs text-gray-500">since {formatWhen(current.startedAt)}</div>
       </div>
     );
   } else {
@@ -168,8 +166,7 @@ export default function DietCard({ admissionId, canEdit = false, refreshKey = 0 
             .map((o) => (
               <li key={o.publicId}>
                 {dietLabel(o.dietType)}
-                {o.instructions ? ` — ${o.instructions}` : ''} ·{' '}
-                {formatDay(o.startedAt)} to{' '}
+                {o.instructions ? ` — ${o.instructions}` : ''} · {formatDay(o.startedAt)} to{' '}
                 {formatDay(o.endedAt)}
               </li>
             ))}

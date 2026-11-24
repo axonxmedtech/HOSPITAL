@@ -180,8 +180,7 @@ export function ReservationsList({ reservations, onChanged }) {
               {r.patientPhone ? ` · ${r.patientPhone}` : ''}
             </span>
             <span className="text-xs text-gray-500">
-              expected {formatWhen(r.expectedAt)} · held until{' '}
-              {formatWhen(r.reservedUntil)}
+              expected {formatWhen(r.expectedAt)} · held until {formatWhen(r.reservedUntil)}
             </span>
             {r.notes && <span className="text-xs text-gray-500">{r.notes}</span>}
             <button

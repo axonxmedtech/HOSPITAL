@@ -66,8 +66,7 @@ const DataTable = ({
         const actions = cells.filter((c) => c.column.id === 'actions');
         const fields = cells.filter((c) => c.column.id !== 'actions');
         const [first, ...rest] = fields;
-        const rowId =
-          row.original && row.original[idAccessor] ? row.original[idAccessor] : row.id;
+        const rowId = row.original && row.original[idAccessor] ? row.original[idAccessor] : row.id;
         const isExpanded = Array.isArray(expandedRowIds) && expandedRowIds.includes(rowId);
         return (
           <li key={row.id} className="bg-white border border-neutral-200 rounded-xl p-3">
@@ -110,55 +109,56 @@ const DataTable = ({
     <div className="overflow-x-auto">
       <div className="inline-block min-w-full align-middle">
         {cards || (
-        <div className="overflow-hidden border border-neutral-200 rounded-xl shadow-soft">
-          <table className="min-w-full divide-y divide-neutral-200">
-            <thead className="bg-neutral-50">
-              {table.getHeaderGroups().map((headerGroup) => (
-                <tr key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => (
-                    <th
-                      key={header.id}
-                      scope="col"
-                      className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"
-                    >
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(header.column.columnDef.header, header.getContext())}
-                    </th>
-                  ))}
-                </tr>
-              ))}
-            </thead>
-            <tbody className="bg-white divide-y divide-neutral-100">
-              {table.getRowModel().rows.map((row) => {
-                const rowId =
-                  row.original && row.original[idAccessor] ? row.original[idAccessor] : row.id;
-                const isExpanded = Array.isArray(expandedRowIds) && expandedRowIds.includes(rowId);
-                return (
-                  <React.Fragment key={row.id}>
-                    <tr className="hover:bg-neutral-50 transition-colors duration-200">
-                      {row.getVisibleCells().map((cell) => (
-                        <td
-                          key={cell.id}
-                          className="px-4 py-3 whitespace-nowrap text-sm text-slate-700"
-                        >
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                        </td>
-                      ))}
-                    </tr>
-                    {isExpanded && renderExpandedRow && (
-                      <tr className="bg-neutral-50">
-                        <td colSpan={row.getVisibleCells().length} className="px-4 py-3">
-                          {renderExpandedRow(row)}
-                        </td>
+          <div className="overflow-hidden border border-neutral-200 rounded-xl shadow-soft">
+            <table className="min-w-full divide-y divide-neutral-200">
+              <thead className="bg-neutral-50">
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <tr key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => (
+                      <th
+                        key={header.id}
+                        scope="col"
+                        className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"
+                      >
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(header.column.columnDef.header, header.getContext())}
+                      </th>
+                    ))}
+                  </tr>
+                ))}
+              </thead>
+              <tbody className="bg-white divide-y divide-neutral-100">
+                {table.getRowModel().rows.map((row) => {
+                  const rowId =
+                    row.original && row.original[idAccessor] ? row.original[idAccessor] : row.id;
+                  const isExpanded =
+                    Array.isArray(expandedRowIds) && expandedRowIds.includes(rowId);
+                  return (
+                    <React.Fragment key={row.id}>
+                      <tr className="hover:bg-neutral-50 transition-colors duration-200">
+                        {row.getVisibleCells().map((cell) => (
+                          <td
+                            key={cell.id}
+                            className="px-4 py-3 whitespace-nowrap text-sm text-slate-700"
+                          >
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </td>
+                        ))}
                       </tr>
-                    )}
-                  </React.Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                      {isExpanded && renderExpandedRow && (
+                        <tr className="bg-neutral-50">
+                          <td colSpan={row.getVisibleCells().length} className="px-4 py-3">
+                            {renderExpandedRow(row)}
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
 
         {/* Pagination Controls */}

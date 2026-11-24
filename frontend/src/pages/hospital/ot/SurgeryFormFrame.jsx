@@ -215,8 +215,8 @@ const SurgeryFormFrame = ({
           {signedAt && !readOnly && (
             <div className="mx-6 mt-4 flex items-center justify-between gap-3 text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
               <span>
-                Signed on {formatWhen(signedAt)} — version {version}. A signed form
-                cannot be changed.
+                Signed on {formatWhen(signedAt)} — version {version}. A signed form cannot be
+                changed.
               </span>
               {!amending && (
                 <button

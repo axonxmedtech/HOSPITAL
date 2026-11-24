@@ -230,8 +230,7 @@ export default function InsurancePanel({ admissionId, canEdit = false, onChanged
               <ol className="mt-3 border-t pt-2 space-y-1 text-xs text-gray-600">
                 {c.events.map((e) => (
                   <li key={e.id}>
-                    {formatWhen(e.createdAt)} ·{' '}
-                    {CLAIM_STATUS[e.status]?.label || e.status}
+                    {formatWhen(e.createdAt)} · {CLAIM_STATUS[e.status]?.label || e.status}
                     {e.amount != null ? ` · ${rupees(e.amount)}` : ''}
                     {e.note ? ` · ${e.note}` : ''}
                   </li>
