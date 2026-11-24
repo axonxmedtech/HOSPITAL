@@ -8,11 +8,6 @@ export const ADMIN_SIDEBAR_GROUPS = [
   },
   { id: 'group-rooms', label: 'Rooms', tabIds: ['wards', 'icu-wards'] },
   {
-    id: 'group-critical-care',
-    label: 'Critical Care',
-    tabIds: ['icu-dashboard', 'icu-beds'],
-  },
-  {
     id: 'group-staff',
     label: 'Staff',
     tabIds: [
@@ -35,6 +30,9 @@ export const ADMIN_SIDEBAR_GROUPS = [
   { id: 'group-communication', label: 'Communication', tabIds: ['support'] },
   { id: 'group-administration', label: 'Administration', tabIds: ['settings'] },
 ];
+
+/** The ICU's old separate screens, now one "ICU" tab: an old link or bookmark lands there. */
+export const LEGACY_ICU_TABS = { 'icu-dashboard': 'icu', 'icu-beds': 'icu' };
 
 export function getEffectiveRole(user, activeDashboardPreference) {
   if (!user) return null;
@@ -64,8 +62,6 @@ function getAdminTabs(modules, tenantWord) {
     { id: 'icu', label: 'ICU', icon: null, requiredModule: 'ICU' },
     { id: 'wards', label: 'Wards & Beds', icon: null, requiredModule: 'IPD' },
     { id: 'icu-wards', label: 'ICU Wards & Beds', icon: null, requiredModule: 'ICU' },
-    { id: 'icu-dashboard', label: 'ICU Dashboard', icon: null, requiredModule: 'ICU' },
-    { id: 'icu-beds', label: 'ICU Bed Board', icon: null, requiredModule: 'ICU' },
     { id: 'ot', label: 'Operation Theatre', icon: null, requiredModule: 'OT' },
     { id: 'pathology', label: 'Pathology', icon: null, requiredModule: 'PATHOLOGY' },
     { id: 'doctors', label: 'Doctors', icon: null, requiredModule: 'OPD' },
@@ -132,8 +128,7 @@ function getDoctorTabs(user, tenantWord) {
     tabs.push({ id: 'ot', label: 'Operation Theatre', icon: null });
   }
   if (modules.includes('ICU')) {
-    tabs.push({ id: 'icu-dashboard', label: 'ICU Dashboard', icon: null });
-    tabs.push({ id: 'icu-beds', label: 'ICU Bed Board', icon: null });
+    tabs.push({ id: 'icu', label: 'ICU', icon: null });
   }
   if (canDoctorManageReception && hasInClinic && modules.includes('MEDICAL_INVENTORY')) {
     tabs.push({ id: 'inventory', label: 'Medicine Inventory', icon: null });
@@ -160,11 +155,9 @@ function getReceptionistTabs(user, tenantWord) {
     tabs.push({ id: 'follow-ups', label: 'Follow-ups', icon: null });
   }
   if (modules.includes('IPD')) {
-    tabs.push(
-      { id: 'ipd', label: 'IPD', icon: null },
-      { id: 'icu', label: 'ICU', icon: null },
-      { id: 'beds', label: 'Beds', icon: null }
-    );
+    tabs.push({ id: 'ipd', label: 'IPD', icon: null });
+    if (modules.includes('ICU')) tabs.push({ id: 'icu', label: 'ICU', icon: null });
+    tabs.push({ id: 'beds', label: 'Beds', icon: null });
   }
   if (canManageBilling(user)) {
     tabs.push({ id: 'billing', label: 'Billing', icon: null });
@@ -178,11 +171,6 @@ function getReceptionistTabs(user, tenantWord) {
   if (modules.includes('OT')) {
     tabs.push({ id: 'ot', label: 'Operation Theatre', icon: null });
   }
-  if (modules.includes('ICU')) {
-    tabs.push({ id: 'icu-dashboard', label: 'ICU Dashboard', icon: null });
-    tabs.push({ id: 'icu-beds', label: 'ICU Bed Board', icon: null });
-  }
-
   return tabs;
 }
 

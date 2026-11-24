@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
- * Who sees "Admit to ICU" on an IPD case.
+ * Who sees "Move to ICU" on an IPD case.
  *
  * Moving a patient into or out of ICU is a bed transfer, and the server allows bed transfers
  * only to a receptionist, an admin, or a doctor in Solo/Both mode. The button used to show for
@@ -94,25 +94,25 @@ describe('IpdDetails — Admit to ICU visibility', () => {
   it('a doctor with a receptionist on staff does not see it (the server refuses them)', async () => {
     as('DOCTOR', { receptionMode: 'HAS_RECEPTIONIST' });
     await renderCase();
-    expect(screen.queryByText('Admit to ICU')).not.toBeInTheDocument();
+    expect(screen.queryByText('Move to ICU')).not.toBeInTheDocument();
   });
 
   it('a doctor in Solo mode sees it', async () => {
     as('DOCTOR', { receptionMode: 'SOLO' });
     await renderCase();
-    expect(await screen.findByText('Admit to ICU')).toBeInTheDocument();
+    expect(await screen.findByText('Move to ICU')).toBeInTheDocument();
   });
 
   it('a receptionist sees it', async () => {
     as('RECEPTIONIST');
     await renderCase();
-    expect(await screen.findByText('Admit to ICU')).toBeInTheDocument();
+    expect(await screen.findByText('Move to ICU')).toBeInTheDocument();
   });
 
   it('nobody sees it when the hospital has no ICU module', async () => {
     as('HOSPITAL_ADMIN', { modules: ['IPD'] });
     await renderCase();
-    expect(screen.queryByText('Admit to ICU')).not.toBeInTheDocument();
+    expect(screen.queryByText('Move to ICU')).not.toBeInTheDocument();
   });
 });
 

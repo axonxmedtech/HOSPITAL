@@ -6,15 +6,15 @@ import nurseService from '../../../services/nurseService';
 import { extractApiError } from '../../../utils/apiError';
 import escapeHtml from '../../../utils/escapeHtml';
 import { backdropProps } from '../../../utils/modalA11y';
-import { printHtml } from '../../../utils/printHtml';
+import { combinePrintDocuments, printHtml } from '../../../utils/printHtml';
 import { titleCase } from '../../../utils/text';
 
 /**
  * AdmissionFormModal - reception/admin (at the desk) or the ward nurse fills the IPD admission form to complete a
  * patient's admission (Phase 1 Nurse module). Known values arrive pre-filled;
- * the rest are editable. Save persists it; Print opens a printable copy for the
- * relative's offline signature; Mark as Admitted confirms the admission once the
- * signed form is collected.
+ * the rest are editable. Save persists it; "Save & Print" saves and prints the admission form
+ * and the consent form in one print job for the relative's offline signature; "Save & Mark as
+ * Admitted" saves and confirms the admission once the signed form is collected.
  */
 
 const Text = ({ label, value, onChange, wide }) => (
@@ -264,7 +264,6 @@ const AdmissionFormModal = ({ admissionId, onClose, onConfirmed }) => {
   const [loading, setLoading] = useState(true);
   const [f, setF] = useState({});
   const [saving, setSaving] = useState(false);
-  const [savedOnce, setSavedOnce] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
@@ -274,7 +273,6 @@ const AdmissionFormModal = ({ admissionId, onClose, onConfirmed }) => {
       .then((data) => {
         if (active) {
           setF(data || {});
-          setSavedOnce(!!data?.id);
         }
       })
       .catch(() => {
@@ -290,46 +288,46 @@ const AdmissionFormModal = ({ admissionId, onClose, onConfirmed }) => {
 
   const set = (k) => (v) => setF((prev) => ({ ...prev, [k]: v }));
 
-  const handleSave = async () => {
+  const branding = () => ({
+    // Prefer live branding from the backend (like the prescription/bill PDFs);
+    // fall back to the session user object.
+    name: f.hospitalName || user?.hospitalName,
+    address: f.hospitalAddress || user?.hospitalAddress,
+    logo: f.hospitalLogoUrl || user?.logoUrl,
+    customId: f.hospitalCustomId,
+    nurse: user?.name,
+  });
+
+  /** Saves what is typed; returns the saved form, or null when the save was refused. */
+  const save = async () => {
     setSaving(true);
     try {
       const saved = await nurseService.saveAdmissionForm(admissionId, f);
       setF(saved);
-      setSavedOnce(true);
-      success('Admission form saved');
+      return saved;
     } catch (err) {
       toastError(extractApiError(err, 'Failed to save admission form'));
+      return null;
     } finally {
       setSaving(false);
     }
   };
 
-  const handlePrint = () => {
-    // Prefer live branding from the backend (like the prescription/bill PDFs);
-    // fall back to the session user object.
-    printHtml(
-      buildPrintHtml(f, {
-        name: f.hospitalName || user?.hospitalName,
-        address: f.hospitalAddress || user?.hospitalAddress,
-        logo: f.hospitalLogoUrl || user?.logoUrl,
-        nurse: user?.name,
-      })
-    );
+  const handleSave = async () => {
+    if (await save()) success('Admission form saved');
   };
 
-  const handlePrintConsent = () => {
-    printHtml(
-      buildConsentHtml(f, {
-        name: f.hospitalName || user?.hospitalName,
-        address: f.hospitalAddress || user?.hospitalAddress,
-        logo: f.hospitalLogoUrl || user?.logoUrl,
-        customId: f.hospitalCustomId,
-        nurse: user?.name,
-      })
-    );
+  /** Save, then the admission form and the consent form in one print job. */
+  const handleSaveAndPrint = async () => {
+    const saved = await save();
+    if (!saved) return;
+    const b = branding();
+    printHtml(combinePrintDocuments([buildPrintHtml(saved, b), buildConsentHtml(saved, b)]));
   };
 
+  /** Save what is on screen, then confirm the admission: one click once the form is filled. */
   const handleConfirm = async () => {
+    if (!(await save())) return;
     setConfirming(true);
     try {
       await nurseService.confirmAdmission(admissionId);
@@ -498,28 +496,20 @@ const AdmissionFormModal = ({ admissionId, onClose, onConfirmed }) => {
             {saving ? 'Saving…' : 'Save'}
           </button>
           <button
-            onClick={handlePrint}
-            disabled={!savedOnce}
-            title={savedOnce ? '' : 'Save the form first'}
-            className={`px-4 py-2 rounded-lg font-semibold ${savedOnce ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+            onClick={handleSaveAndPrint}
+            disabled={saving}
+            title="Saves the form, then prints the admission form and the consent form together"
+            className={`px-4 py-2 rounded-lg font-semibold ${saving ? 'bg-gray-200 text-gray-400' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
           >
-            Print Admission Form
-          </button>
-          <button
-            onClick={handlePrintConsent}
-            disabled={!savedOnce}
-            title={savedOnce ? '' : 'Save the form first'}
-            className={`px-4 py-2 rounded-lg font-semibold ${savedOnce ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
-          >
-            Print Consent Form
+            Save &amp; Print Form + Consent
           </button>
           <button
             onClick={handleConfirm}
-            disabled={!savedOnce || confirming}
-            title={savedOnce ? '' : 'Save the form first'}
-            className={`px-4 py-2 rounded-lg font-semibold ${savedOnce && !confirming ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+            disabled={saving || confirming}
+            title="Saves the form and confirms the admission"
+            className={`px-4 py-2 rounded-lg font-semibold ${!saving && !confirming ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
           >
-            {confirming ? 'Marking…' : 'Mark as Admitted'}
+            {confirming ? 'Marking…' : 'Save & Mark as Admitted'}
           </button>
         </div>
       </div>

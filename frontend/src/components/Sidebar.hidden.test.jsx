@@ -19,7 +19,7 @@ describe('Settings → Sidebar', () => {
     const user = { hospitalType: 'HOSPITAL', modules: ['OPD', 'IPD', 'ICU', 'HOSPITAL_INVENTORY'] };
     const doctor = tabsForRole('DOCTOR', user).map((t) => t.id);
     expect(doctor).toEqual(
-      expect.arrayContaining(['overview', 'opd', 'follow-ups', 'icu-beds', 'hospital-inventory'])
+      expect.arrayContaining(['overview', 'opd', 'follow-ups', 'icu', 'hospital-inventory'])
     );
     expect(tabsForRole('RECEPTIONIST', user).map((t) => t.id)).toContain('beds');
   });

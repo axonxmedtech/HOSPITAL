@@ -16,6 +16,7 @@ import HistoryDrawer from '../../components/HistoryDrawer';
 import HospitalInventoryTab from '../../components/HospitalInventoryTab';
 import { DietSheetButton } from '../../components/ipd/DietCard';
 import OpenClaimsView from '../../components/ipd/OpenClaimsView';
+import CurrentAdmissionsTable from '../../components/ipd/CurrentAdmissionsTable';
 import IpdAdmitModal from '../../components/IpdAdmitModal';
 import LowStockBanner from '../../components/LowStockBanner';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
@@ -59,12 +60,12 @@ import { rangeFor, rangeParams } from '../../utils/dateRange';
 import { extractPhoneConflicts } from '../../utils/duplicatePhone';
 import { createOptionalModuleFetcher } from '../../utils/optionalModule';
 import { printPdf } from '../../utils/printPdf';
+import { LEGACY_ICU_TABS } from '../../utils/sidebarNavigation';
 import { validateForm } from '../../utils/validation';
 import BedCleaningView from './BedCleaningView';
 import BillingTable from './BillingTable';
-import IcuBedBoard from './icu/IcuBedBoard';
-import IcuDashboard from './icu/IcuDashboard';
-import IcuDashboardView from './IcuDashboardView';
+import IcuWorkspace from './icu/IcuWorkspace';
+import AdmissionFormModal from './nurse/AdmissionFormModal';
 import OtWorkspace from './ot/OtWorkspace';
 
 const ReceptionistDashboard = () => {
@@ -146,7 +147,18 @@ const ReceptionistDashboard = () => {
   const opdInFlight = useRef(false);
   const [isIpdAdmitOpen, setIsIpdAdmitOpen] = useState(false);
   const [ipdOpdForAdmit, setIpdOpdForAdmit] = useState(null);
-  const [ipdSubTab, setIpdSubTab] = useState('current'); // 'current' | 'requested' | 'history'
+  // In the URL, so Back from an IPD case lands on the same IPD list.
+  const ipdSubTab = searchParams.get('ipdView') || 'current'; // current | requested | history | claims
+  const setIpdSubTab = (view) =>
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (view === 'current') next.delete('ipdView');
+      else next.set('ipdView', view);
+      next.delete('ipdFilter');
+      return next;
+    });
+  // The new admission whose form opens straight after Admit (one sitting, not two).
+  const [admitFormId, setAdmitFormId] = useState(null);
   const [opdForm, setOpdForm] = useState({
     patientId: null,
     receptionistId: user?.id || null,
@@ -1018,14 +1030,14 @@ const ReceptionistDashboard = () => {
       ? [{ id: 'hospital-inventory', label: `${tenantWord} Inventory`, icon: null }]
       : []),
     ...(hasOT ? [{ id: 'ot', label: 'Operation Theatre', icon: null }] : []),
-    ...(hasICU ? [{ id: 'icu-dashboard', label: 'ICU Dashboard', icon: null }] : []),
-    ...(hasICU ? [{ id: 'icu-beds', label: 'ICU Bed Board', icon: null }] : []),
   ];
 
   // Fallback if the URL parameter tab is not currently valid/visible
   useEffect(() => {
     const isValidTab = tabs.some((t) => t.id === activeTab);
-    if (!isValidTab) {
+    if (LEGACY_ICU_TABS[activeTab]) {
+      setActiveTab(LEGACY_ICU_TABS[activeTab]);
+    } else if (!isValidTab) {
       setActiveTab('overview');
     }
   }, [user, activeTab, tabs]);
@@ -1339,8 +1351,7 @@ const ReceptionistDashboard = () => {
                       <button
                         type="button"
                         onClick={() => {
-                          setActiveTab('ipd');
-                          setIpdSubTab('requested');
+                          setSearchParams({ tab: 'ipd', ipdView: 'requested' });
                         }}
                         className="text-xs font-semibold text-sky-700 hover:text-sky-900 hover:underline flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0"
                       >
@@ -2018,89 +2029,13 @@ const ReceptionistDashboard = () => {
                 ipdSubTab !== 'claims' &&
                 (ipdSubTab === 'current' ? (
                   opds.length > 0 ? (
-                    <div className="p-4 overflow-x-auto">
-                      <table className="w-full text-sm text-left">
-                        <thead>
-                          <tr>
-                            <th className="px-4 py-2">S.No.</th>
-                            <th className="px-4 py-2">IPD No.</th>
-                            <th className="px-4 py-2">Patient</th>
-                            <th className="px-4 py-2">Doctor</th>
-                            <th className="px-4 py-2">Ward</th>
-                            <th className="px-4 py-2">Bed</th>
-                            <th className="px-4 py-2">Admitted</th>
-                            <th className="px-4 py-2">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {opds.map((o, idx) => {
-                            const row = o.ipd || o;
-                            const ipdNumber = row.ipdNumber || row.ipd?.ipdNumber || row.ipdNumber;
-                            const patientName = row.patientName || row.patient?.name || '-';
-                            const doctorName = row.doctorName || row.doctor?.name || '-';
-                            const wardName = row.wardName || row.ward?.name || '-';
-                            const bedNumber =
-                              row.bedNumber ||
-                              row.bed?.bedNumber ||
-                              row.bed?.bedCode ||
-                              row.bed?.name ||
-                              '-';
-                            const admittedAt =
-                              row.admissionDateTime ||
-                              row.admissionDatetime ||
-                              row.ipd?.admissionDatetime;
-                            const status = row.status || row.ipd?.status || 'ADMITTED';
-                            const ipdId =
-                              row.ipdId || row.id || row.ipd?.id || row.ipd?.ipdId || ipdNumber;
-                            return (
-                              <tr key={idx} className="border-t">
-                                <td className="px-4 py-3">{page * pageSize + idx + 1}</td>
-                                <td className="px-4 py-3">{ipdNumber || row.id}</td>
-                                <td className="px-4 py-3">
-                                  {ipdId ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        window.location.href = `/ipd/${ipdId}`;
-                                      }}
-                                      className="font-medium text-blue-600 hover:text-blue-800 hover:underline text-left cursor-pointer"
-                                      title="View IPD details"
-                                    >
-                                      {patientName}
-                                    </button>
-                                  ) : (
-                                    <span>{patientName}</span>
-                                  )}
-                                </td>
-                                <td className="px-4 py-3">{doctorName}</td>
-                                <td className="px-4 py-3">{wardName}</td>
-                                <td className="px-4 py-3">{bedNumber}</td>
-                                <td className="px-4 py-3">{formatDateTime(admittedAt)}</td>
-                                <td className="px-4 py-3">
-                                  <div className="flex flex-col gap-1 items-start">
-                                    {(o.admissionConfirmed ?? row.admissionConfirmed) ? (
-                                      <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-green-100 text-green-700">
-                                        ADMITTED
-                                      </span>
-                                    ) : (
-                                      <span
-                                        className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-800"
-                                        title="The patient is admitted and in the bed. The admission form still has to be completed (Complete Admission on the IPD case)."
-                                      >
-                                        ADMITTED · FORM PENDING
-                                      </span>
-                                    )}
-                                    {status && status !== 'ADMITTED' && (
-                                      <span className="text-[10px] text-gray-500">{status}</span>
-                                    )}
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
+                    <CurrentAdmissionsTable
+                      rows={opds}
+                      canDesk
+                      hasBilling={hasBilling}
+                      hasIcu={hasICU}
+                      onChanged={() => loadData(false)}
+                    />
                   ) : (
                     <EmptyState
                       icon={null}
@@ -2247,11 +2182,7 @@ const ReceptionistDashboard = () => {
               )}
               {activeTab === 'inventory' && <MedicineInventoryTab hidePrescribingColumns />}
               {activeTab === 'hospital-inventory' && <HospitalInventoryTab />}
-              {activeTab === 'icu' && <IcuDashboardView />}
-              {activeTab === 'icu-dashboard' && (
-                <IcuDashboard onOpenBedBoard={() => setActiveTab('icu-beds')} />
-              )}
-              {activeTab === 'icu-beds' && <IcuBedBoard />}
+              {activeTab === 'icu' && <IcuWorkspace canDesk canHousekeep hasBilling={hasBilling} />}
               {activeTab === 'ot' && <OtWorkspace />}
             </div>
           )}
@@ -2322,9 +2253,17 @@ const ReceptionistDashboard = () => {
             setIpdOpdForAdmit(null);
           }}
           opd={ipdOpdForAdmit}
-          onSuccess={() => {
-            loadData();
+          onSuccess={(admission) => {
+            loadData(false);
+            if (admission?.id) setAdmitFormId(admission.id);
           }}
+        />
+      )}
+      {admitFormId && (
+        <AdmissionFormModal
+          admissionId={Number(admitFormId)}
+          onClose={() => setAdmitFormId(null)}
+          onConfirmed={() => loadData(false)}
         />
       )}
 

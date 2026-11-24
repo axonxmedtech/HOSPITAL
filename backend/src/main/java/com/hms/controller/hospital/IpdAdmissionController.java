@@ -212,6 +212,18 @@ public class IpdAdmissionController {
                 .body(new org.springframework.core.io.InputStreamResource(pdf));
     }
 
+    /** The discharge summary and the final bill as one PDF, so the desk prints once. */
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.ADMISSION, action = PatientRecordAccess.Action.PRINT, label = "DISCHARGE_PACK")
+    @GetMapping("/{id}/discharge-pack/pdf")
+    @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<org.springframework.core.io.InputStreamResource> dischargePackPdf(@PathVariable("id") Long id) {
+        java.io.ByteArrayInputStream pdf = ipdAdmissionService.dischargePackPdf(id);
+        return ResponseEntity.ok()
+                .header("Content-Disposition", "inline; filename=discharge_pack_" + id + ".pdf")
+                .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                .body(new org.springframework.core.io.InputStreamResource(pdf));
+    }
+
     /** Cancels an admission made by mistake. Body: {"reason": "...", "refundMode": "CASH"}. */
     @RequireModule("IPD")
     @PostMapping("/{id}/cancel")

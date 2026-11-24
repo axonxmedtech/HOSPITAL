@@ -200,11 +200,18 @@ class IcuPatientsEndpointTest {
         assertThat(icuPatient.getIntensivistName()).isEqualTo("Dr. Intensivist");
         assertThat(icuPatient.getAdmissionReason()).isEqualTo("Acute Respiratory Distress");
 
-        // Verify General IPD tab endpoint excludes the ICU patient:
+        // The IPD list is every admitted patient; the ICU one is flagged with its unit.
         List<IpdAdmissionSummaryDTO> generalList = ipdAdmissionService.getAdmittedIpdSummariesForCurrentUser();
-        assertThat(generalList).hasSize(1);
-        assertThat(generalList.get(0).getPatientName()).isEqualTo("General Patient Jane");
-        assertThat(generalList.get(0).getWardName()).isEqualTo("General Male Ward");
+        assertThat(generalList).hasSize(2);
+        IpdAdmissionSummaryDTO jane = generalList.stream()
+                .filter(r -> "General Patient Jane".equals(r.getPatientName())).findFirst().orElseThrow();
+        assertThat(jane.getWardName()).isEqualTo("General Male Ward");
+        assertThat(jane.isInIcu()).isFalse();
+        IpdAdmissionSummaryDTO john = generalList.stream()
+                .filter(r -> "ICU Patient John".equals(r.getPatientName())).findFirst().orElseThrow();
+        assertThat(john.isInIcu()).isTrue();
+        assertThat(john.getIcuUnitLabel()).isEqualTo(CareUnitRegistry.labelOf(CareUnitRegistry.MICU));
+        assertThat(icuPatient.getAdmissionConfirmed()).isNotNull();
 
         // Verify Tenant Isolation: Hospital B cannot see Hospital A's ICU patients
         when(securityHelper.getCurrentHospitalId()).thenReturn(hospitalIdB);

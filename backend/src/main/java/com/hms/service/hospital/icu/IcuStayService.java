@@ -331,6 +331,7 @@ public class IcuStayService {
 
             dto.setAdmissionDateTime(ipd.getAdmissionDatetime());
             dto.setStatus(ipd.getStatus());
+            dto.setAdmissionConfirmed(Boolean.TRUE.equals(ipd.getAdmissionConfirmed()));
             result.add(dto);
         }
 

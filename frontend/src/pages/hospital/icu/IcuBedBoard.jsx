@@ -1,86 +1,118 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import EmptyState from '../../../components/EmptyState';
+import { useOpenIpdCase } from '../../../components/ipd/CurrentAdmissionsTable';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useToast } from '../../../context/ToastContext';
 import icuService from '../../../services/icuService';
+import wardService from '../../../services/wardService';
 import { extractApiError } from '../../../utils/apiError';
 import { bedStatusMeta, respiratorySummary, since } from './icuBoardShared';
 
 /**
- * IcuBedBoard - the ICU bed grid (ICU Phase 2).
+ * IcuBedBoard - the ICU bed grid (ICU Phase 2), and the ICU's hub.
  *
- * Read-only. Bed state is whatever `beds.status` already says and the patient is whoever the
- * admission record already names — this board displays those two, it never stores a third.
+ * Bed state is whatever `beds.status` already says and the patient is whoever the admission
+ * record already names — this board displays those two, it never stores a third.
  *
- * Clicking an occupied bed opens the patient's existing IPD workspace at /ipd/:id. That is
- * today's patient chart and the place ICU tabs will be added, so the link target does not
- * change later — only what lives behind it grows.
+ * Each bed offers the one job it needs: an occupied bed opens the patient's IPD case in-app
+ * (Back returns here), a bed awaiting cleaning is marked cleaned, a free bed takes a patient
+ * ("Admit here"). The last two appear only when the host passes them, i.e. for the roles the
+ * server lets do them; without them the board is read-only (staff nurses).
  */
-const BedCard = ({ bed, onOpen }) => {
+const BedCard = ({ bed, onOpen, onAdmitHere, onMarkCleaned }) => {
   const meta = bedStatusMeta(bed.status);
   const occupied = bed.status === 'occupied';
   const clickable = occupied && bed.ipdAdmissionId != null;
   const resp = respiratorySummary(bed);
   const flagged = bed.occupancyConsistent === false;
+  const action =
+    bed.status === 'cleaning' && onMarkCleaned
+      ? { label: 'Mark cleaned', run: () => onMarkCleaned(bed) }
+      : bed.status === 'available' && onAdmitHere
+        ? { label: 'Admit here', run: () => onAdmitHere(bed) }
+        : null;
 
   return (
-    <button
-      type="button"
-      disabled={!clickable}
-      onClick={() => clickable && onOpen(bed.ipdAdmissionId)}
-      className={`text-left w-full bg-white border rounded-xl p-3 transition
+    <div
+      className={`bg-white border rounded-xl transition
         ${flagged ? 'border-red-300 ring-1 ring-red-200' : 'border-gray-200'}
-        ${clickable ? 'hover:border-primary-400 hover:shadow-sm cursor-pointer' : 'cursor-default'}`}
+        ${clickable ? 'hover:border-primary-400 hover:shadow-sm' : ''}`}
     >
-      <div className="flex items-start justify-between gap-2">
-        <span className="font-semibold text-gray-900 text-sm">{bed.bedCode}</span>
-        <span className={`shrink-0 px-2 py-0.5 rounded-full text-[11px] font-medium ${meta.badge}`}>
-          {meta.label}
-        </span>
-      </div>
+      <button
+        type="button"
+        disabled={!clickable}
+        onClick={() => clickable && onOpen(bed.ipdAdmissionId)}
+        title={clickable ? 'Open the case' : undefined}
+        className={`text-left w-full p-3 rounded-xl ${clickable ? 'cursor-pointer' : 'cursor-default'}`}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <span className="font-semibold text-gray-900 text-sm">{bed.bedCode}</span>
+          <span
+            className={`shrink-0 px-2 py-0.5 rounded-full text-[11px] font-medium ${meta.badge}`}
+          >
+            {meta.label}
+          </span>
+        </div>
 
-      {occupied && bed.patientName && (
-        <div className="mt-2 space-y-0.5">
-          <div className="text-sm text-gray-900 truncate">{bed.patientName}</div>
-          <div className="text-xs text-gray-500">
-            {[bed.age != null ? `${bed.age}y` : null, bed.gender, bed.ipdNumber]
-              .filter(Boolean)
-              .join(' · ')}
+        {occupied && bed.patientName && (
+          <div className="mt-2 space-y-0.5">
+            <div className="text-sm text-gray-900 truncate">{bed.patientName}</div>
+            <div className="text-xs text-gray-500">
+              {[bed.age != null ? `${bed.age}y` : null, bed.gender, bed.ipdNumber]
+                .filter(Boolean)
+                .join(' · ')}
+            </div>
+            {bed.consultantName && (
+              <div className="text-xs text-gray-500 truncate">Dr. under: {bed.consultantName}</div>
+            )}
+            {bed.primaryDiagnosis && (
+              <div className="text-xs text-gray-600 truncate" title={bed.primaryDiagnosis}>
+                {bed.primaryDiagnosis}
+              </div>
+            )}
+            {/* Recorded observations only — the board states values, never a severity verdict. */}
+            {resp && <div className="text-xs text-gray-700 mt-1">{resp}</div>}
+            <div className="text-[11px] text-gray-400">In unit {since(bed.admittedAt)}</div>
+            {bed.admissionConfirmed === false && (
+              <div className="text-[11px] text-amber-700">
+                Bed allocated · admission form to complete
+              </div>
+            )}
           </div>
-          {bed.consultantName && (
-            <div className="text-xs text-gray-500 truncate">Dr. under: {bed.consultantName}</div>
-          )}
-          {bed.primaryDiagnosis && (
-            <div className="text-xs text-gray-600 truncate" title={bed.primaryDiagnosis}>
-              {bed.primaryDiagnosis}
-            </div>
-          )}
-          {/* Recorded observations only — the board states values, never a severity verdict. */}
-          {resp && <div className="text-xs text-gray-700 mt-1">{resp}</div>}
-          <div className="text-[11px] text-gray-400">In unit {since(bed.admittedAt)}</div>
-          {bed.admissionConfirmed === false && (
-            <div className="text-[11px] text-amber-700">
-              Bed allocated · admission form to complete
-            </div>
-          )}
+        )}
+
+        {occupied && !bed.patientName && (
+          <div className="mt-2 text-xs text-gray-500">Occupied — patient not in your scope</div>
+        )}
+
+        {flagged && (
+          <div className="mt-2 text-[11px] text-red-700 leading-snug">⚠ {bed.occupancyNote}</div>
+        )}
+      </button>
+      {action && (
+        <div className="px-3 pb-3">
+          <button
+            type="button"
+            onClick={action.run}
+            className="w-full py-1.5 rounded-lg text-xs font-semibold border border-gray-300 text-gray-800 hover:bg-gray-50"
+          >
+            {action.label}
+          </button>
         </div>
       )}
-
-      {occupied && !bed.patientName && (
-        <div className="mt-2 text-xs text-gray-500">Occupied — patient not in your scope</div>
-      )}
-
-      {flagged && (
-        <div className="mt-2 text-[11px] text-red-700 leading-snug">⚠ {bed.occupancyNote}</div>
-      )}
-    </button>
+    </div>
   );
 };
 
-const IcuBedBoard = ({ refreshKey = 0, initialWardId = null }) => {
-  const { error: toastError } = useToast();
-  const navigate = useNavigate();
+const IcuBedBoard = ({
+  refreshKey = 0,
+  initialWardId = null,
+  onAdmitHere = null,
+  canMarkCleaned = false,
+  hideSummary = false,
+}) => {
+  const { success, error: toastError } = useToast();
+  const openCase = useOpenIpdCase();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [wardId, setWardId] = useState(initialWardId);
@@ -98,6 +130,20 @@ const IcuBedBoard = ({ refreshKey = 0, initialWardId = null }) => {
   useEffect(() => {
     load();
   }, [load, refreshKey]);
+
+  useEffect(() => {
+    if (initialWardId != null) setWardId(initialWardId);
+  }, [initialWardId]);
+
+  const markCleaned = async (bed) => {
+    try {
+      await wardService.markBedCleaned(bed.bedId);
+      success(`${bed.bedCode} is clean and available`);
+      load();
+    } catch (err) {
+      toastError(extractApiError(err, 'Could not mark the bed cleaned'));
+    }
+  };
 
   const units = useMemo(() => data?.units || [], [data]);
 
@@ -122,7 +168,7 @@ const IcuBedBoard = ({ refreshKey = 0, initialWardId = null }) => {
       <EmptyState
         icon={null}
         title="No critical care units yet"
-        message="Mark a ward as ICU, NICU, PICU, CCU, MICU, SICU or HDU in Wards & Beds, and its beds will appear here."
+        message="The admin adds them under Rooms → ICU Wards & Beds; their beds then appear here."
       />
     );
   }
@@ -160,7 +206,6 @@ const IcuBedBoard = ({ refreshKey = 0, initialWardId = null }) => {
             ))}
           </select>
         </div>
-
         <div>
           <label htmlFor="icu-status" className="block text-xs font-medium text-gray-500 mb-1">
             Status
@@ -178,23 +223,24 @@ const IcuBedBoard = ({ refreshKey = 0, initialWardId = null }) => {
             <option value="maintenance">Under Maintenance</option>
           </select>
         </div>
-
-        <div className="ml-auto flex flex-wrap gap-4 text-sm">
-          <span className="text-gray-500">
-            Beds <span className="font-semibold text-gray-900">{scope.totalBeds ?? 0}</span>
-          </span>
-          <span className="text-gray-500">
-            Occupied <span className="font-semibold text-blue-700">{scope.occupied ?? 0}</span>
-          </span>
-          <span className="text-gray-500">
-            Available <span className="font-semibold text-green-700">{scope.available ?? 0}</span>
-          </span>
-          {scope.occupancyMismatches > 0 && (
-            <span className="text-red-700 font-medium">
-              {scope.occupancyMismatches} need attention
+        {!hideSummary && (
+          <div className="ml-auto flex flex-wrap gap-4 text-sm">
+            <span className="text-gray-500">
+              Beds <span className="font-semibold text-gray-900">{scope.totalBeds ?? 0}</span>
             </span>
-          )}
-        </div>
+            <span className="text-gray-500">
+              Occupied <span className="font-semibold text-blue-700">{scope.occupied ?? 0}</span>
+            </span>
+            <span className="text-gray-500">
+              Available <span className="font-semibold text-green-700">{scope.available ?? 0}</span>
+            </span>
+            {scope.occupancyMismatches > 0 && (
+              <span className="text-red-700 font-medium">
+                {scope.occupancyMismatches} need attention
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {beds.length === 0 ? (
@@ -202,7 +248,13 @@ const IcuBedBoard = ({ refreshKey = 0, initialWardId = null }) => {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {beds.map((b) => (
-            <BedCard key={b.bedId} bed={b} onOpen={(id) => navigate(`/ipd/${id}`)} />
+            <BedCard
+              key={b.bedId}
+              bed={b}
+              onOpen={(id) => openCase(id)}
+              onAdmitHere={onAdmitHere}
+              onMarkCleaned={canMarkCleaned ? markCleaned : null}
+            />
           ))}
         </div>
       )}

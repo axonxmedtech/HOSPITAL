@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { DiscountModal } from '../../components/billing/BillActionModals';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import DateSelect from '../../components/DateSelect';
@@ -10,7 +10,8 @@ import IcuDischargeToIpdModal from '../../components/IcuDischargeToIpdModal';
 import CancelAdmissionModal from '../../components/ipd/CancelAdmissionModal';
 import DietCard from '../../components/ipd/DietCard';
 import DischargeSummaryModal from '../../components/ipd/DischargeSummaryModal';
-import { ConfirmDischargeModal, dischargeTypeLabel } from '../../components/ipd/DischargeType';
+import DischargeCheckoutModal from '../../components/ipd/DischargeCheckoutModal';
+import { dischargeTypeLabel } from '../../components/ipd/DischargeType';
 import DoctorRoundsTimeline from '../../components/ipd/DoctorRoundsTimeline';
 import InsurancePanel from '../../components/ipd/InsurancePanel';
 import InvestigationsPanel from '../../components/ipd/InvestigationsPanel';
@@ -55,6 +56,8 @@ import StayBillsSummary from './StayBillsSummary';
 const IpdDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
   // MedicationPanel fetches its own chart once; bump this after prescribing or stopping a
@@ -538,44 +541,61 @@ const IpdDetails = () => {
     }
   };
 
-  // Every unpaid bill of the patient blocks a normal discharge — the IPD bill and the OPD bill
-  // from the consultation that led to admission. The server lists them; show them up front.
-  const owingText = () => {
-    // The insurer's approved share is not the patient's to pay at the desk.
-    let insurer = Number(data?.billing?.insuranceExpected) || 0;
-    const owing = (data?.billing?.outstandingBills || [])
-      .map((o) => {
-        if (o.billingType !== 'IPD' || insurer <= 0) return o;
-        const covered = Math.min(insurer, Number(o.balance) || 0);
-        insurer -= covered;
-        return { ...o, balance: (Number(o.balance) || 0) - covered };
-      })
-      .filter((o) => Number(o.balance) > 0);
-    const balance =
-      (Number(data?.billing?.balance) || 0) - (Number(data?.billing?.insuranceExpected) || 0);
-    return owing.length
-      ? owing.map((o) => `${o.customId} (${o.billingType}) ₹${o.balance}`).join(', ')
-      : balance > 0
-        ? `₹${balance} on this admission's bill`
-        : '';
-  };
-
   const onConfirmDischarge = () => setConfirmDischargeOpen(true);
 
-  const doConfirmDischarge = async (body) => {
+  // Back returns to the list the case was opened from (same tab and filter); opened from a link
+  // or a new tab, it goes to the role's IPD list instead of leaving the app.
+  const goBack = () => {
+    if (location.state?.from || (globalThis.history?.state?.idx ?? 0) > 0) navigate(-1);
+    else handleTabChange('ipd');
+  };
+
+  const [printingPack, setPrintingPack] = useState(false);
+  const printDischargePack = async () => {
+    if (printingPack) return;
+    setPrintingPack(true);
     try {
-      setLoading(true);
-      await hospitalService.confirmDischarge(id, body);
-      setConfirmDischargeOpen(false);
-      success('Discharge completed');
-      navigate('/');
+      await printBlob(await hospitalService.downloadDischargePack(id));
     } catch (err) {
-      console.error('Failed to confirm discharge', err);
-      toastError(parseError(err, 'Failed to confirm discharge'));
+      toastError(extractApiError(err, 'Failed to load the print-out'));
     } finally {
-      setLoading(false);
+      setPrintingPack(false);
     }
   };
+
+  const markBedCleaned = async () => {
+    try {
+      await wardService.markBedCleaned(data.admission.bedId);
+      success('Bed marked cleaned and available');
+      load(false);
+    } catch (err) {
+      toastError(parseError(err, 'Failed to mark the bed cleaned'));
+    }
+  };
+
+  // A row action on the IPD list lands here with ?action=… to open that job straight away.
+  useEffect(() => {
+    const action = searchParams.get('action');
+    if (!action || !data) return;
+    const active = data.status === 'ADMITTED' || data.status === 'DISCHARGE_PLANNED';
+    if (action === 'change-bed' && active) {
+      setBedModal((p) => ({ ...p, isOpen: true, selectedWard: '', selectedBed: '' }));
+    } else if (action === 'checkout' && data.status === 'DISCHARGE_PLANNED') {
+      setConfirmDischargeOpen(true);
+    } else if (action === 'admission-form' && active && !data.admission?.admissionConfirmed) {
+      setIsAdmissionFormOpen(true);
+    }
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('action');
+        return next;
+      },
+      { replace: true, state: location.state }
+    );
+    // Runs once the case has loaded; the param is removed so a reload does not reopen it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, searchParams]);
 
   const openBillModal = async () => {
     setBillModal({ isOpen: true, loading: true, bill: null });
@@ -645,7 +665,7 @@ const IpdDetails = () => {
             <div>
               <div className="mb-3">
                 <button
-                  onClick={() => navigate(-1)}
+                  onClick={goBack}
                   className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-2"
                 >
                   <svg
@@ -679,6 +699,21 @@ const IpdDetails = () => {
                   />
                 </div>
                 <div className="flex items-center gap-2 shrink-0 pt-1">
+                  {(isDoctor || isAdmin) &&
+                    (data.status === 'ADMITTED' || data.status === 'DISCHARGE_PLANNED') && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          navigate(`/ipd/round/${id}`, {
+                            state: { from: `${location.pathname}${location.search}` },
+                          })
+                        }
+                        title="Vitals, medicines, tests, diet and today's round on one screen"
+                        className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white bg-gray-900 hover:bg-gray-800 whitespace-nowrap"
+                      >
+                        Round mode
+                      </button>
+                    )}
                   {hasOT && isDoctor && !otSurgery && (
                     <button
                       onClick={() => setOtModalOpen(true)}
@@ -699,7 +734,7 @@ const IpdDetails = () => {
                         Complete Admission
                       </button>
                     )}
-                  {/* Contextual ICU Action Button: Admit to ICU or Discharge to IPD */}
+                  {/* ICU move: into an ICU bed, or out of it to a ward bed (the patient stays admitted). */}
                   {canMoveToIcu &&
                     (data.status === 'ADMITTED' || data.status === 'DISCHARGE_PLANNED') &&
                     (isIcuActive ? (
@@ -707,7 +742,7 @@ const IpdDetails = () => {
                         type="button"
                         onClick={() => setIsIcuDischargeOpen(true)}
                         className="px-3 py-1.5 rounded-lg text-sm font-semibold text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 shadow-xs transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
-                        title="Step down / transfer patient from ICU to General IPD Ward"
+                        title="Move the patient from the ICU to a ward bed; the admission continues"
                       >
                         <svg
                           className="w-4 h-4 text-amber-700"
@@ -722,7 +757,7 @@ const IpdDetails = () => {
                             d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
                           />
                         </svg>
-                        Discharge to IPD
+                        Move out of ICU
                       </button>
                     ) : (
                       <button
@@ -744,7 +779,7 @@ const IpdDetails = () => {
                             d="M12 4v16m8-8H4"
                           />
                         </svg>
-                        Admit to ICU
+                        Move to ICU
                       </button>
                     ))}
                   {(isReceptionist || isAdmin || isSoloDoctor) && data.status === 'ADMITTED' && (
@@ -799,7 +834,32 @@ const IpdDetails = () => {
                         onClick={onConfirmDischarge}
                         className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white bg-green-600 hover:bg-green-700 whitespace-nowrap"
                       >
-                        Confirm Discharge
+                        Discharge Checkout
+                      </button>
+                    )}
+                  {(isReceptionist || isSoloDoctor || isAdmin) &&
+                    data.status === 'DISCHARGED' &&
+                    data.admission?.bedStatus === 'cleaning' &&
+                    data.admission?.bedId && (
+                      <button
+                        type="button"
+                        onClick={markBedCleaned}
+                        className="px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-800 bg-white border border-gray-300 hover:bg-gray-50 whitespace-nowrap"
+                      >
+                        Mark Bed Cleaned
+                      </button>
+                    )}
+                  {(isReceptionist || isSoloDoctor || isAdmin) &&
+                    hasBilling &&
+                    data.dischargeSummary &&
+                    data.status === 'DISCHARGED' && (
+                      <button
+                        type="button"
+                        onClick={printDischargePack}
+                        disabled={printingPack}
+                        className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white bg-gray-900 hover:bg-gray-800 whitespace-nowrap disabled:opacity-60"
+                      >
+                        {printingPack ? 'Preparing…' : 'Print Summary + Bill'}
                       </button>
                     )}
                 </div>
@@ -1842,19 +1902,12 @@ const IpdDetails = () => {
                 />
               )}
               {confirmDischargeOpen && (
-                <ConfirmDischargeModal
-                  initialType={data.dischargeType}
-                  initialNote={data.dischargeNote}
-                  owing={owingText()}
-                  unusedAdvance={Math.max(
-                    0,
-                    -(
-                      Number(data.billing?.balance || 0) -
-                      Number(data.billing?.insuranceExpected || 0)
-                    )
-                  )}
+                <DischargeCheckoutModal
+                  ipdId={id}
+                  data={data}
+                  canMarkBed={isReceptionist || isAdmin || isSoloDoctor}
                   onClose={() => setConfirmDischargeOpen(false)}
-                  onConfirm={doConfirmDischarge}
+                  onDischarged={() => load(false)}
                 />
               )}
 

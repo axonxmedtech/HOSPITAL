@@ -234,6 +234,26 @@ class IpdDischargeSummaryApiTest {
         assertThat(dischargeSummaryRepository.findByIpdAdmissionId(ipd.getId()).orElseThrow().getFollowUpAppointmentId()).isNull();
     }
 
+    @Test
+    void theDeskPrintsTheSummaryAndBillOnce_andCanFreeTheBedFromTheCase() throws Exception {
+        Long bedId = newBed();
+        IpdAdmission ipd = admit(newPatient().getId(), null, bedId);
+        assertThat(plan(ipd.getId(), FULL).getStatusCode().value()).isEqualTo(200);
+        assertThat(post(receptionToken, "/hospital/ipd/" + ipd.getId() + "/confirm-discharge", "{}").getStatusCode().value()).isEqualTo(200);
+
+        ResponseEntity<byte[]> pack = rest.exchange("/hospital/ipd/" + ipd.getId() + "/discharge-pack/pdf", HttpMethod.GET,
+                new HttpEntity<>(authOnly(receptionToken)), byte[].class);
+        assertThat(pack.getStatusCode().value()).isEqualTo(200);
+        int packPages = new com.lowagie.text.pdf.PdfReader(pack.getBody()).getNumberOfPages();
+        int summaryPages = new com.lowagie.text.pdf.PdfReader(pdf(ipd.getId()).getBody()).getNumberOfPages();
+        assertThat(packPages).as("no BILLING module here, so the pack is the summary alone").isEqualTo(summaryPages);
+
+        JsonNode admission = json.readTree(rest.exchange("/hospital/ipd/" + ipd.getId(), HttpMethod.GET,
+                new HttpEntity<>(authOnly(receptionToken)), String.class).getBody()).get("admission");
+        assertThat(admission.get("bedId").asLong()).isEqualTo(bedId);
+        assertThat(admission.get("bedStatus").asText()).as("the vacated bed waits for cleaning").isEqualTo("cleaning");
+    }
+
     private HttpHeaders authOnly(String token) {
         HttpHeaders h = new HttpHeaders();
         h.setBearerAuth(token);

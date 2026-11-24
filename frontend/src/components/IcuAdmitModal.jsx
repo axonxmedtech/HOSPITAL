@@ -11,7 +11,10 @@ import { extractApiError } from '../utils/apiError';
  * 1. Transfer an already-admitted General IPD patient to ICU
  * 2. Admit an OPD patient directly into an ICU ward
  */
-const IcuAdmitModal = ({ isOpen, onClose, onSuccess, initialPatient = null }) => {
+/**
+ * `initialBed` ({ wardId, bedId }) pre-selects a free ICU bed: "Admit here" on the ICU bed board.
+ */
+const IcuAdmitModal = ({ isOpen, onClose, onSuccess, initialPatient = null, initialBed = null }) => {
   const { success, error: toastError } = useToast();
 
   const [sourceType, setSourceType] = useState('IPD'); // 'IPD' | 'OPD'
@@ -55,7 +58,8 @@ const IcuAdmitModal = ({ isOpen, onClose, onSuccess, initialPatient = null }) =>
           const wards = await icuWardService.getIcuWards().catch(() => []);
           if (isMounted) {
             setIcuWards(wards || []);
-            if (wards && wards.length === 1) {
+            if (initialBed?.wardId) setSelectedIcuWardId(String(initialBed.wardId));
+            else if (wards && wards.length === 1) {
               setSelectedIcuWardId(String(wards[0].wardId));
             }
           }
@@ -69,10 +73,12 @@ const IcuAdmitModal = ({ isOpen, onClose, onSuccess, initialPatient = null }) =>
 
         if (isMounted) {
           setIcuWards(wards || []);
-          if (wards && wards.length === 1) {
+          if (initialBed?.wardId) setSelectedIcuWardId(String(initialBed.wardId));
+          else if (wards && wards.length === 1) {
             setSelectedIcuWardId(String(wards[0].wardId));
           }
-          setIpdPatients(ipdRes || []);
+          // Patients already in critical care cannot be moved into it again.
+          setIpdPatients((ipdRes || []).filter((r) => !r.inIcu));
         }
 
         // Load OPD queue for direct admission
@@ -96,7 +102,7 @@ const IcuAdmitModal = ({ isOpen, onClose, onSuccess, initialPatient = null }) =>
     return () => {
       isMounted = false;
     };
-  }, [isOpen, initialPatient]);
+  }, [isOpen, initialPatient, initialBed]);
 
   // Load available beds whenever selected ICU ward changes
   useEffect(() => {
@@ -119,7 +125,13 @@ const IcuAdmitModal = ({ isOpen, onClose, onSuccess, initialPatient = null }) =>
           const bedsList = b || [];
           setAvailableBeds(bedsList);
           setBedsWardId(selectedIcuWardId);
-          if (bedsList.length === 1) {
+          const wanted =
+            initialBed?.bedId &&
+            String(initialBed.wardId) === String(selectedIcuWardId) &&
+            bedsList.find((bed) => String(bed.bedId) === String(initialBed.bedId));
+          if (wanted) {
+            setSelectedBedId(String(wanted.bedId));
+          } else if (bedsList.length === 1) {
             setSelectedBedId(String(bedsList[0].bedId));
           } else {
             setSelectedBedId('');
@@ -140,6 +152,8 @@ const IcuAdmitModal = ({ isOpen, onClose, onSuccess, initialPatient = null }) =>
     return () => {
       isMounted = false;
     };
+    // initialBed is read once per ward load; it does not change while the modal is open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, selectedIcuWardId]);
 
   const validBed =
@@ -258,8 +272,8 @@ const IcuAdmitModal = ({ isOpen, onClose, onSuccess, initialPatient = null }) =>
               </svg>
             </div>
             <div>
-              <h3 className="text-lg font-bold">Admit Patient to ICU</h3>
-              <p className="text-xs text-rose-100">Direct admission or step-up transfer from IPD</p>
+              <h3 className="text-lg font-bold">Move to ICU</h3>
+              <p className="text-xs text-rose-100">An admitted patient into an ICU bed, or a new patient from the OPD queue</p>
             </div>
           </div>
           <button

@@ -161,7 +161,7 @@ const IcuDischargeToIpdModal = ({ isOpen, onClose, onSuccess, initialIcuPatient 
         Number(selectedBedId),
         Number(selectedWardId)
       );
-      success('Patient successfully discharged from ICU and moved to General IPD ward');
+      success('Moved out of ICU to the ward bed. The ICU bed is waiting for cleaning.');
       onSuccess && onSuccess();
       onClose();
     } catch (err) {
@@ -195,7 +195,7 @@ const IcuDischargeToIpdModal = ({ isOpen, onClose, onSuccess, initialIcuPatient 
               </svg>
             </div>
             <div>
-              <h3 className="text-lg font-bold">Discharge from ICU to IPD</h3>
+              <h3 className="text-lg font-bold">Move out of ICU</h3>
               <p className="text-xs text-amber-100">
                 Step-down patient transfer to General IPD ward
               </p>
@@ -413,7 +413,7 @@ const IcuDischargeToIpdModal = ({ isOpen, onClose, onSuccess, initialIcuPatient 
                       Transferring...
                     </>
                   ) : (
-                    'Discharge to IPD Ward'
+                    'Move to ward bed'
                   )}
                 </button>
               </div>

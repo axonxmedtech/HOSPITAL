@@ -31,7 +31,11 @@ const StatCard = ({ label, value, tone = 'default', hint }) => {
   );
 };
 
-const IcuDashboard = ({ refreshKey = 0, onOpenBedBoard }) => {
+/**
+ * `compact`: the headline numbers and warnings only, for the top of the ICU workspace (the bed
+ * board below it already carries the per-unit view and the setup messages).
+ */
+const IcuDashboard = ({ refreshKey = 0, onOpenBedBoard, compact = false }) => {
   const { error: toastError } = useToast();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -52,12 +56,14 @@ const IcuDashboard = ({ refreshKey = 0, onOpenBedBoard }) => {
   if (loading && !data) return <LoadingSpinner />;
   if (!data) return null;
 
+  if (compact && (!data.hasCriticalCareUnits || !data.units?.length)) return null;
+
   if (!data.hasCriticalCareUnits) {
     return (
       <EmptyState
         icon={null}
         title="No critical care units yet"
-        message="Mark a ward as ICU, NICU, PICU, CCU, MICU, SICU or HDU in Wards & Beds, and it will appear here."
+        message="The admin adds them under Rooms → ICU Wards & Beds; they then appear here."
       />
     );
   }
@@ -122,6 +128,7 @@ const IcuDashboard = ({ refreshKey = 0, onOpenBedBoard }) => {
         </div>
       )}
 
+      {!compact && (
       <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead>
@@ -156,6 +163,7 @@ const IcuDashboard = ({ refreshKey = 0, onOpenBedBoard }) => {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 };

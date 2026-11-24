@@ -20,6 +20,7 @@ const NurseDashboard = lazy(() => import('./pages/hospital/NurseDashboard'));
 const NurseInchargeDashboard = lazy(() => import('./pages/hospital/NurseInchargeDashboard'));
 const OtInchargeDashboard = lazy(() => import('./pages/hospital/OtInchargeDashboard'));
 const IpdDetails = lazy(() => import('./pages/hospital/IpdDetails'));
+const IpdRoundMode = lazy(() => import('./pages/hospital/IpdRoundMode'));
 const PatientFile = lazy(() => import('./pages/hospital/PatientFile'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
@@ -334,6 +335,16 @@ function App() {
                   >
                     <PageMeta title="HMS - Patient File">
                       <PatientFile />
+                    </PageMeta>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/ipd/round/:id"
+                element={
+                  <ProtectedRoute allowedRoles={['DOCTOR', 'HOSPITAL_ADMIN']}>
+                    <PageMeta title="HMS - Ward Round">
+                      <IpdRoundMode />
                     </PageMeta>
                   </ProtectedRoute>
                 }

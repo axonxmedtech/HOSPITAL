@@ -947,6 +947,14 @@ const hospitalService = {
     const response = await apiClient.get(`/hospital/billing/ipd/${ipdId}/bill`);
     return response.data;
   },
+  /** The discharge summary and the final IPD bill as one PDF (one print job at checkout). */
+  downloadDischargePack: async (ipdId) => {
+    const response = await apiClient.get(`/hospital/ipd/${ipdId}/discharge-pack/pdf`, {
+      responseType: 'blob',
+      timeout: 60000,
+    });
+    return response.data;
+  },
   payBilling: async (billingId, payload) => {
     const response = await apiClient.post(`/hospital/billing/${billingId}/pay`, payload);
     return response.data;

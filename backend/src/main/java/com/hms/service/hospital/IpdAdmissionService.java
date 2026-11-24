@@ -171,6 +171,9 @@ public class IpdAdmissionService {
     @Autowired
     private com.hms.service.pdf.BillingPdfService billingPdfService;
 
+    @Autowired
+    private com.hms.service.PdfService pdfService;
+
     @Transactional
     public IpdAdmission admitFromOpd(Long opdId, Long wardId, Long bedId, String admissionType, String primaryDiagnosis) {
         return admitFromOpd(opdId, null, null, wardId, bedId, admissionType, primaryDiagnosis);
@@ -668,18 +671,22 @@ public class IpdAdmissionService {
             throw new org.springframework.security.access.AccessDeniedException("Not allowed");
         }
 
-        java.util.Set<Long> icuWardIds = icuWardRepository.findByHospitalId(hospitalId).stream()
-                .map(com.hms.entity.IcuWard::getWardId)
-                .collect(java.util.stream.Collectors.toSet());
+        // Every patient in a bed is an IPD patient; those in a critical-care ward are flagged, so
+        // the desk sees one complete list (discharges planned in the ICU included).
+        java.util.Map<Long, com.hms.entity.IcuWard> icuWards = icuWardRepository.findByHospitalId(hospitalId).stream()
+                .collect(java.util.stream.Collectors.toMap(com.hms.entity.IcuWard::getWardId, w -> w, (a, b) -> a));
 
         java.util.List<com.hms.dto.IpdAdmissionSummaryDTO> result = new java.util.ArrayList<>();
         for (IpdAdmission ipd : admissions) {
-            if (ipd.getWardId() != null && icuWardIds.contains(ipd.getWardId())) {
-                continue;
-            }
             com.hms.dto.IpdAdmissionSummaryDTO dto = new com.hms.dto.IpdAdmissionSummaryDTO();
+            com.hms.entity.IcuWard icu = ipd.getWardId() == null ? null : icuWards.get(ipd.getWardId());
+            if (icu != null) {
+                dto.setInIcu(true);
+                dto.setIcuUnitLabel(com.hms.service.hospital.icu.CareUnitRegistry.labelOf(icu.getUnitType()));
+            }
             dto.setIpdId(ipd.getId());
             dto.setIpdNumber(ipd.getIpdNumber());
+            dto.setPatientId(ipd.getPatientId());
             // patient
             patientRepository.findById(ipd.getPatientId()).ifPresent(p -> {
                 dto.setPatientName(p.getName());
@@ -756,7 +763,11 @@ public class IpdAdmissionService {
         adm.primaryDiagnosis = ipd.getPrimaryDiagnosis();
         adm.admissionConfirmed = Boolean.TRUE.equals(ipd.getAdmissionConfirmed());
         wardRepository.findById(ipd.getWardId()).ifPresent(w -> adm.ward = w.getWardName());
-        bedRepository.findById(ipd.getBedId()).ifPresent(b -> adm.bed = b.getBedCode());
+        bedRepository.findById(ipd.getBedId()).ifPresent(b -> {
+            adm.bed = b.getBedCode();
+            adm.bedId = b.getBedId();
+            adm.bedStatus = b.getStatus();
+        });
         doctorRepository.findById(ipd.getDoctorId()).ifPresent(d -> adm.doctor = d.getName());
         adm.doctorId = ipd.getDoctorId();
         adm.bedChargeRule = ipd.getBedChargeRule() == null ? com.hms.entity.IpdBillingSetting.CALENDAR_DAY : ipd.getBedChargeRule();
@@ -1716,6 +1727,29 @@ public class IpdAdmissionService {
             logger.warn("Failed to audit the discharge summary print", e);
         }
         return clinicalPdfService.generateDischargeSummaryPdf(hospital, patient, print);
+    }
+
+    /**
+     * What the patient leaves with, as one print job: the discharge summary, then the final IPD
+     * bill. The bill is added only for the front desk of a hospital with billing (a doctor who
+     * does not run the desk sees no money), and never once the bill is cancelled.
+     */
+    public java.io.ByteArrayInputStream dischargePackPdf(Long ipdId) {
+        IpdAdmission ipd = requireOwnedAdmission(ipdId);
+        java.util.List<byte[]> parts = new java.util.ArrayList<>();
+        parts.add(dischargeSummaryPdf(ipdId).readAllBytes());
+        Long hospitalId = ipd.getHospitalId();
+        if (isFrontDesk(hospitalId) && hasBillingModule(hospitalId)) {
+            billingRepository.findByIpdAdmissionId(ipd.getId()).stream()
+                    .filter(b -> java.util.Objects.equals(b.getHospitalId(), hospitalId))
+                    .filter(b -> !STATUS_CANCELLED.equalsIgnoreCase(b.getPaymentStatus()))
+                    .findFirst()
+                    .ifPresent(bill -> patientRepository.findByIdAndHospitalId(ipd.getPatientId(), hospitalId)
+                            .ifPresent(patient -> hospitalRepository.findById(hospitalId)
+                                    .ifPresent(hospital -> parts.add(billingPdfService
+                                            .generateBillingReceiptPdf(hospital, patient, bill).readAllBytes()))));
+        }
+        return pdfService.mergePdfs(parts);
     }
 
     /** Charges the doctor-visit fee for a round: once per doctor per day, never inside a package. */

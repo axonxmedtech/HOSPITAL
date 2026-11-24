@@ -104,8 +104,9 @@ describe('sidebarNavigation utility', () => {
       expect(tabIds).toContain('ipd');
       expect(tabIds).toContain('billing');
       expect(tabIds).toContain('ot');
-      expect(tabIds).toContain('icu-dashboard');
-      expect(tabIds).toContain('icu-beds');
+      expect(tabIds).toContain('icu');
+      expect(tabIds).not.toContain('icu-dashboard');
+      expect(tabIds).not.toContain('icu-beds');
       expect(tabIds).toContain('inventory');
       expect(tabIds).toContain('hospital-inventory');
       expect(tabIds).not.toContain('queue'); // queue was the erroneous old tab
@@ -146,8 +147,9 @@ describe('sidebarNavigation utility', () => {
       expect(tabIds).toContain('inventory');
       expect(tabIds).toContain('hospital-inventory');
       expect(tabIds).toContain('ot');
-      expect(tabIds).toContain('icu-dashboard');
-      expect(tabIds).toContain('icu-beds');
+      expect(tabIds).toContain('icu');
+      expect(tabIds).not.toContain('icu-dashboard');
+      expect(tabIds).not.toContain('icu-beds');
     });
   });
 

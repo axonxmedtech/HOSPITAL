@@ -96,7 +96,7 @@ describe('IpdDetails Sidebar consistency', () => {
     // Group headers should exist
     expect(sidebar.getByText('Patient Management')).toBeInTheDocument();
     expect(sidebar.getByText('Rooms')).toBeInTheDocument();
-    expect(sidebar.getByText('Critical Care')).toBeInTheDocument();
+    expect(sidebar.queryByText('Critical Care')).not.toBeInTheDocument();
     expect(sidebar.getByText('Staff')).toBeInTheDocument();
     expect(sidebar.getByText('Finance')).toBeInTheDocument();
 
@@ -134,8 +134,8 @@ describe('IpdDetails Sidebar consistency', () => {
     expect(sidebar.getByRole('button', { name: 'IPD' })).toBeInTheDocument();
     expect(sidebar.getByRole('button', { name: 'Billing' })).toBeInTheDocument();
     expect(sidebar.getByRole('button', { name: 'Operation Theatre' })).toBeInTheDocument();
-    expect(sidebar.getByRole('button', { name: 'ICU Dashboard' })).toBeInTheDocument();
-    expect(sidebar.getByRole('button', { name: 'ICU Bed Board' })).toBeInTheDocument();
+    expect(sidebar.getByRole('button', { name: 'ICU' })).toBeInTheDocument();
+    expect(sidebar.queryByRole('button', { name: 'ICU Bed Board' })).not.toBeInTheDocument();
 
     // No old "Queue" glitch tab
     expect(sidebar.queryByRole('button', { name: 'Queue' })).not.toBeInTheDocument();
@@ -170,8 +170,8 @@ describe('IpdDetails Sidebar consistency', () => {
     expect(sidebar.getByRole('button', { name: 'ICU' })).toBeInTheDocument();
     expect(sidebar.getByRole('button', { name: 'Billing' })).toBeInTheDocument();
     expect(sidebar.getByRole('button', { name: 'Operation Theatre' })).toBeInTheDocument();
-    expect(sidebar.getByRole('button', { name: 'ICU Dashboard' })).toBeInTheDocument();
-    expect(sidebar.getByRole('button', { name: 'ICU Bed Board' })).toBeInTheDocument();
+    expect(sidebar.getByRole('button', { name: 'ICU' })).toBeInTheDocument();
+    expect(sidebar.queryByRole('button', { name: 'ICU Bed Board' })).not.toBeInTheDocument();
 
     // Clicking a tab navigates to receptionist dashboard
     const apptsBtn = sidebar.getByRole('button', { name: 'Appointments' });
