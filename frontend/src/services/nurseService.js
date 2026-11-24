@@ -210,6 +210,9 @@ const nurseService = {
   },
 
   /** Record administration of a prescribed dose. */
+  /** Doses, vitals and samples due today across the nurse's patients (the "Due now" list). */
+  getWorklist: async () => (await apiClient.get('/hospital/nurse/worklist')).data,
+
   recordMedication: async (payload) => {
     const response = await apiClient.post('/hospital/nurse/medication', payload);
     return response.data;

@@ -124,6 +124,7 @@ public class NurseWorkspaceService {
         dto.setStatus(ipd.getStatus());
         dto.setAdmissionConfirmed(Boolean.TRUE.equals(ipd.getAdmissionConfirmed()));
         dto.setCoveredFor(coveredFor);
+        dto.setWardId(ipd.getWardId());
         patientRepository.findById(ipd.getPatientId()).ifPresent(p -> {
             dto.setPatientName(p.getName());
             dto.setAge(p.getAge());

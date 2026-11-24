@@ -10,6 +10,7 @@ import nurseScheduleService from '../../services/nurseScheduleService';
 import nurseService from '../../services/nurseService';
 import { localIsoDate } from '../../utils/date';
 import IcuBedBoard from './icu/IcuBedBoard';
+import DueNowView from './nurse/DueNowView';
 import MyAttendanceView from './nurse/MyAttendanceView';
 import MyPatientsView from './nurse/MyPatientsView';
 import MyShiftsView from './nurse/MyShiftsView';
@@ -32,8 +33,11 @@ const NurseDashboard = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 
-  const [activeTab, setActiveTab] = useState('dashboard');
+  // A round starts from what is due; the overview is one tab away.
+  const [activeTab, setActiveTab] = useState('due-now');
   const [selectedAdmissionId, setSelectedAdmissionId] = useState(null);
+  // Where Back on a patient's chart returns to (the list it was opened from).
+  const [returnTab, setReturnTab] = useState('my-patients');
   const [refreshKey, setRefreshKey] = useState(0);
 
   // Schedule-derived on-shift status (read-only)
@@ -92,11 +96,13 @@ const NurseDashboard = () => {
   };
 
   const openPatient = (admissionId) => {
+    setReturnTab(activeTab === 'patient-detail' ? returnTab : activeTab);
     setSelectedAdmissionId(admissionId);
     setActiveTab('patient-detail');
   };
 
   const sidebarTabs = [
+    { id: 'due-now', label: 'Due Now' },
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'my-patients', label: 'My Patients' },
     { id: 'my-tasks', label: 'My Tasks' },
@@ -111,12 +117,14 @@ const NurseDashboard = () => {
       return (
         <NursePatientDetail
           admissionId={selectedAdmissionId}
-          onBack={() => handleTabChange('my-patients')}
+          onBack={() => handleTabChange(returnTab)}
           refreshKey={refreshKey}
         />
       );
     }
     switch (activeTab) {
+      case 'due-now':
+        return <DueNowView onOpenPatient={openPatient} refreshKey={refreshKey} />;
       case 'my-patients':
         return <MyPatientsView onOpenPatient={openPatient} refreshKey={refreshKey} />;
       case 'my-tasks':
@@ -132,12 +140,19 @@ const NurseDashboard = () => {
         return <IcuBedBoard refreshKey={refreshKey} />;
       case 'dashboard':
       default:
-        return <NurseOverviewView onOpenPatient={openPatient} refreshKey={refreshKey} />;
+        return (
+          <NurseOverviewView
+            onOpenPatient={openPatient}
+            onOpenDueNow={() => handleTabChange('due-now')}
+            refreshKey={refreshKey}
+          />
+        );
     }
   };
 
   const titleFor = () => {
     if (activeTab === 'patient-detail') return 'Patient Details';
+    if (activeTab === 'due-now') return 'Due Now';
     if (activeTab === 'my-patients') return 'My Patients';
     if (activeTab === 'my-tasks') return 'My Tasks';
     if (activeTab === 'my-shifts') return 'My Shifts';
@@ -151,7 +166,7 @@ const NurseDashboard = () => {
       <Sidebar
         title="Nurse Portal"
         tabs={sidebarTabs}
-        activeTab={activeTab === 'patient-detail' ? 'my-patients' : activeTab}
+        activeTab={activeTab === 'patient-detail' ? returnTab : activeTab}
         onTabChange={handleTabChange}
         footerTitle="Hospital"
         footerData={user?.hospitalName || 'HMS Medical Center'}

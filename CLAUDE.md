@@ -115,6 +115,12 @@ Special flag: `isSingleDoctor` on a `HOSPITAL_ADMIN` user lets that admin also a
 - **Beds:** four states `available/occupied/cleaning/maintenance` (`entity/BedStatus`); **all** bed status writes go through `BedStatusService` (audited into `bed_status_audits`). Vacating a bed (discharge / transfer / OT complete) marks it `cleaning`; the incharge marks it cleaned → available.
 - **Attendance:** `nurse_attendance` (one row per nurse/date, upserted, shift window snapshotted).
 - Frontend: `pages/hospital/NurseDashboard.jsx` (staff), `NurseInchargeDashboard.jsx` + `pages/hospital/nurse-incharge/*` (incharge), `pages/hospital/nurse/*` (shared nurse views). Remaining phases (E incharge dashboard, F substitution, G calendar) are speced in `docs/superpowers/`.
+- **Due Now worklist** (`GET /hospital/nurse/worklist`, `NurseWorklistService`, frontend `pages/hospital/nurse/DueNowView`). It is the staff nurse's landing tab and the in-charge's second tab.
+  - It is read-only. Every dose, vitals round and sample due today across the nurse's My Patients scope. One-tap actions go through the existing endpoints (`/hospital/nurse/medication`, `/vitals`, `/ipd/investigations/{id}/sample`), so their rules still apply.
+  - Doses come from the M-A-N frequency at 08:00 / 14:00 / 20:00 (`SLOT_TIMES`). A dose is DUE within ±60 min and OVERDUE after. A record carrying the dose's `scheduledTime` closes it; a record without one closes the earliest open dose.
+  - Dose times before the order was written are not owed. "As Per Required" is listed as AS_NEEDED, and an unrecognised frequency as UNSCHEDULED.
+  - Vitals are due 6 h after the last reading. A sample is due while its lab order is `ORDERED`.
+  - With a shared nurse login, the in-charge picks "Recording for" once at the top.
 
 ### Files & Access (per-hospital form availability + edit permission)
 
