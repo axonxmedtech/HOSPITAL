@@ -4,6 +4,7 @@ import hospitalService from '../../services/hospitalService';
 import { extractApiError } from '../../utils/apiError';
 import { printBlob } from '../../utils/printPdf';
 
+import { formatDay } from '../../utils/date';
 const MODES = [
   { value: 'CASH', label: 'Cash' },
   { value: 'UPI', label: 'UPI' },
@@ -178,7 +179,7 @@ export default function IpdMoneyPanel({ ipdId, data, isAdmin, canAct, onChanged 
             <li key={a.id} className="flex items-center justify-between gap-2">
               <span>
                 ADV-{a.id} · {rupees(a.amount)} · {a.mode}
-                {a.createdAt ? ` · ${new Date(a.createdAt).toLocaleDateString()}` : ''}
+                {a.createdAt ? ` · ${formatDay(a.createdAt)}` : ''}
               </span>
               <button
                 type="button"

@@ -48,6 +48,7 @@ import hospitalService from '../../services/hospitalService';
 import otService from '../../services/otService';
 import { safeLoadMessage, extractApiError } from '../../utils/apiError';
 import { canManageBilling } from '../../utils/billingAccess';
+import { pageMeta } from '../../utils/pageMeta';
 import { LEGACY_ICU_TABS } from '../../utils/sidebarNavigation';
 import { rangeFor, rangeParams } from '../../utils/dateRange';
 import { createOptionalModuleFetcher } from '../../utils/optionalModule';
@@ -56,6 +57,7 @@ import IcuWorkspace from './icu/IcuWorkspace';
 import OtBoard from './ot/OtBoard';
 import OtWorkspace from './ot/OtWorkspace';
 
+import { formatWhen } from '../../utils/date';
 /**
  * DoctorDashboard - Doctor dashboard
  *
@@ -67,6 +69,24 @@ import OtWorkspace from './ot/OtWorkspace';
  * @author HMS Team
  * @version Phase-1
  */
+/** A doctor's own wording where it differs from the shared page table (utils/pageMeta). */
+const DOCTOR_TITLES = {
+  patients: 'My Patients',
+  appointments: 'My Appointments',
+  opd: 'OPD Cases',
+  ipd: 'IPD Admissions',
+  billing: 'Billing Records',
+};
+const DOCTOR_SUBTITLES = {
+  patients: 'Patients you have seen or admitted',
+  appointments: 'Your booked visits',
+  opd: 'Your patients waiting or in consultation',
+  ipd: 'Your admitted patients, in the wards and in ICU',
+  billing: 'Bills for your consultations and admissions',
+  'follow-ups': 'Your patients asked to come back, by due date',
+  ot: 'Your surgery requests and scheduled operations',
+};
+
 const DoctorDashboard = () => {
   const [user, setUser] = useState(() => authService.getCurrentUser());
   const modules = user?.modules || [];
@@ -1566,41 +1586,20 @@ const DoctorDashboard = () => {
             activeTab !== 'hospital-inventory' &&
             activeTab !== 'daily-collection' && (
               <PageHeader
-                title={
-                  activeTab === 'appointments'
-                    ? 'My Appointments'
-                    : activeTab === 'opd'
-                      ? 'OPD Cases'
-                      : activeTab === 'queue'
-                        ? 'Patient Queue'
-                        : activeTab === 'billing'
-                          ? 'Billing Records'
-                          : activeTab === 'ipd'
-                            ? 'IPD Admissions'
-                            : 'My Patients'
+                title={DOCTOR_TITLES[activeTab] || tabs.find((t) => t.id === activeTab)?.label}
+                subtitle={
+                  activeTab === 'ipd' && canDoctorManageReception && ipdSubTab === 'requested'
+                    ? 'Admissions you or a colleague recommended, waiting for a bed'
+                    : DOCTOR_SUBTITLES[activeTab] || pageMeta(activeTab).subtitle
                 }
-                subtitle={`Manage your ${
-                  activeTab === 'appointments'
-                    ? 'schedule'
-                    : activeTab === 'opd'
-                      ? 'OPD cases'
-                      : activeTab === 'queue'
-                        ? 'patient queue'
-                        : activeTab === 'billing'
-                          ? 'bills'
-                          : activeTab === 'ipd'
-                            ? canDoctorManageReception && ipdSubTab === 'requested'
-                              ? 'pending admission requests'
-                              : 'admitted patients'
-                            : 'patients'
-                } here.`}
+                // Only where the list below filters by it.
                 onSearch={
-                  activeTab === 'ipd' && ipdSubTab === 'history'
-                    ? null
-                    : (e) => setSearchInput(e.target.value)
+                  pageMeta(activeTab).search && !(activeTab === 'ipd' && ipdSubTab === 'history')
+                    ? (e) => setSearchInput(e.target.value)
+                    : null
                 }
                 searchValue={searchInput}
-                searchPlaceholder={`Search ${activeTab}...`}
+                searchPlaceholder={pageMeta(activeTab).search}
                 onAdd={
                   // Registering a walk-in and opening their OPD visit is open to every doctor;
                   // booking appointments stays front-desk work unless the mode allows it.
@@ -1919,7 +1918,7 @@ const DoctorDashboard = () => {
                               <td className="px-4 py-3">{o.doctor?.name || '-'}</td>
                               <td className="px-4 py-3">{o.problem || '-'}</td>
                               <td className="px-4 py-3">
-                                {o.createdAt ? new Date(o.createdAt).toLocaleString() : '-'}
+                                {o.createdAt ? formatWhen(o.createdAt) : '-'}
                               </td>
                               <td className="px-4 py-3">
                                 <button
@@ -2023,7 +2022,7 @@ const DoctorDashboard = () => {
                               </td>
                               <td className="px-4 py-3">{bedNumber}</td>
                               <td className="px-4 py-3">
-                                {admittedAt ? new Date(admittedAt).toLocaleString() : '-'}
+                                {admittedAt ? formatWhen(admittedAt) : '-'}
                               </td>
                               <td className="px-4 py-3">
                                 <div className="flex flex-col gap-1 items-start">
@@ -3431,7 +3430,7 @@ const DoctorOpdTable = ({
     }),
     columnHelper.accessor('createdAt', {
       header: 'CREATED',
-      cell: (info) => new Date(info.getValue()).toLocaleString(),
+      cell: (info) => formatWhen(info.getValue()),
     }),
     columnHelper.display({
       id: 'bill',

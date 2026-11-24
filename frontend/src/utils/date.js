@@ -19,7 +19,8 @@ export const formatDate = (dateString) => {
   try {
     const d = new Date(dateString);
     if (Number.isNaN(d.getTime())) return '-';
-    return d.toLocaleDateString();
+    // One format everywhere ("21 Nov 2026"), whatever the browser's locale is.
+    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
   } catch {
     return '-';
   }
@@ -30,7 +31,9 @@ export const formatDateTime = (dateString) => {
   try {
     const d = new Date(dateString);
     if (Number.isNaN(d.getTime())) return '-';
-    return d.toLocaleString();
+    // "21 Nov 2026, 1:24 pm": no seconds, same order as formatDate.
+    const day = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    return `${day}, ${d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}`;
   } catch {
     return '-';
   }

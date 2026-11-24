@@ -4,7 +4,7 @@ import { SkeletonTableRow } from '../../../components/Skeleton';
 import { useToast } from '../../../context/ToastContext';
 import purchaseApi from '../../../services/pharmacy/purchaseApi';
 import { extractApiError } from '../../../utils/apiError';
-import { localIsoDate } from '../../../utils/date';
+import { formatDay, localIsoDate } from '../../../utils/date';
 import PurchaseForm from './PurchaseForm';
 
 const money = (v) =>
@@ -361,7 +361,7 @@ const PurchaseView = ({ refreshKey = 0 }) => {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-gray-500 font-medium">
-                      {new Date(inv.invoiceDate).toLocaleDateString()}
+                      {formatDay(inv.invoiceDate)}
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="font-black text-gray-900">{money(inv.totalAmount)}</div>

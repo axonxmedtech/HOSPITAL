@@ -1,6 +1,7 @@
 import { SkeletonDashboard } from './Skeleton';
 import StatusBadge from './StatusBadge';
 
+import { formatDay } from '../utils/date';
 // Overview Dashboard Component for Hospital Admin
 const OverviewDashboard = ({ stats, todaysAppointments, loading }) => {
   if (loading) {
@@ -132,7 +133,7 @@ const OverviewDashboard = ({ stats, todaysAppointments, loading }) => {
                     </td>
                     <td className="px-6 py-5 whitespace-nowrap">
                       <span className="text-sm text-gray-600">
-                        {new Date(appointment.appointmentDate).toLocaleDateString()}
+                        {formatDay(appointment.appointmentDate)}
                       </span>
                     </td>
                     <td className="px-6 py-5 whitespace-nowrap">

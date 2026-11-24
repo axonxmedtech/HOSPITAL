@@ -7,6 +7,7 @@ import { extractApiError } from '../../../utils/apiError';
 import { backdropProps } from '../../../utils/modalA11y';
 import { printHtml } from '../../../utils/printHtml';
 
+import { formatWhen } from '../../../utils/date';
 /**
  * SurgeryFormFrame - shared shell for every OT/NABH surgery form.
  *
@@ -214,7 +215,7 @@ const SurgeryFormFrame = ({
           {signedAt && !readOnly && (
             <div className="mx-6 mt-4 flex items-center justify-between gap-3 text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
               <span>
-                Signed on {new Date(signedAt).toLocaleString()} — version {version}. A signed form
+                Signed on {formatWhen(signedAt)} — version {version}. A signed form
                 cannot be changed.
               </span>
               {!amending && (

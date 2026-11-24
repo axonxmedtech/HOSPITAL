@@ -1,6 +1,15 @@
 import { useReactTable, getCoreRowModel, flexRender } from '@tanstack/react-table';
 import React from 'react';
+import useMediaQuery, { NARROW } from '../hooks/useMediaQuery';
 import { SkeletonTable } from './Skeleton';
+
+/** A column's header as plain text, for the phone card's labels. */
+const headerText = (column) => {
+  const h = column.columnDef.header;
+  return typeof h === 'string' ? h : '';
+};
+/** Columns a phone card shows differently: no serial number or expand toggle; actions at the end. */
+const SKIP_ON_CARD = /^(sno|s\.?no\.?|expand|select|#)$/i;
 
 const DataTable = ({
   data,
@@ -12,6 +21,7 @@ const DataTable = ({
   renderExpandedRow = null,
   idAccessor = 'id',
 }) => {
+  const narrow = useMediaQuery(NARROW);
   const table = useReactTable({
     data,
     columns,
@@ -43,9 +53,63 @@ const DataTable = ({
     : 0;
   const windowEnd = Math.min(windowStart + PAGE_WINDOW_SIZE, pageCount);
 
+  // Phone: one card per row, so nothing runs off the right edge of the screen.
+  const cards = narrow && (
+    <ul className="space-y-2">
+      {table.getRowModel().rows.map((row) => {
+        const cells = row
+          .getVisibleCells()
+          .filter(
+            (c) =>
+              !SKIP_ON_CARD.test(c.column.id) && !SKIP_ON_CARD.test(headerText(c.column).trim())
+          );
+        const actions = cells.filter((c) => c.column.id === 'actions');
+        const fields = cells.filter((c) => c.column.id !== 'actions');
+        const [first, ...rest] = fields;
+        const rowId =
+          row.original && row.original[idAccessor] ? row.original[idAccessor] : row.id;
+        const isExpanded = Array.isArray(expandedRowIds) && expandedRowIds.includes(rowId);
+        return (
+          <li key={row.id} className="bg-white border border-neutral-200 rounded-xl p-3">
+            {first && (
+              <div className="font-semibold text-slate-900 text-sm">
+                {flexRender(first.column.columnDef.cell, first.getContext())}
+              </div>
+            )}
+            <dl className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+              {rest.map((c) => (
+                <div key={c.id} className="min-w-0">
+                  <dt className="text-slate-400 uppercase tracking-wide text-[10px]">
+                    {headerText(c.column)}
+                  </dt>
+                  <dd className="text-slate-700 break-words">
+                    {flexRender(c.column.columnDef.cell, c.getContext())}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+            {actions.length > 0 && (
+              <div className="mt-2 flex justify-end">
+                {actions.map((c) => (
+                  <React.Fragment key={c.id}>
+                    {flexRender(c.column.columnDef.cell, c.getContext())}
+                  </React.Fragment>
+                ))}
+              </div>
+            )}
+            {isExpanded && renderExpandedRow && (
+              <div className="mt-2">{renderExpandedRow(row)}</div>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+
   return (
     <div className="overflow-x-auto">
       <div className="inline-block min-w-full align-middle">
+        {cards || (
         <div className="overflow-hidden border border-neutral-200 rounded-xl shadow-soft">
           <table className="min-w-full divide-y divide-neutral-200">
             <thead className="bg-neutral-50">
@@ -55,7 +119,7 @@ const DataTable = ({
                     <th
                       key={header.id}
                       scope="col"
-                      className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"
+                      className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"
                     >
                       {header.isPlaceholder
                         ? null
@@ -76,7 +140,7 @@ const DataTable = ({
                       {row.getVisibleCells().map((cell) => (
                         <td
                           key={cell.id}
-                          className="px-6 py-4 whitespace-nowrap text-sm text-slate-700"
+                          className="px-4 py-3 whitespace-nowrap text-sm text-slate-700"
                         >
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </td>
@@ -84,7 +148,7 @@ const DataTable = ({
                     </tr>
                     {isExpanded && renderExpandedRow && (
                       <tr className="bg-neutral-50">
-                        <td colSpan={row.getVisibleCells().length} className="px-6 py-4">
+                        <td colSpan={row.getVisibleCells().length} className="px-4 py-3">
                           {renderExpandedRow(row)}
                         </td>
                       </tr>
@@ -95,6 +159,7 @@ const DataTable = ({
             </tbody>
           </table>
         </div>
+        )}
 
         {/* Pagination Controls */}
         {pagination && (

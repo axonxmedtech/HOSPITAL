@@ -11,6 +11,7 @@ import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
 import authService from '../../services/authService';
 
+import { formatDay } from '../../utils/date';
 const BillingTable = ({
   billing,
   startIndex = 0,
@@ -133,7 +134,7 @@ const BillingTable = ({
     }),
     columnHelper.accessor('createdAt', {
       header: 'Date',
-      cell: (info) => new Date(info.getValue()).toLocaleDateString(),
+      cell: (info) => formatDay(info.getValue()),
     }),
     columnHelper.display({
       id: 'actions',

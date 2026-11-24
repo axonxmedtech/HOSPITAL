@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import PdfViewerModal from '../../../components/PdfViewerModal';
 import salesApi from '../../../services/pharmacy/salesApi';
 
+import { formatDay } from '../../../utils/date';
 /**
  * BillingHistoryView — the pharmacy sales bill history (all completed sales), with a per-row
  * "View" that opens the invoice in a viewer (inline bill + print + download).
@@ -75,7 +76,7 @@ const BillingHistoryView = ({ refreshKey }) => {
                 <tr key={b.id} className="hover:bg-gray-50/50">
                   <td className="px-6 py-3 font-bold text-gray-900">{b.billNumber}</td>
                   <td className="px-6 py-3 text-gray-600">
-                    {b.createdAt ? new Date(b.createdAt).toLocaleDateString() : '-'}
+                    {b.createdAt ? formatDay(b.createdAt) : '-'}
                   </td>
                   <td className="px-6 py-3 text-gray-700">{b.patientName || 'Walk-in'}</td>
                   <td className="px-6 py-3 text-center text-gray-600">{b.items?.length ?? '-'}</td>

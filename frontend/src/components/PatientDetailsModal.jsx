@@ -5,6 +5,7 @@ import hospitalService from '../services/hospitalService';
 import PatientDocumentsPanel from './PatientDocumentsPanel';
 import PdfViewerModal from './PdfViewerModal';
 
+import { formatDay, formatWhen } from '../utils/date';
 /**
  * PatientDetailsModal - Read-only view of patient information with tabs for additional data
  *
@@ -231,7 +232,7 @@ const PatientDetailsModal = ({ patient, onClose, initialTab = 'info' }) => {
                   <InfoField
                     label="Registration Date"
                     value={
-                      patient.createdAt ? new Date(patient.createdAt).toLocaleDateString() : 'N/A'
+                      patient.createdAt ? formatDay(patient.createdAt) : 'N/A'
                     }
                   />
                 </div>
@@ -326,7 +327,7 @@ const PatientDetailsModal = ({ patient, onClose, initialTab = 'info' }) => {
                         </div>
                         {record.followUpDate && (
                           <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">
-                            Follow-up: {new Date(record.followUpDate).toLocaleDateString()}
+                            Follow-up: {formatDay(record.followUpDate)}
                           </span>
                         )}
                       </div>
@@ -632,7 +633,7 @@ const PatientDetailsModal = ({ patient, onClose, initialTab = 'info' }) => {
                                         {historyItem.details}
                                       </span>
                                       <span className="text-[10px] text-gray-400 block mt-0.5">
-                                        {new Date(historyItem.timestamp).toLocaleString()}
+                                        {formatWhen(historyItem.timestamp)}
                                       </span>
                                     </div>
                                   </div>
@@ -657,7 +658,7 @@ const PatientDetailsModal = ({ patient, onClose, initialTab = 'info' }) => {
                                       <span className="font-semibold text-gray-800">
                                         {entry.doctorName}
                                       </span>
-                                      <span>{new Date(entry.date).toLocaleString()}</span>
+                                      <span>{formatWhen(entry.date)}</span>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                                       {entry.diagnosis && (
@@ -876,7 +877,7 @@ const PatientDetailsModal = ({ patient, onClose, initialTab = 'info' }) => {
                               {bill.customId || bill.id}
                             </td>
                             <td className="px-4 py-3 text-gray-500">
-                              {new Date(bill.createdAt).toLocaleDateString()}
+                              {formatDay(bill.createdAt)}
                             </td>
                             <td className="px-4 py-3">
                               <span

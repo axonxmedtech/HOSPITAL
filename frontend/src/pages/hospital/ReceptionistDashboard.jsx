@@ -60,6 +60,7 @@ import { rangeFor, rangeParams } from '../../utils/dateRange';
 import { extractPhoneConflicts } from '../../utils/duplicatePhone';
 import { createOptionalModuleFetcher } from '../../utils/optionalModule';
 import { printPdf } from '../../utils/printPdf';
+import { pageMeta } from '../../utils/pageMeta';
 import { LEGACY_ICU_TABS } from '../../utils/sidebarNavigation';
 import { validateForm } from '../../utils/validation';
 import BedCleaningView from './BedCleaningView';
@@ -1651,28 +1652,22 @@ const ReceptionistDashboard = () => {
                 tabs.find((t) => t.id === activeTab)?.label ||
                 activeTab.charAt(0).toUpperCase() + activeTab.slice(1)
               }
-              subtitle={`Manage ${tabs.find((t) => t.id === activeTab)?.label || activeTab} records`}
+              subtitle={
+                activeTab === 'ipd' && ipdSubTab === 'history'
+                  ? 'Every admission — discharged, current and cancelled — kept for good'
+                  : pageMeta(activeTab).subtitle
+              }
+              // Only where the list below filters by it (IPD history and claims have their own).
               onSearch={
-                activeTab === 'queue' ||
-                activeTab === 'hospital-inventory' ||
-                activeTab === 'icu' || // the ICU view has its own search (in ICU history)
-                (activeTab === 'ipd' && (ipdSubTab === 'history' || ipdSubTab === 'claims'))
-                  ? null
-                  : (e) => setSearchInput(e.target.value)
+                pageMeta(activeTab).search &&
+                !(activeTab === 'ipd' && (ipdSubTab === 'history' || ipdSubTab === 'claims'))
+                  ? (e) => setSearchInput(e.target.value)
+                  : null
               }
               searchValue={searchInput}
-              searchPlaceholder={
-                activeTab === 'queue' || activeTab === 'hospital-inventory'
-                  ? ''
-                  : `Search ${activeTab}...`
-              }
+              searchPlaceholder={pageMeta(activeTab).search}
               onAdd={
-                activeTab === 'queue' ||
-                activeTab === 'billing' ||
-                activeTab === 'inventory' ||
-                activeTab === 'hospital-inventory' ||
-                activeTab === 'ot' ||
-                activeTab === 'icu'
+                !pageMeta(activeTab).add
                   ? null
                   : () => {
                       if (activeTab === 'opd') setIsOpdModalOpen(true);
@@ -1684,13 +1679,7 @@ const ReceptionistDashboard = () => {
                       } else setIsAddModalOpen(true);
                     }
               }
-              addLabel={
-                activeTab === 'opd'
-                  ? 'New OPD / Case'
-                  : activeTab === 'ipd'
-                    ? 'Admit Patient'
-                    : `Add ${activeTab.slice(0, -1)}`
-              }
+              addLabel={activeTab === 'opd' ? 'New OPD / Case' : pageMeta(activeTab).add}
               filter={
                 activeTab === 'appointments' && hasAppointments ? (
                   <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">

@@ -4,6 +4,7 @@ import hospitalService from '../../services/hospitalService';
 import { extractApiError } from '../../utils/apiError';
 import { printBlob } from '../../utils/printPdf';
 
+import { formatDay, formatWhen } from '../../utils/date';
 /** Mirrors DietOrderService.DIET_TYPES on the server. */
 export const DIET_TYPES = [
   { value: 'NORMAL', label: 'Normal' },
@@ -59,7 +60,7 @@ export default function DietCard({ admissionId, canEdit = false, refreshKey = 0 
         </span>
         {current.instructions && <span className="text-gray-700"> — {current.instructions}</span>}
         <div className="text-xs text-gray-500">
-          since {new Date(current.startedAt).toLocaleString()}
+          since {formatWhen(current.startedAt)}
         </div>
       </div>
     );
@@ -168,8 +169,8 @@ export default function DietCard({ admissionId, canEdit = false, refreshKey = 0 
               <li key={o.publicId}>
                 {dietLabel(o.dietType)}
                 {o.instructions ? ` — ${o.instructions}` : ''} ·{' '}
-                {new Date(o.startedAt).toLocaleDateString()} to{' '}
-                {new Date(o.endedAt).toLocaleDateString()}
+                {formatDay(o.startedAt)} to{' '}
+                {formatDay(o.endedAt)}
               </li>
             ))}
         </ul>

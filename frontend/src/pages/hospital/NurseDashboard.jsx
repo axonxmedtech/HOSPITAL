@@ -158,6 +158,8 @@ const NurseDashboard = () => {
     if (activeTab === 'my-shifts') return 'My Shifts';
     if (activeTab === 'my-attendance') return 'My Attendance';
     if (activeTab === 'forms') return 'Forms';
+    if (activeTab === 'icu-beds') return 'ICU Beds';
+    if (activeTab === 'dashboard') return 'Dashboard';
     return 'Nurse Dashboard';
   };
 

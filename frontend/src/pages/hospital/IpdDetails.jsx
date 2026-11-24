@@ -54,6 +54,7 @@ import VulnerabilityAssessmentPanel from './nurse/VulnerabilityAssessmentPanel';
 import SurgeryRequestModal from './ot/SurgeryRequestModal';
 import StayBillsSummary from './StayBillsSummary';
 
+import { formatDay, formatWhen } from '../../utils/date';
 const IpdDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -973,7 +974,7 @@ const IpdDetails = () => {
                         <div>
                           <strong>Admitted:</strong>{' '}
                           {data.admission?.admissionDateTime
-                            ? new Date(data.admission.admissionDateTime).toLocaleString()
+                            ? formatWhen(data.admission.admissionDateTime)
                             : '-'}
                         </div>
                         <div>
@@ -1032,7 +1033,7 @@ const IpdDetails = () => {
                         {data.dischargeSummary?.followUpDate && (
                           <div className="col-span-2 text-sm">
                             <strong>Follow-up:</strong>{' '}
-                            {new Date(data.dischargeSummary.followUpDate).toLocaleDateString()}
+                            {formatDay(data.dischargeSummary.followUpDate)}
                             {data.dischargeSummary.followUpTime
                               ? ` at ${String(data.dischargeSummary.followUpTime).slice(0, 5)}`
                               : ''}
@@ -1047,7 +1048,7 @@ const IpdDetails = () => {
                           <div className="col-span-2 text-sm bg-red-50 border border-red-200 text-red-800 rounded p-2">
                             <strong>Admission cancelled</strong>
                             {data.cancelledAt
-                              ? ` on ${new Date(data.cancelledAt).toLocaleString()}`
+                              ? ` on ${formatWhen(data.cancelledAt)}`
                               : ''}
                             {data.cancelReason ? ` — ${data.cancelReason}` : ''}
                           </div>

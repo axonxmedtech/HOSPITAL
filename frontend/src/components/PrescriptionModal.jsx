@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { formatDay } from '../utils/date';
 const PrescriptionModal = ({ isOpen, onClose, data, onPrint }) => {
   if (!isOpen || !data) return null;
 
@@ -144,7 +145,7 @@ const PrescriptionModal = ({ isOpen, onClose, data, onPrint }) => {
             {medicalRecord.followUpDate && (
               <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded border border-gray-200 inline-block">
                 <span className="font-semibold text-gray-900">Follow-up Required:</span>{' '}
-                {new Date(medicalRecord.followUpDate).toLocaleDateString()}
+                {formatDay(medicalRecord.followUpDate)}
               </div>
             )}
           </div>

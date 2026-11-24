@@ -5,6 +5,7 @@ import { extractApiError } from '../utils/apiError';
 import ConfirmationModal from './ConfirmationModal';
 import DateSelect from './DateSelect';
 
+import { formatDay, formatWhen } from '../utils/date';
 const HospitalInventoryTab = () => {
   const [subTab, setSubTab] = useState('inventory'); // 'inventory', 'purchase', or 'catalog' (Services)
 
@@ -368,7 +369,7 @@ const HospitalInventoryTab = () => {
                         ₹{item.unitPrice?.toFixed(2)}
                       </td>
                       <td className="py-3 text-center text-gray-500">
-                        {item.expiryDate ? new Date(item.expiryDate).toLocaleDateString() : '-'}
+                        {item.expiryDate ? formatDay(item.expiryDate) : '-'}
                       </td>
                       <td className="py-3 text-center">
                         {isLow ? (
@@ -439,11 +440,11 @@ const HospitalInventoryTab = () => {
                       ₹{totalCost.toFixed(2)}
                     </td>
                     <td className="py-3 text-center text-gray-500">
-                      {item.expiryDate ? new Date(item.expiryDate).toLocaleDateString() : '-'}
+                      {item.expiryDate ? formatDay(item.expiryDate) : '-'}
                     </td>
                     <td className="py-3 text-left text-gray-500">{item.manufacturer || '-'}</td>
                     <td className="py-3 text-center text-gray-500">
-                      {item.purchaseDate ? new Date(item.purchaseDate).toLocaleString() : '-'}
+                      {item.purchaseDate ? formatWhen(item.purchaseDate) : '-'}
                     </td>
                   </tr>
                 );

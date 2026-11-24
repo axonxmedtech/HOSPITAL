@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pageMeta } from '../../utils/pageMeta';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -102,7 +103,8 @@ describe('Hospital Admin Overview composition', () => {
     expect(source).toContain('const loadPatients');
     // Adding a patient is reached through the shared PageHeader add button, which is keyed off
     // the active tab. The Overview panel's own hard-coded handleAdd('patients') went with it.
-    expect(source).toContain("activeTab === 'patients' ? 'Patient'");
+    expect(source).toContain('addLabel={pageMeta(activeTab).add}');
+    expect(pageMeta('patients').add).toBe('Add Patient');
   });
 
   it('keeps Today’s Appointments on the Overview, still module-gated', () => {

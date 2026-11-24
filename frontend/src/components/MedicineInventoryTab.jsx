@@ -6,6 +6,7 @@ import ConfirmationModal from './ConfirmationModal';
 import DateSelect from './DateSelect';
 import FrequencyInput from './FrequencyInput';
 
+import { formatDay, formatWhen } from '../utils/date';
 /**
  * @param {boolean} hidePrescribingColumns - Hide the Frequency / Duration / Manufacturer
  *   columns in Purchase History. Reception doesn't prescribe, so those columns are noise for
@@ -293,7 +294,7 @@ const MedicineInventoryTab = ({ hidePrescribingColumns = false }) => {
                         ₹{item.unitPrice?.toFixed(2)}
                       </td>
                       <td className="py-3 text-center text-gray-500">
-                        {item.expiryDate ? new Date(item.expiryDate).toLocaleDateString() : '-'}
+                        {item.expiryDate ? formatDay(item.expiryDate) : '-'}
                       </td>
                       <td className="py-3 text-center">
                         {isLow ? (
@@ -362,7 +363,7 @@ const MedicineInventoryTab = ({ hidePrescribingColumns = false }) => {
                       ₹{totalCost.toFixed(2)}
                     </td>
                     <td className="py-3 text-center text-gray-500">
-                      {item.expiryDate ? new Date(item.expiryDate).toLocaleDateString() : '-'}
+                      {item.expiryDate ? formatDay(item.expiryDate) : '-'}
                     </td>
                     <td className="py-3 text-left text-gray-600">{item.defaultDosage || '-'}</td>
                     {!hidePrescribingColumns && (
@@ -377,7 +378,7 @@ const MedicineInventoryTab = ({ hidePrescribingColumns = false }) => {
                       </>
                     )}
                     <td className="py-3 text-center text-gray-500">
-                      {item.purchaseDate ? new Date(item.purchaseDate).toLocaleString() : '-'}
+                      {item.purchaseDate ? formatWhen(item.purchaseDate) : '-'}
                     </td>
                   </tr>
                 );
