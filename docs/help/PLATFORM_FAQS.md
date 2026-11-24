@@ -12,7 +12,7 @@ Keep FAQs about the account, the plan and support. How-to questions about a scre
 A: Open Staff and choose the role (Doctors, Receptionists, Pharmacists, Nurses). Add the person with their email and a temporary password; they change it after their first login. How many staff logins you can have depends on your plan (Administration → Plan & Usage).
 
 **Q: A staff member forgot their password.**
-A: They click Forgot password on the login page. If the email does not arrive, the admin can set a new temporary password from the staff member's row menu → Edit.
+A: Passwords are reset by the facility admin — there is no self-service reset, so nobody can take over an account from the login page. Open Staff, find the person, and set a new temporary password from their row menu → Edit; they change it after signing in.
 
 **Q: What does my plan include, and how do I upgrade?**
 A: Administration → Plan & Usage shows your plan, its expiry and how much of each limit you use. To add modules or raise a limit, call 9022915865.
