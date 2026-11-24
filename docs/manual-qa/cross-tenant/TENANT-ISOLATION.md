@@ -459,13 +459,13 @@ UI-level ID-tampering test from the browser address bar.
 
 ## 8. ICU
 
-### TC-ISO-027 — ICU dashboard and bed board scoped
+### TC-ISO-027 — ICU screen scoped
 
 | Tenant     | Role           | Module | Priority     | Endpoint        | Method | Auth      | Expected status   |
 | ---------- | -------------- | ------ | ------------ | --------------- | ------ | --------- | ----------------- |
 | HOSPITAL_B | HOSPITAL_ADMIN | ICU    | **Critical** | `/hospital/icu` | GET    | `TOKEN_B` | **200**, A absent |
 
-**Steps** Open ICU Dashboard and ICU Bed Board in B; compare against A's.
+**Steps** Open the ICU screen (Beds and Patients views) in B; compare against A's.
 **Expected** — no A patients or A ICU beds.
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · **Actual:** ______ · **Bug:** ______ · **Tester:** ______ · **Date:** ______
 

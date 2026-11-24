@@ -88,7 +88,7 @@
 ### TC-HB-011 — Final bill on discharge
 
 `HOSPITAL_A · RECEPTIONIST · Billing · Critical · /ipd/:id`
-**Steps:** doctor plans discharge; reception confirms; open the final bill; take payment; print.
+**Steps:** doctor plans discharge; reception opens the discharge checkout, collects the balance there and confirms; print summary + bill.
 **Expected:** bill frozen at discharge; total = sum of lines; payment moves it to `PAID`; receipt prints. Discharge with an unpaid balance — record whether it is blocked or warned (`NEEDS_PRODUCT_CONFIRMATION`).
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
 

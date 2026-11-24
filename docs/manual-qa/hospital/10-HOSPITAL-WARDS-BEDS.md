@@ -2,7 +2,7 @@
 
 **Baseline:** `aa143a7` · **Cases:** `TC-HWB-001` … `TC-HWB-024` · Tenant HOSPITAL_A · **IPD module** (tab `requiredModule: 'IPD'`)
 
-**Screens:** Admin ▸ Rooms ▸ **Wards & Beds** (`WardsAndBeds.jsx`) · Incharge ▸ **Beds** (`WardBedsView.jsx`) · Reception ▸ IPD admit bed picker · ICU Bed Board.
+**Screens:** Admin ▸ Rooms ▸ **Wards & Beds** (`WardsAndBeds.jsx`) · Incharge ▸ **Beds** (`WardBedsView.jsx`) · Reception ▸ IPD admit bed picker · ICU → Beds.
 **Bed states (`BedStatus`):** `available` · `occupied` · `cleaning` · `maintenance` — UI labels `Available`, `Occupied`, `Cleaning Required`, `Under Maintenance`.
 **Rule:** **every** bed-status write goes through `BedStatusService` and is audited into `bed_status_audits`.
 **Authorization:** `Bed` endpoints = `ADM` + `NI` only (GET and POST). `Ward` GET = `ADM DOC REC PHA`; POST/PUT/DELETE = `ADM`.
@@ -120,7 +120,7 @@
 ### TC-HWB-015 — One bed, four views
 
 `HOSPITAL_A · ADM/REC/NI/NURSE · Beds · Critical · all bed screens`
-**Steps:** for each state change in `TC-HWB-010`, check **simultaneously**: admin Wards & Beds, incharge Beds, reception admit picker, ICU Bed Board (for ICU beds), admin Overview card.
+**Steps:** for each state change in `TC-HWB-010`, check **simultaneously**: admin Wards & Beds, incharge Beds, reception admit picker, ICU → Beds (for ICU beds), admin Overview card.
 **Expected:** all five agree at every step, after refresh. A bed that is Available in one view and Occupied in another is **Critical**.
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
 

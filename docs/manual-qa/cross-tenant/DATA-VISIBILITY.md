@@ -189,7 +189,7 @@ to everyone who is allowed to see it.
 | Tenant                                                                                                                                         | Role                     | Module | Priority |
 | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ------ | -------- |
 | HOSPITAL_A                                                                                                                                     | ADM, DOC, REC, NURSE, NI | ICU    | **High** |
-| **Steps** Admit P1 to `ICU Ward` bed `ICU-01`. View ICU Dashboard, ICU Bed Board, and the nurse's ICU Beds tab.                                |
+| **Steps** Admit P1 to `ICU Ward` bed `ICU-01`. View ICU, and the nurse's ICU Beds tab.                                |
 | **Expected** — the stay appears on all of them consistently (same bed, same patient, same severity). The bed board shows `ICU-01` as occupied. |
 | **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · **Actual:** ______ · **Bug:** ______ · **Tester:** ______ · **Date:** ______             |
 

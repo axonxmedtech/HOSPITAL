@@ -80,11 +80,11 @@ session** performs it.
 7. **S-DOC** open `/ipd/:id` → all four records are visible → add an IPD prescription.
 8. **S-NUR** **Medication** → administer that prescription.
 9. **S-ADM** Inventory ▸ Hospital Inventory → administer 2 units of a master item to this admission → stock falls by 2.
-10. **S-DOC** **plan discharge** with a summary. **S-REC** **confirm discharge**.
+10. **S-DOC** **plan discharge** with a summary. **S-REC** **discharge checkout** (IPD → Ready to go → Checkout).
 11. **S-ADM/S-NI** → `GA-01` is now **Cleaning Required**; **S-REC** admit picker still excludes it.
 12. **S-NI** Beds → **Mark Bed Cleaned** → `Confirm` → `GA-01` **Available**.
 13. **S-REC** admit a different patient into `GA-01` → succeeds.
-14. **S-REC** open the final IPD bill → it includes the prescription and the hospital items → take payment → print.
+14. **S-REC** open the final IPD bill → it includes the prescription and the hospital items → collect in the discharge checkout → Print summary + bill.
     **Expected**
 
 - Bed states follow **Available → Occupied → Cleaning Required → Available** and never skip cleaning.
@@ -181,13 +181,13 @@ session** performs it.
 **Steps**
 
 1. **S-REC** admit a patient to `ICU Ward` / `ICU-01`.
-2. **S-ADM** ICU Dashboard and ICU Bed Board → the patient and the occupied bed appear.
+2. **S-ADM** the ICU screen (Beds and Patients views) → the patient and the occupied bed appear.
 3. **S-NI** assign the patient to **Reena**.
 4. **S-NUR** record **Intake/Output**, **Ventilator** (`QA PEEP`), a **Severity Score**, and an **Infusion** (start → rate change → stop).
-5. **S-NUR** record SpO2 **92** → **S-ADM** ICU Dashboard shows the alert.
+5. **S-NUR** record SpO2 **92** → **S-ADM** ICU screen shows the alert.
 6. **S-NUR** record SpO2 **97** → the alert clears.
 7. **S-DOC** open `/ipd/:id` → all ICU records visible; update the ICU stay.
-8. **S-REC** transfer to `GA-02` → the ICU stay ends; `ICU-01` → cleaning; patient leaves the ICU dashboard.
+8. **S-REC** transfer to `GA-02` → the ICU stay ends; `ICU-01` → cleaning; patient leaves the ICU screen.
 9. **S-NI** **Mark Bed Cleaned** on `ICU-01`.
 10. **S-ADM** Reports/Audit → ICU activity recorded.
     **Expected:** the ICU stay is created on admission and ended on transfer; thresholds fire and clear; only the assigned nurse can record; bed states follow the standard cycle.

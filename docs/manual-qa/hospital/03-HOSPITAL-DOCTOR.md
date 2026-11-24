@@ -1,8 +1,10 @@
 # 03 — HOSPITAL DOCTOR
 
-**Baseline:** `aa143a7` · **Cases:** `TC-HD-001` … `TC-HD-048` · Tenant HOSPITAL_A · login `doc1.hospa@qa.test` → `/hospital/doctor`
+**Baseline:** `aa143a7` · **Cases:** `TC-HD-001` … `TC-HD-050` · Tenant HOSPITAL_A · login `doc1.hospa@qa.test` → `/hospital/doctor`
 
-**Tabs:** Overview · Patients · Appointments · OPD · Follow-ups · IPD · Billing · Operation Theatre · ICU Dashboard · ICU Bed Board · Medicine Inventory
+**Tabs:** Overview · Patients · Appointments · OPD · Follow-ups · IPD · Billing · Operation Theatre · ICU · Medicine Inventory
+
+**IPD case page tabs (current UI):** four groups — **Summary** (Overview, Insurance) · **Orders** (Medication, Investigations) · **Charts** (Vitals, Sugar Chart, Intake / Output, Ventilator, Severity Scores) · **Forms** (assessments, consent forms) — with the group's tabs as pills underneath. **Round mode** (`/ipd/round/:id`) opens from IPD → Start ward round, a row's Round button, or Round mode on the case.
 
 **`ConsultationModal` (verified labels):** SYMPTOMS / DIAGNOSIS sections with **Symptoms**, **Diagnosis**, **Treatment Notes**; **Symptom Presets**, **Diagnosis Presets**; medicines via **Add Medicine** / **Edit Medicine** with `Dosage (e.g., 500mg)`, `Duration (e.g., 5 Days)`, `Instruction`; lab checkboxes `CBC, LFT, RFT, RBS, Lipid Profile, TSH, HbA1c, Urine Routine`; `Consultation Fee`, `Case Paper Fee`; follow-up date; **Complete Consultation** / **Save Changes**. Row actions: `Start Consultation`, `Complete`, `View Details`, `View History`, `View Prescription`, `Print Prescription`, `Print Case Paper`, `Admit to IPD`, `Follow-up`.
 
@@ -195,7 +197,7 @@
 ### TC-HD-025 — Plan discharge → reception confirms
 
 `HOSPITAL_A · DOCTOR · IPD · Critical · /ipd/:id`
-**Steps:** **plan discharge** (summary/advice); reception **confirm discharge**.
+**Steps:** **plan discharge** (summary/advice); reception finishes it in the **discharge checkout** (IPD → Ready to go → Checkout).
 **Expected:** status flows to `DISCHARGED`; bed → `cleaning`; final bill available; discharge summary printable if implemented (record).
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
 
@@ -279,7 +281,7 @@
 ### TC-HD-036 — Doctor ICU actions
 
 `HOSPITAL_A · DOCTOR · ICU · High · ICU`
-**Steps:** open ICU Dashboard and Bed Board; open an ICU stay; update it (`PUT /hospital/icu/{id}` = `ADM DOC`); record I/O and a severity score.
+**Steps:** open the ICU screen (Beds and Patients views); open an ICU stay; update it (`PUT /hospital/icu/{id}` = `ADM DOC`); record I/O and a severity score.
 **Expected:** allowed per matrix; changes visible to nurse and incharge.
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
 
@@ -369,4 +371,22 @@
 `HOSPITAL_A (isSingleDoctor) · HOSPITAL_ADMIN · Auth · High · Navbar`
 **Steps:** = `TC-MODE-001`…`004` on a **hospital** tenant created with Single Doctor ON.
 **Expected:** switcher present; admin completes consultations; no third role granted.
+**Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
+
+---
+
+## FEWER SCREENS (round mode, grouped tabs)
+
+### TC-HD-049 — Ward round in round mode
+
+`HOSPITAL_A · DOCTOR · IPD · Critical · /ipd/round/:id`
+**Steps:** IPD → **Start ward round**; on patient 1 stop a medicine, add two medicines with **+ From preset**, write a note, **Save & next**; on patient 2 leave a medicine row without a dose and save.
+**Expected:** patients come in ward/bed order with a ✓ strip; vitals, medicines, tests and diet show on one screen; the round and both orders save together and patient 2 opens; the incomplete row blocks the save with "Fill in medicine 1: dose"; **Exit round** returns to IPD.
+**Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
+
+### TC-HD-050 — Grouped tabs on the IPD case
+
+`HOSPITAL_A · DOCTOR · IPD · Medium · /ipd/:id`
+**Steps:** open a case; click **Orders**, **Charts**, choose Sugar Chart, go to Orders and back to Charts; repeat at phone width.
+**Expected:** four groups (Summary, Orders, Charts, Forms); Orders opens on Medication, Charts on Vitals; Charts reopens on Sugar Chart; at phone width the header buttons wrap under the title and nothing is cut off.
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____

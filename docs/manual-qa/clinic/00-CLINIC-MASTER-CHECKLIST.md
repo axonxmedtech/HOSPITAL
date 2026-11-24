@@ -47,7 +47,7 @@
 | Quick Notes · Symptom · Diagnosis · Prescription · In-Clinic Presets | — / `inClinic`     | `TESTED`                                     | `TC-CA-013`, `TC-CDR-007`      |
 | **IPD**                                                              | IPD                | **`NOT_SUPPORTED` + `IMPLEMENTATION_DRIFT`** | `TC-CD-010`…`015`              |
 | **Wards & Beds**                                                     | IPD                | **`NOT_SUPPORTED` + `IMPLEMENTATION_DRIFT`** | `TC-CD-016`, `TC-CD-017`       |
-| ICU Dashboard · ICU Bed Board                                        | ICU                | `NOT_SUPPORTED` (not aliased)                | `TC-CD-018`                    |
+| ICU                                        | ICU                | `NOT_SUPPORTED` (not aliased)                | `TC-CD-018`                    |
 | Operation Theatre · OT Incharge · OT Theatres · OT Analytics         | OT                 | `NOT_SUPPORTED` (not aliased)                | `TC-CD-018`                    |
 | Nurses · Nurse Assignments · Nurse Tasks · Time Slots · Calendar     | NURSING            | `NOT_SUPPORTED` (not aliased)                | `TC-CD-018`, `TC-CD-005`       |
 | Hospital Inventory                                                   | HOSPITAL_INVENTORY | `NOT_SUPPORTED` (correctly gated)            | `TC-CD-019`, `TC-CA-015`       |

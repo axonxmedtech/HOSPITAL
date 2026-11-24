@@ -1,8 +1,8 @@
 # 09 — HOSPITAL ICU
 
-**Baseline:** `aa143a7` · **Cases:** `TC-HICU-001` … `TC-HICU-022` · Tenant HOSPITAL_A · **ICU module** (`@RequireModule("ICU")` on 9 handlers) + `@TenantType(HOSPITAL)` on the dashboard/stay controllers
+**Baseline:** `aa143a7` · **Cases:** `TC-HICU-001` … `TC-HICU-025` · Tenant HOSPITAL_A · **ICU module** (`@RequireModule("ICU")` on 9 handlers) + `@TenantType(HOSPITAL)` on the dashboard/stay controllers
 
-**Screens:** Admin/Reception/Doctor ▸ **ICU Dashboard**, **ICU Bed Board** · Nurse ▸ **ICU Beds** · Incharge ▸ **ICU Beds** · patient-level panels inside `NursePatientDetail`/`IpdDetails`: **Intake / Output**, **Ventilator**, **Severity Scores**, infusions.
+**Screens:** Admin/Reception/Doctor ▸ **ICU** (one screen: Beds · Patients · Housekeeping · History) · Nurse ▸ **ICU Beds** · Incharge ▸ **ICU Beds** · patient-level panels inside `NursePatientDetail`/`IpdDetails`: **Intake / Output**, **Ventilator**, **Severity Scores**, infusions.
 **Settings:** Ventilator Parameters · Severity Scores · ICU Alert Thresholds (`01c` §E).
 **Endpoints:** `/hospital/icu` (dashboard, stays) · `/hospital/icu/alert-thresholds` · `/hospital/icu/score-types` · `/hospital/icu/ventilator-parameters` · nurse-side `/hospital/nurse/io`, `/ventilator`, `/severity-scores`, `/infusions`.
 
@@ -15,20 +15,20 @@
 ### TC-HICU-001 — ICU ward and beds
 
 `HOSPITAL_A · HOSPITAL_ADMIN · ICU · High · Wards & Beds`
-**Steps:** confirm `ICU Ward` with beds `ICU-01`, `ICU-02` exists and has an incharge; check both appear on the ICU Bed Board as available.
+**Steps:** confirm `ICU Ward` with beds `ICU-01`, `ICU-02` exists and has an incharge; check both appear on the ICU → Beds as available.
 **Expected:** ICU beds are ordinary beds in an ICU ward; bed states are the same four (`available/occupied/cleaning/maintenance`).
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
 
 ### TC-HICU-002 — Admit into ICU creates an ICU stay
 
 `HOSPITAL_A · RECEPTIONIST · ICU · Critical · IPD admit`
-**Steps:** 1. Doctor requests admission. 2. Reception admits P1 to `ICU Ward` / `ICU-01`. 3. Open ICU Dashboard and ICU Bed Board.
+**Steps:** 1. Doctor requests admission. 2. Reception admits P1 to `ICU Ward` / `ICU-01`. 3. Open the ICU screen (Beds and Patients views).
 **Expected:** `ICU-01` occupied; P1 appears on the dashboard as an ICU stay with admission date; the stay links to the IPD admission (`IcuStayCard`).
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
 
 ### TC-HICU-003 — Backfilled stays for existing occupants
 
-`HOSPITAL_A · HOSPITAL_ADMIN · ICU · Medium · ICU Dashboard`
+`HOSPITAL_A · HOSPITAL_ADMIN · ICU · Medium · ICU screen`
 **Steps:** if a patient was already in an ICU ward before ICU was enabled, enable ICU and restart the backend.
 **Expected:** `backfillIcuStaysForCurrentOccupants` creates the stay; the dashboard shows the existing occupant rather than an empty board.
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
@@ -37,16 +37,16 @@
 
 ## B. DASHBOARD & BED BOARD
 
-### TC-HICU-004 — ICU Dashboard content and accuracy
+### TC-HICU-004 — ICU screen content and accuracy
 
-`HOSPITAL_A · HOSPITAL_ADMIN · ICU · High · ICU Dashboard`
+`HOSPITAL_A · HOSPITAL_ADMIN · ICU · High · ICU screen`
 **Steps:** with 2 ICU patients, read every tile and card; compare with a hand count of ICU occupants, free beds and latest scores.
 **Expected:** occupancy, patient list, latest severity score and alerts per patient; figures reconcile; `GET /hospital/icu` is the source; EmptyState when no ICU patients.
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
 
-### TC-HICU-005 — ICU Bed Board
+### TC-HICU-005 — ICU → Beds
 
-`HOSPITAL_A · RECEPTIONIST · ICU · High · ICU Bed Board`
+`HOSPITAL_A · RECEPTIONIST · ICU · High · ICU → Beds`
 **Steps:** open; verify each bed tile's state and occupant; discharge one patient; re-check.
 **Expected:** tiles show `Available`/`Occupied`/`Cleaning Required`/`Under Maintenance`; after discharge the bed shows cleaning until the incharge marks it cleaned (`TC-HNI-014`).
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
@@ -54,7 +54,7 @@
 ### TC-HICU-006 — Role visibility of ICU screens
 
 `HOSPITAL_A · all · ICU · High · ICU`
-**Steps:** open ICU Dashboard / Bed Board as admin, doctor, reception, nurse, incharge, pharmacist, OT incharge.
+**Steps:** open ICU screen (Beds / Patients) as admin, doctor, reception, nurse, incharge, pharmacist, OT incharge.
 **Expected:** `ADM DOC REC NUR NI` can read (`IcuDashboard` GET); PHA and OTI have no ICU tab and `GET /hospital/icu` → 403.
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
 
@@ -92,9 +92,9 @@
 
 ### TC-HICU-011 — ⭐ Alert threshold breach surfaces
 
-`HOSPITAL_A · HOSPITAL_ADMIN → NURSE · ICU · Critical · ICU Dashboard`
-**Steps:** = `TC-HAS-020`: set SpO2 low threshold 95; nurse records SpO2 92; open the ICU Dashboard and the stay card; then record 97.
-**Expected:** the breach is flagged on the dashboard/stay card while out of range and clears when back in range. A threshold that never fires makes the ICU dashboard useless — **Critical**.
+`HOSPITAL_A · HOSPITAL_ADMIN → NURSE · ICU · Critical · ICU screen`
+**Steps:** = `TC-HAS-020`: set SpO2 low threshold 95; nurse records SpO2 92; open the ICU screen and the stay card; then record 97.
+**Expected:** the breach is flagged on the dashboard/stay card while out of range and clears when back in range. A threshold that never fires makes the ICU screen useless — **Critical**.
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
 
 ### TC-HICU-012 — Doctor updates an ICU stay
@@ -118,15 +118,15 @@
 ### TC-HICU-014 — Transfer out of ICU to a general ward
 
 `HOSPITAL_A · RECEPTIONIST/DOCTOR · ICU · Critical · /ipd/:id`
-**Steps:** **change bed** from `ICU-01` to `GA-02`; re-check ICU Dashboard, ICU Bed Board and Wards & Beds.
-**Expected:** ICU stay ends (or is marked transferred — record); `ICU-01` → cleaning; `GA-02` occupied; the patient leaves the ICU dashboard.
+**Steps:** **change bed** from `ICU-01` to `GA-02`; re-check ICU and Wards & Beds.
+**Expected:** ICU stay ends (or is marked transferred — record); `ICU-01` → cleaning; `GA-02` occupied; the patient leaves the ICU screen.
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
 
 ### TC-HICU-015 — Transfer into ICU from a general ward
 
 `HOSPITAL_A · RECEPTIONIST · ICU · High · /ipd/:id`
 **Steps:** move a general-ward patient to `ICU-02`.
-**Expected:** an ICU stay is created; the patient appears on the ICU dashboard; general bed → cleaning.
+**Expected:** an ICU stay is created; the patient appears on the ICU screen; general bed → cleaning.
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
 
 ### TC-HICU-016 — Discharge from ICU
@@ -151,7 +151,7 @@
 
 `HOSPITAL_M · HOSPITAL_ADMIN · ICU · High · sidebar/API`
 **Steps:** = `TC-MOD-017`: tabs and all four ICU endpoint groups.
-**Expected:** ICU Dashboard / Bed Board / ICU settings cards hidden; `GET /hospital/icu`, `/alert-thresholds`, `/score-types`, `/ventilator-parameters` → **403**.
+**Expected:** ICU screen (Beds / Patients) / ICU settings cards hidden; `GET /hospital/icu`, `/alert-thresholds`, `/score-types`, `/ventilator-parameters` → **403**.
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
 
 ### TC-HICU-019 — ICU is hospital-only
@@ -176,8 +176,8 @@
 
 1. As Super Admin create plan `QA-ICU-NO-IPD` for HOSPITAL with **ICU ticked and IPD unticked**. Record whether the plan is accepted (`TC-MOD-006`).
 2. If accepted, assign it to a test hospital and log in as its admin.
-3. Record which tabs appear: is **ICU Dashboard** present? Is **IPD** / **Wards & Beds** absent?
-4. Open ICU Dashboard and ICU Bed Board. Record exactly what renders (data, empty state, or error).
+3. Record which tabs appear: is **ICU screen** present? Is **IPD** / **Wards & Beds** absent?
+4. Open the ICU screen (Beds and Patients views). Record exactly what renders (data, empty state, or error).
 5. `GET /hospital/icu` — record the status.
 6. Try to create a ward and a bed (`POST /hospital/wards`, `/hospital/beds`) — record.
 7. Try to admit a patient (`POST /hospital/ipd/admit`) — record.
@@ -191,4 +191,29 @@
 `HOSPITAL_A · NURSE/ADMIN · ICU · Medium · all ICU screens`
 **Steps:** empty ICU (no patients); slow network; backend down; long patient names; F5; logout/login; re-open every panel.
 **Expected:** EmptyState on dashboard and board; readable errors (`Could not load …`); all recorded I/O, ventilator, scores and infusions persist exactly.
+**Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
+
+---
+
+## FEWER SCREENS (one ICU screen)
+
+### TC-HICU-023 — One ICU screen per role
+
+`HOSPITAL_A · ADMIN / RECEPTIONIST / DOCTOR · ICU · High · ICU`
+**Steps:** open ICU as each role; visit an old link `?tab=icu-beds`.
+**Expected:** one **ICU** menu item; Beds · Patients · Housekeeping (desk only) · History; the old link lands on ICU; a doctor not running the desk sees no Admit here / Mark cleaned / Move patient to ICU.
+**Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
+
+### TC-HICU-024 — Move to ICU and back from the lists
+
+`HOSPITAL_A · RECEPTIONIST · ICU · Critical · IPD / ICU`
+**Steps:** IPD row ⋮ → **Move to ICU** into ICU-01; then ICU → Patients → ⋮ → **Move out of ICU** to GA-02.
+**Expected:** an ICU stay opens and the IPD row shows the ICU tag; moving out closes the stay, ICU-01 → cleaning, GA-02 occupied; the admission, bill and doctor are unchanged.
+**Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
+
+### TC-HICU-025 — ICU discharge only through the checkout
+
+`HOSPITAL_A · RECEPTIONIST · ICU · Critical · ICU → Patients`
+**Steps:** try to discharge an ICU patient whose discharge is not planned; then the doctor plans it.
+**Expected:** no discharge action until it is planned; then **Checkout** appears on the ICU and IPD rows and works as `TC-HR-060`.
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____

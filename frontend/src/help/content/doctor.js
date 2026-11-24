@@ -1,4 +1,4 @@
-import { ADMIN, DESK, DOCTOR } from './roles';
+import { ADMIN, DESK, DOCTOR, RECEPTION } from './roles';
 
 /** Doctors (and the admin of a single-doctor setup who works as the doctor). */
 const DOC = [DOCTOR];
@@ -78,8 +78,25 @@ const doctor = [
     screens: ['ipd'],
     goTo: 'ipd',
     q: 'Where are my admitted patients?',
-    a: 'IPD lists the patients admitted under you, including those whose discharge you have planned. Click a patient to open their IPD page.',
+    a: 'IPD lists the patients admitted under you — those in ICU too (with an ICU tag) and those whose discharge you have planned. Start ward round takes you through them one by one; click a name to open the full IPD page.',
     tags: ['inpatients', 'ward round', 'my patients', 'admitted'],
+  },
+  {
+    id: 'doc-round-mode',
+    category: 'IPD rounds',
+    roles: [DOCTOR, ADMIN],
+    modules: ['IPD'],
+    screens: ['ipd'],
+    goTo: 'ipd',
+    q: 'How do I do my ward round quickly?',
+    a: 'Use round mode: one screen per patient with everything you need, then Save & next.',
+    steps: [
+      'Open IPD and click Start ward round (or Round on a patient’s row, or Round mode on their IPD page). Patients come in ward and bed order; the strip at the top shows who is done.',
+      'On the left: the latest vitals, the medicines running (Stop ends one), tests with results, and the diet.',
+      'On the right: the diagnosis (carried from your last round), your round note, and + Medicine or + From preset to order several medicines at once.',
+      'Save & next saves the note and every new order, then opens the next patient. Plan discharge and Open full case are at the top.',
+    ],
+    tags: ['round mode', 'ward round', 'rounds', 'next patient', 'quick round'],
   },
   {
     id: 'doc-prescribe-ipd',
@@ -87,14 +104,14 @@ const doctor = [
     roles: [DOCTOR, ADMIN],
     modules: ['IPD'],
     q: 'How do I prescribe medicine or saline for an admitted patient?',
-    a: 'Open the patient’s IPD page → Medication → + Add Medicine.',
+    a: 'In round mode use + Medicine (or + From preset for a set you use often) — several at once, saved with your round. On the IPD page it is Orders → Medication → + Add Medicine.',
     steps: [
       'Type the name. The list shows medicines and hospital items (saline, IV fluids) with stock left — pick one from stock so each dose given comes off the inventory and onto the bill.',
       'Choosing saline sets the type to IV fluid and the route to IV for you.',
-      'Fill dose, frequency, duration, food timing and "units per dose" (1 tablet, 1 bottle).',
-      'Save Prescription. Nurses (or whoever the hospital allows) record each dose given.',
+      'Fill dose, frequency (morning-afternoon-night, e.g. 1-0-1), days, food timing and units per dose.',
+      'Save. Nurses see each dose on their Due Now list at 8 am, 2 pm and 8 pm.',
     ],
-    tags: ['order', 'iv fluid', 'drip', 'saline', 'prescribe', 'ipd medicine'],
+    tags: ['order', 'iv fluid', 'drip', 'saline', 'prescribe', 'ipd medicine', 'preset'],
   },
   {
     id: 'doc-low-stock',
@@ -119,7 +136,7 @@ const doctor = [
     roles: [DOCTOR, ADMIN],
     modules: ['IPD'],
     q: 'How do I stop a medicine?',
-    a: 'On the IPD page’s Medication tab, use Stop on the medicine. It stays on the chart, struck through, so the history is complete; no further doses can be recorded against it.',
+    a: 'Click Stop next to it in round mode, or on the IPD page under Orders → Medication. It stays on the chart, struck through, so the history is complete; no further doses are due or can be recorded.',
     tags: ['stop', 'discontinue', 'remove medicine'],
   },
   {
@@ -128,7 +145,7 @@ const doctor = [
     roles: DOC,
     modules: ['IPD'],
     q: 'Where do I write my round notes?',
-    a: 'On the patient’s IPD page, open Doctors Round Notes (right side). + Add Follow-up records a review with findings and orders.',
+    a: 'In round mode, under Today’s round (diagnosis and note). On the IPD page, Summary → Overview → + Add Round. Every round is listed under Doctor’s Rounds, newest first, and nurses can read them.',
     tags: ['progress notes', 'round', 'daily notes', 'follow up'],
   },
   {
@@ -137,8 +154,17 @@ const doctor = [
     roles: DOC,
     modules: ['IPD'],
     q: 'Where do I see the patient’s vitals and charts?',
-    a: 'On the IPD page: Vitals, Sugar Chart, Intake / Output, and — in ICU — Ventilator and Severity Scores. Each tab shows the trend and who recorded it.',
+    a: 'Round mode shows the latest vitals at the top. For the full charts open the IPD page → Charts: Vitals, Sugar Chart, Intake / Output and, in ICU, Ventilator and Severity Scores. Each shows the trend and who recorded it.',
     tags: ['vitals', 'chart', 'bp', 'temperature', 'trend'],
+  },
+  {
+    id: 'chart-tabs-moved',
+    category: 'IPD rounds',
+    roles: [DOCTOR, ADMIN, RECEPTION, DESK],
+    modules: ['IPD'],
+    q: 'Where did the Medication, Vitals and form tabs go on the IPD page?',
+    a: 'They are grouped now, so the bar fits on one line: Summary (overview, insurance), Orders (Medication, Investigations), Charts (Vitals, Sugar Chart, Intake / Output, Ventilator, Severity Scores) and Forms (assessments, consent forms). Click a group, then the tab under it; a group reopens on the tab you used last.',
+    tags: ['tabs', 'medication tab', 'vitals tab', 'where is', 'moved', 'orders', 'charts', 'forms'],
   },
   {
     id: 'doc-plan-discharge',
@@ -146,7 +172,7 @@ const doctor = [
     roles: DOC,
     modules: ['IPD'],
     q: 'How do I discharge my patient?',
-    a: 'Click Plan Discharge on the patient’s IPD page, choose the discharge type and write the summary. The front desk then collects any balance and confirms the discharge. The patient stays on your list until then; Cancel Discharge Plan undoes it if their condition changes.',
+    a: 'Click Plan Discharge (in round mode or on the IPD page), choose the discharge type and write the summary. The front desk is told straight away and finishes it in the discharge checkout. The patient stays on your list until then; Cancel Discharge Plan undoes it if their condition changes.',
     tags: ['discharge', 'summary', 'plan discharge', 'send home'],
   },
   {
@@ -163,8 +189,10 @@ const doctor = [
     category: 'ICU',
     roles: [DOCTOR],
     modules: ['ICU'],
-    q: 'How do I move a patient to ICU?',
-    a: 'Moving a patient into an ICU bed is done by the front desk (reception, the admin, or a doctor who runs the desk): Admit to ICU on the patient’s IPD page. Ask them to move the patient; ICU Dashboard and ICU Bed Board then show the patient in critical care.',
+    screens: ['icu'],
+    goTo: 'icu',
+    q: 'How do I move a patient to ICU, and where do I see my ICU patients?',
+    a: 'The front desk (reception, the admin, or a doctor who runs the desk) moves patients with Move to ICU and Move out of ICU. Your ICU patients stay on your IPD list with an ICU tag and are part of your ward round. The ICU screen shows every ICU bed; click an occupied bed to open the patient.',
     tags: ['icu', 'critical care', 'shift to icu', 'step down'],
   },
   // ── Surgery ──
