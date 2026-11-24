@@ -5,7 +5,10 @@ import hospitalService from '../services/hospitalService';
 import wardService from '../services/wardService';
 import { extractApiError } from '../utils/apiError';
 
-const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) => {
+/**
+ * `initialBed` ({ wardId, bedId }) pre-selects a free bed: "Admit here" on the reception Beds board.
+ */
+const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis, initialBed = null }) => {
   const formId = useId();
   const [wards, setWards] = useState([]);
   const [selectedWard, setSelectedWard] = useState(null);
@@ -130,19 +133,32 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis }) =>
           (bed) => bed.status && bed.status.toLowerCase() === 'available'
         );
         setBeds(availableBeds);
+        // "Admit here": the bed the desk picked on the bed board.
+        if (
+          initialBed?.bedId &&
+          String(initialBed.wardId) === String(selectedWard) &&
+          availableBeds.some((bed) => String(bed.bedId) === String(initialBed.bedId))
+        ) {
+          setSelectedBed(Number(initialBed.bedId));
+        }
       } catch (err) {
         console.error('Failed to load beds', err);
       }
     };
     loadBeds().catch((err) => console.error('Failed to load beds', err));
+    // initialBed is fixed while the form is open; only a new ward reloads the beds.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedWard]);
 
-  // Auto-select ward if only one is available
+  // Start on the ward "Admit here" came from, or the only ward there is.
   useEffect(() => {
-    if (wards && wards.length === 1) {
+    if (!wards || wards.length === 0) return;
+    if (initialBed?.wardId && wards.some((w) => String(w.wardId) === String(initialBed.wardId))) {
+      setSelectedWard(Number(initialBed.wardId));
+    } else if (wards.length === 1) {
       setSelectedWard(Number(wards[0].wardId));
     }
-  }, [wards]);
+  }, [wards, initialBed]);
 
   // Auto-select bed if only one is available
   useEffect(() => {
