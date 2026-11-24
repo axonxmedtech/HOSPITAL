@@ -79,7 +79,7 @@ session** performs it.
 6. **S-NUR** record **Vitals**, a **Note**, an **Initial Assessment**, a **Sugar Chart** entry.
 7. **S-DOC** open `/ipd/:id` → all four records are visible → add an IPD prescription.
 8. **S-NUR** **Medication** → administer that prescription.
-9. **S-ADM** Inventory ▸ Hospital Inventory → administer 2 units of a master item to this admission → stock falls by 2.
+9. **S-ADM** Hospital Inventory (under Inventory if Medicine Inventory is also on the plan) → administer 2 units of a master item to this admission → stock falls by 2.
 10. **S-DOC** **plan discharge** with a summary. **S-REC** **discharge checkout** (IPD → Ready to go → Checkout).
 11. **S-ADM/S-NI** → `GA-01` is now **Cleaning Required**; **S-REC** admit picker still excludes it.
 12. **S-NI** Beds → **Mark Bed Cleaned** → `Confirm` → `GA-01` **Available**.

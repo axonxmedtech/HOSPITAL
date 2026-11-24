@@ -315,6 +315,16 @@ const frontDesk = [
     tags: ['partial', 'advance', 'deposit', 'installment', 'balance'],
   },
   {
+    id: 'desk-bill-edit-charges',
+    category: 'Billing',
+    roles: DESK_ROLES,
+    modules: ['BILLING'],
+    screens: ['billing'],
+    q: 'How do I add or change the charges on a bill?',
+    a: 'Open the ⋮ menu on the bill row → Edit charges. It is there while the bill is still open (pending or part paid); a paid or cancelled bill cannot be changed. Discounts are in the same menu.',
+    tags: ['edit', 'charges', 'items', 'add charge', 'change bill'],
+  },
+  {
     id: 'desk-ipd-payment',
     category: 'Billing',
     roles: DESK_ROLES,

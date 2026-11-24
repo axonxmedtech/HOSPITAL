@@ -118,14 +118,14 @@ const facilitySteps = [
   {
     id: 'pharmacists',
     title: 'Add your pharmacists',
-    text: 'Pharmacy → Pharmacists → Add Pharmacist. They sell at the counter, dispense ward prescriptions, and manage medicine stock and purchases.',
+    text: 'Staff → Pharmacists → Add Pharmacist. They sell at the counter, dispense ward prescriptions, and manage medicine stock and purchases.',
     goTo: 'pharmacists',
     modules: ['PHARMACY'],
   },
   {
     id: 'medicine-stock',
     title: 'Load your medicine stock',
-    text: 'Inventory → Medicine Inventory: add the medicines you keep, with batch, expiry, quantity, price and reorder level. Doctors then see stock while prescribing and doses given are taken off it and billed.',
+    text: 'Medicine Inventory (under Inventory when your plan also has Hospital Inventory): add the medicines you keep, with batch, expiry, quantity, price and reorder level. Doctors then see stock while prescribing and doses given are taken off it and billed.',
     goTo: 'inventory',
     modules: ['MEDICAL_INVENTORY'],
     when: (user) => user?.inClinic !== false,
@@ -133,7 +133,7 @@ const facilitySteps = [
   {
     id: 'hospital-stock',
     title: 'Add saline, IV fluids and consumables',
-    text: 'Inventory → Hospital Inventory → record a purchase: item, quantity, unit price, expiry and reorder level. Doctors can then order them on the ward and every unit given is billed.',
+    text: 'Hospital Inventory (under Inventory when your plan also has Medicine Inventory) → record a purchase: item, quantity, unit price, expiry and reorder level. Doctors can then order them on the ward and every unit given is billed.',
     goTo: 'hospital-inventory',
     modules: ['HOSPITAL_INVENTORY'],
   },
