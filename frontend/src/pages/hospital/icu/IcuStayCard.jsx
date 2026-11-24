@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import IcuDischargeToIpdModal from '../../../components/IcuDischargeToIpdModal';
 import { useToast } from '../../../context/ToastContext';
 import authService from '../../../services/authService';
 import hospitalService from '../../../services/hospitalService';
@@ -18,6 +17,7 @@ import { extractApiError } from '../../../utils/apiError';
  * doctor's dashboard.
  *
  * A closed stay is shown but not editable, which is the ICU-1 rule the server already enforces.
+ * Moving out of the ICU is the case header's "Move out of ICU" (the desk roles the server allows).
  */
 const fmt = (v) => {
   if (!v) return '—';
@@ -40,7 +40,6 @@ const IcuStayCard = ({ admissionId, refreshKey = 0 }) => {
   const [editing, setEditing] = useState(false);
   const [choice, setChoice] = useState('');
   const [saving, setSaving] = useState(false);
-  const [dischargeModalOpen, setDischargeModalOpen] = useState(false);
 
   const role = authService.getCurrentUser()?.role;
   // The same two roles the existing endpoint already allows; nothing new is granted here.
@@ -177,45 +176,6 @@ const IcuStayCard = ({ admissionId, refreshKey = 0 }) => {
           </p>
         )}
 
-        {mayEdit && isOpen && (
-          <button
-            type="button"
-            onClick={() => setDischargeModalOpen(true)}
-            className="w-full mt-3 py-2 px-3 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-xs"
-            title="Step-down transfer from ICU to General IPD Ward"
-          >
-            <svg
-              className="w-3.5 h-3.5 text-amber-700"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
-              />
-            </svg>
-            Discharge to General IPD Ward
-          </button>
-        )}
-
-        {dischargeModalOpen && (
-          <IcuDischargeToIpdModal
-            isOpen={dischargeModalOpen}
-            onClose={() => setDischargeModalOpen(false)}
-            initialIcuPatient={{
-              ipdId: admissionId,
-              patientName: current?.patientName,
-              icuWardName: current?.wardName,
-            }}
-            onSuccess={() => {
-              load();
-              window.location.reload();
-            }}
-          />
-        )}
       </div>
       <hr className="my-4" />
     </>

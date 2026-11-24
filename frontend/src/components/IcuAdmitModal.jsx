@@ -11,7 +11,24 @@ import { extractApiError } from '../utils/apiError';
  * 1. Transfer an already-admitted General IPD patient to ICU
  * 2. Admit an OPD patient directly into an ICU ward
  */
-const IcuAdmitModal = ({ isOpen, onClose, onSuccess, initialPatient = null }) => {
+/** The ICU ward to start on: the one "Admit here" came from, else the only ward there is. */
+export const startingWardId = (wards, initialBed) => {
+  if (initialBed?.wardId) return String(initialBed.wardId);
+  return wards?.length === 1 ? String(wards[0].wardId) : '';
+};
+
+/** The bed to pre-select once a ward's free beds are in: the "Admit here" bed, else the only one. */
+export const startingBedId = (beds, initialBed, wardId) => {
+  const sameWard = initialBed?.bedId && String(initialBed.wardId) === String(wardId);
+  const wanted = sameWard ? beds.find((b) => String(b.bedId) === String(initialBed.bedId)) : null;
+  if (wanted) return String(wanted.bedId);
+  return beds.length === 1 ? String(beds[0].bedId) : '';
+};
+
+/**
+ * `initialBed` ({ wardId, bedId }) pre-selects a free ICU bed: "Admit here" on the ICU bed board.
+ */
+const IcuAdmitModal = ({ isOpen, onClose, onSuccess, initialPatient = null, initialBed = null }) => {
   const { success, error: toastError } = useToast();
 
   const [sourceType, setSourceType] = useState('IPD'); // 'IPD' | 'OPD'
@@ -55,9 +72,7 @@ const IcuAdmitModal = ({ isOpen, onClose, onSuccess, initialPatient = null }) =>
           const wards = await icuWardService.getIcuWards().catch(() => []);
           if (isMounted) {
             setIcuWards(wards || []);
-            if (wards && wards.length === 1) {
-              setSelectedIcuWardId(String(wards[0].wardId));
-            }
+            setSelectedIcuWardId(startingWardId(wards, initialBed));
           }
           return;
         }
@@ -69,10 +84,9 @@ const IcuAdmitModal = ({ isOpen, onClose, onSuccess, initialPatient = null }) =>
 
         if (isMounted) {
           setIcuWards(wards || []);
-          if (wards && wards.length === 1) {
-            setSelectedIcuWardId(String(wards[0].wardId));
-          }
-          setIpdPatients(ipdRes || []);
+          setSelectedIcuWardId(startingWardId(wards, initialBed));
+          // Patients already in critical care cannot be moved into it again.
+          setIpdPatients((ipdRes || []).filter((r) => !r.inIcu));
         }
 
         // Load OPD queue for direct admission
@@ -96,7 +110,7 @@ const IcuAdmitModal = ({ isOpen, onClose, onSuccess, initialPatient = null }) =>
     return () => {
       isMounted = false;
     };
-  }, [isOpen, initialPatient]);
+  }, [isOpen, initialPatient, initialBed]);
 
   // Load available beds whenever selected ICU ward changes
   useEffect(() => {
@@ -119,11 +133,7 @@ const IcuAdmitModal = ({ isOpen, onClose, onSuccess, initialPatient = null }) =>
           const bedsList = b || [];
           setAvailableBeds(bedsList);
           setBedsWardId(selectedIcuWardId);
-          if (bedsList.length === 1) {
-            setSelectedBedId(String(bedsList[0].bedId));
-          } else {
-            setSelectedBedId('');
-          }
+          setSelectedBedId(startingBedId(bedsList, initialBed, selectedIcuWardId));
         }
       } catch (err) {
         console.error('Failed to load ICU beds', err);
@@ -140,6 +150,8 @@ const IcuAdmitModal = ({ isOpen, onClose, onSuccess, initialPatient = null }) =>
     return () => {
       isMounted = false;
     };
+    // initialBed is read once per ward load; it does not change while the modal is open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, selectedIcuWardId]);
 
   const validBed =
@@ -258,8 +270,8 @@ const IcuAdmitModal = ({ isOpen, onClose, onSuccess, initialPatient = null }) =>
               </svg>
             </div>
             <div>
-              <h3 className="text-lg font-bold">Admit Patient to ICU</h3>
-              <p className="text-xs text-rose-100">Direct admission or step-up transfer from IPD</p>
+              <h3 className="text-lg font-bold">Move to ICU</h3>
+              <p className="text-xs text-rose-100">An admitted patient into an ICU bed, or a new patient from the OPD queue</p>
             </div>
           </div>
           <button

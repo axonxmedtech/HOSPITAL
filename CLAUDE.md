@@ -171,6 +171,22 @@ Each hospital picks which vitals are captured at OPD entry and can define its ow
   - `BedReservationService.claimFor` is called by admit and change-bed. Only the reserved patient may enter, matched by `patientId`, or by `reservationId` for a hold made by name.
   - Expired holds are ignored.
 - **Desk role:** reception, the admin, or a doctor in Solo/Both mode (`FrontDeskAccess`).
+- **Desk shortcuts (fewer screens):**
+  - The current-patients list is `components/ipd/CurrentAdmissionsTable`, shared by reception and the admin. Its row actions are checkout, admission form, advance/package, print bill and change bed. "Ready to go" shows `DISCHARGE_PLANNED`.
+  - Cases open in-app via `useOpenIpdCase`, and the list's sub-tab and filter live in the URL (`ipdView`, `ipdFilter`), so Back returns to the same list. Never use `window.location.href` for a case.
+  - `DischargeCheckoutModal` is the only discharge UI. It pays every outstanding bill (insurer share taken off the IPD bill), confirms, then prints `/{id}/discharge-pack/pdf` (summary + bill, merged by `PdfService.mergePdfs`) and offers "Mark bed cleaned".
+  - After a discharge the case page stays open.
+  - The admission form opens straight after Admit. "Save & Print" prints the form and the consent as one job (`combinePrintDocuments`).
+- **Doctor's round mode** (`/ipd/round/:id`, `pages/hospital/IpdRoundMode`; `first` = the first patient in ward/bed order):
+  - One screen per patient: latest vitals, running medicines (Stop), `InvestigationsPanel`, `DietCard`, the round note and any number of new medicines (`components/ipd/MedicineDraftRow`, prescription presets add several at once), then "Save & next".
+  - It saves through the existing `addIpdFollowup` and one `addIpdPrescription` per order. There is no batch endpoint: a refused order stays on screen to fix.
+  - Entry points: "Start ward round" and a per-row "Round" on the doctor's IPD list, plus "Round mode" on the case.
+- **ICU = IPD in a critical-care bed:**
+  - A stay opens and closes automatically when the admission's bed moves into or out of an `icu_wards` ward (`IcuStayService.onWardSettled`). There is no separate ICU admission or discharge.
+  - The IPD admitted list (`/hospital/ipd/admissions`) includes ICU patients, flagged `inIcu` + `icuUnitLabel`.
+  - The frontend has one **ICU** tab per role (`pages/hospital/icu/IcuWorkspace`) with Beds (`IcuBedBoard`: open case / Mark cleaned / Admit here), Patients (the shared `CurrentAdmissionsTable`, ICU rows via `toAdmissionRow`), Housekeeping (`IcuHousekeeping`: tasks tied to a real `bedId`) and History.
+  - The old `icu-dashboard` / `icu-beds` tab ids redirect via `LEGACY_ICU_TABS`. "ICU Wards & Beds" stays as admin setup under Rooms.
+  - An ICU patient leaves the hospital through the same `DischargeCheckoutModal`, after the doctor plans it. "Move to ICU" / "Move out of ICU" are bed moves (`changeBed`), offered to the desk roles only.
 
 ### Design docs
 

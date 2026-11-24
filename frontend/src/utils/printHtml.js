@@ -101,4 +101,52 @@ const printHtmlViaIframe = (parsed) => {
   }, 120000);
 };
 
+/**
+ * Scope one document's stylesheet to a wrapper class, so two documents with clashing class names
+ * (".sheet", ".fld") can share one print job. Only plain rules and @page occur in our print
+ * styles: @page is dropped here (the caller keeps one), html/body rules move onto the wrapper.
+ */
+export const scopeCss = (css, scope) =>
+  String(css || '').replace(/([^{}]+)\{([^{}]*)\}/g, (rule, selectors, body) => {
+    const sel = selectors.trim();
+    if (sel.startsWith('@')) return '';
+    const scoped = sel
+      .split(',')
+      .map((part) => {
+        const s = part.trim();
+        if (s === 'html' || s === 'body') return `.${scope}`;
+        return `.${scope} ${s.replace(/^(html|body)\s+/, '')}`;
+      })
+      .join(', ');
+    return `${scoped} {${body}}`;
+  });
+
+/**
+ * Join full HTML documents into one, each starting on a new page: one print dialog instead of
+ * one per document (several dialogs in a row are not reliable).
+ * @param {string[]} documents full HTML document strings
+ * @returns {string} one HTML document
+ */
+export const combinePrintDocuments = (documents) => {
+  const parser = new DOMParser();
+  let pageRule = '';
+  const parts = documents.map((html, i) => {
+    const doc = parser.parseFromString(String(html || ''), 'text/html');
+    const css = [...doc.querySelectorAll('style')].map((st) => st.textContent).join('\n');
+    if (!pageRule) pageRule = (css.match(/@page\s*\{[^{}]*\}/) || [''])[0];
+    doc.querySelectorAll('script, style').forEach((el) => el.remove());
+    return { css: scopeCss(css, `print-doc-${i}`), body: doc.body.innerHTML };
+  });
+  const styles = parts.map((p) => p.css).join('\n');
+  const bodies = parts
+    .map(
+      (p, i) =>
+        `<section class="print-doc-${i}" style="${i < parts.length - 1 ? 'break-after:page;page-break-after:always;' : ''}">${p.body}</section>`
+    )
+    .join('');
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Print</title><style>${pageRule}
+* { box-sizing: border-box; } html, body { margin:0; }
+${styles}</style></head><body>${bodies}</body></html>`;
+};
+
 export default printHtml;

@@ -3,7 +3,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import IcuBedBoard from './IcuBedBoard';
 
 const navigate = vi.fn();
-vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }));
+vi.mock('react-router-dom', () => ({
+  useNavigate: () => navigate,
+  useLocation: () => ({ pathname: '/hospital/receptionist', search: '?tab=icu' }),
+  useSearchParams: () => [new URLSearchParams(), vi.fn()],
+}));
+vi.mock('../../../services/wardService', () => ({ default: { markBedCleaned: vi.fn() } }));
 vi.mock('../../../services/icuService', () => ({
   default: { getBoard: vi.fn(), getUnits: vi.fn(), getUnitTypes: vi.fn() },
 }));
@@ -68,7 +73,10 @@ describe('IcuBedBoard', () => {
     render(<IcuBedBoard />);
 
     fireEvent.click(await screen.findByText('ICU-1-B1'));
-    expect(navigate).toHaveBeenCalledWith('/ipd/555');
+    // In-app, remembering the board so Back returns to it.
+    expect(navigate).toHaveBeenCalledWith('/ipd/555', {
+      state: { from: '/hospital/receptionist?tab=icu' },
+    });
   });
 
   it('does not navigate from an empty bed', async () => {

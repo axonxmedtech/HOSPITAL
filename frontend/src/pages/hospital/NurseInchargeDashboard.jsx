@@ -110,7 +110,8 @@ const NurseInchargeDashboard = () => {
       case 'beds':
         return <WardBedsView />;
       case 'icu-beds':
-        return <IcuBedBoard refreshKey={refreshKey} />;
+        // The incharge turns ICU beds over too (the server allows it for their wards).
+        return <IcuBedBoard refreshKey={refreshKey} canMarkCleaned />;
       case 'coverage':
         return <CoverageView />;
       case 'calendar':

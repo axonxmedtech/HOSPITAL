@@ -139,6 +139,8 @@ class TenantScopingArchTest {
             "IpdAdmissionService#confirmDischarge",
             // Loads the caller's own hospital (letterhead); the id comes from an admission already proven owned.
             "IpdAdmissionService#dischargeSummaryPdf",
+            // Same letterhead load, for the summary-plus-bill print of an admission proven owned.
+            "IpdAdmissionService#dischargePackPdf",
             "IpdAdmissionService#getAdmittedIpdSummariesForCurrentUser",
             "IpdAdmissionService#getIpdAdmissionDetails",
             // The caller's own hospital, to read its modules.

@@ -74,7 +74,7 @@ describe('IcuAdmitModal', () => {
   it('renders modal with From IPD mode by default', async () => {
     render(<IcuAdmitModal isOpen={true} onClose={vi.fn()} onSuccess={vi.fn()} />);
 
-    expect(screen.getByRole('heading', { name: 'Admit Patient to ICU' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Move to ICU' })).toBeInTheDocument();
     expect(screen.getByText(/From Admitted IPD/)).toBeInTheDocument();
 
     await waitFor(() => {

@@ -31,4 +31,6 @@ public class IcuPatientSummaryDTO {
     private String status;
     private String stayPublicId;
     private String admissionReason;
+    /** True once the admission form is completed (shown as "form pending" otherwise). */
+    private Boolean admissionConfirmed;
 }

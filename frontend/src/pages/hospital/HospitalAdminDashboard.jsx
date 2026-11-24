@@ -31,6 +31,7 @@ import FollowUpPanel from '../../components/FollowUpPanel';
 import HistoryDrawer from '../../components/HistoryDrawer';
 import HospitalInventoryTab from '../../components/HospitalInventoryTab';
 import InClinicPresetsManager from '../../components/InClinicPresetsManager';
+import CurrentAdmissionsTable from '../../components/ipd/CurrentAdmissionsTable';
 import IpdAdmitModal from '../../components/IpdAdmitModal';
 import LowStockBanner from '../../components/LowStockBanner';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
@@ -80,7 +81,6 @@ import useOpdCreateError from '../../hooks/useOpdCreateError';
 import useWebSocket from '../../hooks/useWebSocket';
 import authService from '../../services/authService';
 import hospitalService from '../../services/hospitalService';
-import icuService from '../../services/icuService';
 import branchesApi from '../../services/pharmacy/branchesApi';
 import inventoryApi from '../../services/pharmacy/inventoryApi';
 import reportsApi from '../../services/pharmacy/reportsApi';
@@ -96,16 +96,15 @@ import { describeShift, isOnShiftNow } from '../../utils/nurseShift';
 import { createOptionalModuleFetcher } from '../../utils/optionalModule';
 import { printHtml } from '../../utils/printHtml';
 import { printPdf, printBlob } from '../../utils/printPdf';
+import { LEGACY_ICU_TABS } from '../../utils/sidebarNavigation';
 import { validateForm } from '../../utils/validation';
 import AlertThresholdsCard from './AlertThresholdsCard';
 import BillingTable from './BillingTable';
 // BUG-028: single source-of-truth for base URL
 import FilesAndAccessCard from './FilesAndAccessCard';
 import HospitalCalendar from './HospitalCalendar';
-import IcuBedBoard from './icu/IcuBedBoard';
-import IcuDashboard from './icu/IcuDashboard';
 import IcuWardsAndBeds from './icu/IcuWardsAndBeds';
-import IcuDashboardView from './IcuDashboardView';
+import IcuWorkspace from './icu/IcuWorkspace';
 import IpdBillingSettingsCard from './IpdBillingSettingsCard';
 import IpdPackagesCard from './IpdPackagesCard';
 import OtAnalyticsCard from './OtAnalyticsCard';
@@ -114,6 +113,7 @@ import OtPoliciesCard from './OtPoliciesCard';
 import OtRoomsCard from './OtRoomsCard';
 import BillingHistoryView from './pharmacy/BillingHistoryView';
 import SuppliersView from './pharmacy/SuppliersView';
+import AdmissionFormModal from './nurse/AdmissionFormModal';
 import PharmacyInvoiceDetailsCard from './PharmacyInvoiceDetailsCard';
 import PrintPaymentSettingsCard from './PrintPaymentSettingsCard';
 import ScoreSettingsCard from './ScoreSettingsCard';
@@ -203,13 +203,23 @@ const HospitalAdminDashboard = () => {
   const [createTaskModal, setCreateTaskModal] = useState(false);
   const [pharmacists, setPharmacists] = useState([]);
   const [doctorSubView, setDoctorSubView] = useState('Active');
-  const [adminIpdView, setAdminIpdView] = useState('current'); // 'current' | 'history'
+  // In the URL, so Back from an IPD case lands on the same IPD list.
+  const adminIpdView = searchParams.get('ipdView') === 'history' ? 'history' : 'current';
+  const setAdminIpdView = (view) =>
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (view === 'history') next.set('ipdView', 'history');
+      else next.delete('ipdView');
+      next.delete('ipdFilter');
+      return next;
+    });
+  // The new admission whose form opens straight after Admit (one sitting, not two).
+  const [adminAdmitFormId, setAdminAdmitFormId] = useState(null);
   const [deletedDoctors, setDeletedDoctors] = useState([]);
   const [otIncharges, setOtIncharges] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [billing, setBilling] = useState([]);
   const [ipds, setIpds] = useState([]);
-  const [icuPatients, setIcuPatients] = useState([]);
   const [opds, setOpds] = useState([]);
   const [billingStatus, setBillingStatus] = useState('PENDING');
   const [billingCategory, setBillingCategory] = useState(''); // '' = all, 'OPD', 'IPD'
@@ -1548,32 +1558,6 @@ const HospitalAdminDashboard = () => {
             console.error('Failed to load IPD admissions', err);
             setLoadError(safeLoadMessage(err, "Couldn't load admitted patients."));
           }
-        } else if (activeTab === 'icu') {
-          try {
-            const arr = await icuService.getIcuPatients();
-            const filtered = (arr || []).filter((o) => {
-              if (!searchTerm) return true;
-              const q = searchTerm.toLowerCase();
-              const ipdNumber = (o.ipdNumber || '').toString().toLowerCase();
-              const patient = (o.patientName || '').toLowerCase();
-              const doctor = (o.doctorName || '').toLowerCase();
-              const intensivist = (o.intensivistName || '').toLowerCase();
-              const ward = (o.icuWardName || '').toLowerCase();
-              return (
-                ipdNumber.includes(q) ||
-                patient.includes(q) ||
-                doctor.includes(q) ||
-                intensivist.includes(q) ||
-                ward.includes(q)
-              );
-            });
-            setIcuPatients(filtered);
-            setTotalPages(1);
-            setTotalElements(filtered.length);
-          } catch (err) {
-            console.error('Failed to load ICU patients', err);
-            setLoadError(safeLoadMessage(err, "Couldn't load ICU patients."));
-          }
         } else if (activeTab === 'opd') {
           try {
             let dateParam = '';
@@ -2284,8 +2268,6 @@ const HospitalAdminDashboard = () => {
     { id: 'icu', label: 'ICU', icon: null, requiredModule: 'ICU' },
     { id: 'wards', label: 'Wards & Beds', icon: null, requiredModule: 'IPD' },
     { id: 'icu-wards', label: 'ICU Wards', icon: null, requiredModule: 'ICU' },
-    { id: 'icu-dashboard', label: 'ICU Dashboard', icon: null, requiredModule: 'ICU' },
-    { id: 'icu-beds', label: 'ICU Bed Board', icon: null, requiredModule: 'ICU' },
     { id: 'ot', label: 'Operation Theatre', icon: null, requiredModule: 'OT' },
     { id: 'pathology', label: 'Pathology', icon: null, requiredModule: 'PATHOLOGY' },
     // Pharmacy & inventory
@@ -2375,7 +2357,9 @@ const HospitalAdminDashboard = () => {
   // If the active tab is no longer visible (e.g. In-Clinic just got disabled
   // while viewing Medicine Inventory), fall back to the overview tab.
   useEffect(() => {
-    if (!tabs.some((t) => t.id === activeTab)) {
+    if (LEGACY_ICU_TABS[activeTab]) {
+      setActiveTab(LEGACY_ICU_TABS[activeTab]);
+    } else if (!tabs.some((t) => t.id === activeTab)) {
       setActiveTab(defaultTab);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2399,11 +2383,6 @@ const HospitalAdminDashboard = () => {
       tabIds: ['patients', 'appointments', 'opd', 'ipd', 'icu', 'ot', 'pathology'],
     },
     { id: 'group-rooms', label: 'Rooms', tabIds: ['wards', 'icu-wards'] },
-    {
-      id: 'group-critical-care',
-      label: 'Critical Care',
-      tabIds: ['icu-dashboard', 'icu-beds'],
-    },
     {
       id: 'group-staff',
       label: 'Staff',
@@ -3154,7 +3133,7 @@ const HospitalAdminDashboard = () => {
                           ? 'Every admission — discharged, current and cancelled — kept for good'
                           : 'Manage currently admitted patients in general wards'
                         : activeTab === 'icu'
-                          ? 'Manage critical-care patients currently admitted to ICU'
+                          ? 'Beds, patients in critical care, housekeeping and history'
                           : `Manage ${isPharmacyTenant ? 'pharmacy' : user?.hospitalType === 'CLINIC' ? 'clinic' : 'hospital'} ${activeTab} records`
                 }
                 onSearch={
@@ -3189,8 +3168,6 @@ const HospitalAdminDashboard = () => {
                               activeTab !== 'time-slots' &&
                               activeTab !== 'calendar' &&
                               activeTab !== 'icu-wards' &&
-                              activeTab !== 'icu-dashboard' &&
-                              activeTab !== 'icu-beds' &&
                               user?.role === 'HOSPITAL_ADMIN'
                             ? handleAdd
                             : null
@@ -3446,8 +3423,6 @@ const HospitalAdminDashboard = () => {
                 activeTab === 'nurse-tasks' ||
                 activeTab === 'wards' ||
                 activeTab === 'icu-wards' ||
-                activeTab === 'icu-dashboard' ||
-                activeTab === 'icu-beds' ||
                 activeTab === 'billing' ||
                 activeTab === 'daily-collection' ||
                 activeTab === 'fees' ||
@@ -3676,19 +3651,6 @@ const HospitalAdminDashboard = () => {
                   {activeTab === 'icu-wards' && (
                     <div className="p-6">
                       <IcuWardsAndBeds />
-                    </div>
-                  )}
-                  {activeTab === 'icu-dashboard' && (
-                    <div className="p-6">
-                      <IcuDashboard
-                        refreshKey={icuRefreshKey}
-                        onOpenBedBoard={() => setActiveTab('icu-beds')}
-                      />
-                    </div>
-                  )}
-                  {activeTab === 'icu-beds' && (
-                    <div className="p-6">
-                      <IcuBedBoard refreshKey={icuRefreshKey} />
                     </div>
                   )}
                   {activeTab === 'billing' && billing.length === 0 && (
@@ -5730,73 +5692,14 @@ const HospitalAdminDashboard = () => {
                 (loadError ? (
                   <LoadFailureNotice message={loadError} onRetry={() => loadData()} />
                 ) : ipds.length > 0 ? (
-                  <div className="p-4 overflow-x-auto">
-                    <table className="w-full text-sm text-left">
-                      <thead>
-                        <tr>
-                          <th className="px-4 py-2">S.No.</th>
-                          <th className="px-4 py-2">IPD No.</th>
-                          <th className="px-4 py-2">Patient</th>
-                          <th className="px-4 py-2">Doctor</th>
-                          <th className="px-4 py-2">Ward</th>
-                          <th className="px-4 py-2">Bed</th>
-                          <th className="px-4 py-2">Admitted</th>
-                          <th className="px-4 py-2">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {ipds.map((item, idx) => {
-                          const row = item.ipd || item;
-                          const ipdNumber = row.ipdNumber || row.ipd?.ipdNumber || row.ipdNumber;
-                          const patientName = row.patientName || row.patient?.name || '-';
-                          const doctorName = row.doctorName || row.doctor?.name || '-';
-                          const wardName = row.wardName || row.ward?.name || '-';
-                          const bedNumber =
-                            row.bedNumber ||
-                            row.bed?.bedNumber ||
-                            row.bed?.bedCode ||
-                            row.bed?.name ||
-                            '-';
-                          const admittedAt =
-                            row.admissionDateTime ||
-                            row.admissionDatetime ||
-                            row.ipd?.admissionDatetime;
-                          const status = row.status || row.ipd?.status || 'ADMITTED';
-                          const theId =
-                            row.ipdId || row.id || row.ipd?.id || row.ipd?.ipdId || null;
-                          return (
-                            <tr key={idx} className="border-t">
-                              <td className="px-4 py-3">{page * pageSize + idx + 1}</td>
-                              <td className="px-4 py-3">{ipdNumber || row.id}</td>
-                              <td className="px-4 py-3">
-                                {theId ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      window.location.href = `/ipd/${theId}`;
-                                    }}
-                                    className="font-medium text-blue-600 hover:text-blue-800 hover:underline text-left cursor-pointer"
-                                    title="View IPD details"
-                                  >
-                                    {patientName}
-                                  </button>
-                                ) : (
-                                  <span>{patientName}</span>
-                                )}
-                              </td>
-                              <td className="px-4 py-3">{doctorName}</td>
-                              <td className="px-4 py-3">{wardName}</td>
-                              <td className="px-4 py-3">{bedNumber}</td>
-                              <td className="px-4 py-3">
-                                {admittedAt ? new Date(admittedAt).toLocaleString() : '-'}
-                              </td>
-                              <td className="px-4 py-3">{status}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                  <CurrentAdmissionsTable
+                    rows={ipds}
+                    canDesk
+                    isAdmin
+                    hasBilling={modules.includes('BILLING')}
+                    hasIcu={modules.includes('ICU')}
+                    onChanged={() => loadData(page, pageSize, false)}
+                  />
                 ) : (
                   <EmptyState
                     icon={null}
@@ -5804,7 +5707,14 @@ const HospitalAdminDashboard = () => {
                     message="Use Admit Patient (top right) to admit a patient, or Admit to IPD on an OPD visit the doctor recommended."
                   />
                 ))}
-              {activeTab === 'icu' && <IcuDashboardView />}
+              {activeTab === 'icu' && (
+                <IcuWorkspace
+                  canDesk
+                  canHousekeep
+                  isAdmin
+                  hasBilling={modules.includes('BILLING')}
+                />
+              )}
               {activeTab === 'audit-logs' && (
                 <div className="space-y-6">
                   {renderBranchFilterBar()}
@@ -6681,9 +6591,17 @@ const HospitalAdminDashboard = () => {
             setAdminIpdOpdForAdmit(null);
           }}
           opd={adminIpdOpdForAdmit}
-          onSuccess={() => {
-            loadData();
+          onSuccess={(admission) => {
+            loadData(page, pageSize, false);
+            if (admission?.id) setAdminAdmitFormId(admission.id);
           }}
+        />
+      )}
+      {adminAdmitFormId && (
+        <AdmissionFormModal
+          admissionId={Number(adminAdmitFormId)}
+          onClose={() => setAdminAdmitFormId(null)}
+          onConfirmed={() => loadData(page, pageSize, false)}
         />
       )}
 

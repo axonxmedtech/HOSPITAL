@@ -51,6 +51,9 @@ public class IpdAdmissionDetailsDTO {
         public String admissionType;
         public String ward;
         public String bed;
+        /** The bed's id and state, so the desk can mark it cleaned right after the discharge. */
+        public Long bedId;
+        public String bedStatus;
         public String doctor;
         /** The attending doctor's id, so the page can offer "Change doctor" without them. */
         public Long doctorId;

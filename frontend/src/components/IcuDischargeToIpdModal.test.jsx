@@ -64,7 +64,7 @@ describe('IcuDischargeToIpdModal', () => {
   it('renders discharge modal and loads ICU patients and general wards', async () => {
     render(<IcuDischargeToIpdModal isOpen={true} onClose={vi.fn()} onSuccess={vi.fn()} />);
 
-    expect(screen.getByRole('heading', { name: 'Discharge from ICU to IPD' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Move out of ICU' })).toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByText(/Kavita Verma/)).toBeInTheDocument();
@@ -92,13 +92,13 @@ describe('IcuDischargeToIpdModal', () => {
     });
     await user.selectOptions(selects[2], '1001');
 
-    const submitBtn = screen.getByRole('button', { name: 'Discharge to IPD Ward' });
+    const submitBtn = screen.getByRole('button', { name: 'Move to ward bed' });
     await user.click(submitBtn);
 
     await waitFor(() => {
       expect(hospitalService.changeBed).toHaveBeenCalledWith(102, 1001, 10);
       expect(mockSuccess).toHaveBeenCalledWith(
-        'Patient successfully discharged from ICU and moved to General IPD ward'
+        'Moved out of ICU to the ward bed. The ICU bed is waiting for cleaning.'
       );
       expect(onSuccess).toHaveBeenCalled();
       expect(onClose).toHaveBeenCalled();
@@ -142,7 +142,7 @@ describe('IcuDischargeToIpdModal', () => {
     });
     await user.selectOptions(selects[1], '1001');
 
-    const submitBtn = screen.getByRole('button', { name: 'Discharge to IPD Ward' });
+    const submitBtn = screen.getByRole('button', { name: 'Move to ward bed' });
     await user.click(submitBtn);
 
     await waitFor(() => {
@@ -180,7 +180,7 @@ describe('IcuDischargeToIpdModal', () => {
       expect(selects[2]).toHaveValue('1001');
       await user.selectOptions(selects[1], '11');
       expect(selects[2]).toHaveValue('');
-      const submit = screen.getByRole('button', { name: 'Discharge to IPD Ward' });
+      const submit = screen.getByRole('button', { name: 'Move to ward bed' });
       expect(submit).toBeDisabled();
       await user.click(submit);
       expect(hospitalService.changeBed).not.toHaveBeenCalled();
@@ -224,7 +224,7 @@ describe('IcuDischargeToIpdModal', () => {
     await act(async () => resolveOld([{ bedId: 1001, bedCode: 'OLD' }]));
     expect(selects[2]).toHaveValue('1002');
     expect(screen.queryByText(/OLD/)).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Discharge to IPD Ward' }));
+    await user.click(screen.getByRole('button', { name: 'Move to ward bed' }));
     expect(hospitalService.changeBed).toHaveBeenCalledExactlyOnceWith(102, 1002, 11);
   });
 });

@@ -48,11 +48,11 @@ import hospitalService from '../../services/hospitalService';
 import otService from '../../services/otService';
 import { safeLoadMessage, extractApiError } from '../../utils/apiError';
 import { canManageBilling } from '../../utils/billingAccess';
+import { LEGACY_ICU_TABS } from '../../utils/sidebarNavigation';
 import { rangeFor, rangeParams } from '../../utils/dateRange';
 import { createOptionalModuleFetcher } from '../../utils/optionalModule';
 import BillingTable from './BillingTable';
-import IcuBedBoard from './icu/IcuBedBoard';
-import IcuDashboard from './icu/IcuDashboard';
+import IcuWorkspace from './icu/IcuWorkspace';
 import OtBoard from './ot/OtBoard';
 import OtWorkspace from './ot/OtWorkspace';
 
@@ -934,6 +934,14 @@ const DoctorDashboard = () => {
   const isSolo = user?.receptionMode === 'SOLO';
   // SOLO and BOTH both put the front desk in the doctor's hands; billing is a separate axis.
   const canDoctorManageReception = user?.receptionMode === 'SOLO' || user?.receptionMode === 'BOTH';
+
+  /** Round mode from this patient (or the first on the list); Exit round returns to this list. */
+  const startRound = (fromId) => {
+    // "first" = the first patient in ward and bed order, which round mode works out.
+    navigate(`/ipd/round/${fromId ?? 'first'}`, {
+      state: { from: `${window.location.pathname}${window.location.search}` },
+    });
+  };
   // Same rule as the backend, including the BILLING module (see utils/billingAccess).
   const hasBilling = canManageBilling(user);
   const hasInClinic = user?.inClinic !== false;
@@ -952,8 +960,7 @@ const DoctorDashboard = () => {
     ...(hasBilling ? [{ id: 'billing', label: 'Billing', icon: null }] : []),
     ...(hasBilling ? [{ id: 'daily-collection', label: 'Daily Collection', icon: null }] : []),
     ...(hasOT ? [{ id: 'ot', label: 'Operation Theatre', icon: null }] : []),
-    ...(hasICU ? [{ id: 'icu-dashboard', label: 'ICU Dashboard', icon: null }] : []),
-    ...(hasICU ? [{ id: 'icu-beds', label: 'ICU Bed Board', icon: null }] : []),
+    ...(hasICU ? [{ id: 'icu', label: 'ICU', icon: null }] : []),
     ...(canDoctorManageReception && hasInClinic && hasMedicalInventory
       ? [{ id: 'inventory', label: 'Medicine Inventory', icon: null }]
       : []),
@@ -965,7 +972,9 @@ const DoctorDashboard = () => {
   // Fallback if the URL parameter tab is not currently valid/visible
   useEffect(() => {
     const isValidTab = tabs.some((t) => t.id === activeTab);
-    if (!isValidTab) {
+    if (LEGACY_ICU_TABS[activeTab]) {
+      setActiveTab(LEGACY_ICU_TABS[activeTab]);
+    } else if (!isValidTab) {
       setActiveTab('overview');
     }
   }, [user, activeTab, tabs]);
@@ -1938,6 +1947,19 @@ const DoctorDashboard = () => {
                   )
                 ) : opds.length > 0 ? (
                   <div className="p-4 overflow-x-auto">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                      <p className="text-sm text-gray-600">
+                        Round mode shows one patient at a time, everything on one screen, then
+                        Save &amp; next.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => startRound()}
+                        className="px-4 py-2 rounded-lg bg-gray-900 hover:bg-gray-800 text-white text-sm font-semibold"
+                      >
+                        Start ward round ({opds.length})
+                      </button>
+                    </div>
                     <table className="w-full text-sm text-left">
                       <thead>
                         <tr>
@@ -1949,6 +1971,7 @@ const DoctorDashboard = () => {
                           <th className="px-4 py-2">Bed</th>
                           <th className="px-4 py-2">Admitted</th>
                           <th className="px-4 py-2">Status</th>
+                          <th className="px-4 py-2 text-right">Round</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1990,7 +2013,14 @@ const DoctorDashboard = () => {
                                 )}
                               </td>
                               <td className="px-4 py-3">{doctorName}</td>
-                              <td className="px-4 py-3">{wardName}</td>
+                              <td className="px-4 py-3">
+                                {wardName}
+                                {row.inIcu && (
+                                  <span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-bold rounded bg-rose-100 text-rose-700">
+                                    {row.icuUnitLabel || 'ICU'}
+                                  </span>
+                                )}
+                              </td>
                               <td className="px-4 py-3">{bedNumber}</td>
                               <td className="px-4 py-3">
                                 {admittedAt ? new Date(admittedAt).toLocaleString() : '-'}
@@ -2013,6 +2043,17 @@ const DoctorDashboard = () => {
                                     <span className="text-[10px] text-gray-500">{status}</span>
                                   )}
                                 </div>
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                {theId && (
+                                  <button
+                                    type="button"
+                                    onClick={() => startRound(theId)}
+                                    className="px-2.5 py-1 rounded border border-gray-300 text-xs font-semibold hover:bg-gray-50"
+                                  >
+                                    Round
+                                  </button>
+                                )}
                               </td>
                             </tr>
                           );
@@ -2105,10 +2146,9 @@ const DoctorDashboard = () => {
                   <OtBoard rows={otRows} mode="doctor" />
                 ))}
 
-              {activeTab === 'icu-dashboard' && (
-                <IcuDashboard onOpenBedBoard={() => setActiveTab('icu-beds')} />
+              {activeTab === 'icu' && (
+                <IcuWorkspace canDesk={canDoctorManageReception} hasBilling={hasBilling} />
               )}
-              {activeTab === 'icu-beds' && <IcuBedBoard />}
             </div>
           )}
         </main>

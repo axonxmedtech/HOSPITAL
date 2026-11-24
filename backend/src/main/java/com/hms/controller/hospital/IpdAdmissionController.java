@@ -172,7 +172,7 @@ public class IpdAdmissionController {
     @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<org.springframework.core.io.InputStreamResource> advanceReceipt(@PathVariable("paymentId") Long paymentId) {
         return ResponseEntity.ok()
-                .header("Content-Disposition", "inline; filename=advance_receipt_" + paymentId + ".pdf")
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "inline; filename=advance_receipt_" + paymentId + ".pdf")
                 .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
                 .body(new org.springframework.core.io.InputStreamResource(ipdAdmissionService.advanceReceiptPdf(paymentId)));
     }
@@ -207,7 +207,19 @@ public class IpdAdmissionController {
     public ResponseEntity<org.springframework.core.io.InputStreamResource> dischargeSummaryPdf(@PathVariable("id") Long id) {
         java.io.ByteArrayInputStream pdf = ipdAdmissionService.dischargeSummaryPdf(id);
         return ResponseEntity.ok()
-                .header("Content-Disposition", "inline; filename=discharge_summary_" + id + ".pdf")
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "inline; filename=discharge_summary_" + id + ".pdf")
+                .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                .body(new org.springframework.core.io.InputStreamResource(pdf));
+    }
+
+    /** The discharge summary and the final bill as one PDF, so the desk prints once. */
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.ADMISSION, action = PatientRecordAccess.Action.PRINT, label = "DISCHARGE_PACK")
+    @GetMapping("/{id}/discharge-pack/pdf")
+    @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN')")
+    public ResponseEntity<org.springframework.core.io.InputStreamResource> dischargePackPdf(@PathVariable("id") Long id) {
+        java.io.ByteArrayInputStream pdf = ipdAdmissionService.dischargePackPdf(id);
+        return ResponseEntity.ok()
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "inline; filename=discharge_pack_" + id + ".pdf")
                 .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
                 .body(new org.springframework.core.io.InputStreamResource(pdf));
     }
