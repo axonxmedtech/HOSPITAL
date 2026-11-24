@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import DietCard from '../../../components/ipd/DietCard';
 import DoctorRoundsTimeline from '../../../components/ipd/DoctorRoundsTimeline';
+import GroupedTabs from '../../../components/ipd/GroupedTabs';
 import InvestigationsPanel from '../../../components/ipd/InvestigationsPanel';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import PatientDocumentsPanel from '../../../components/PatientDocumentsPanel';
@@ -206,18 +207,8 @@ const NursePatientDetail = ({ admissionId, onBack, refreshKey }) => {
 
       <OtNotesSection admissionId={admissionId} />
 
-      {/* Tabs */}
-      <div className="flex gap-1 border-b border-gray-200">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${tab === t.id ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {/* Tabs, grouped: Summary, Orders, Charts, Forms. */}
+      <GroupedTabs tabs={tabs} value={tab} onChange={setTab} />
 
       {tab === 'vitals' && (
         <VitalsPanel
