@@ -97,7 +97,7 @@ const facilitySteps = [
   {
     id: 'nurses',
     title: 'Add nurses and give each ward an in-charge',
-    text: 'Staff → Nurses → Add Nurse, choosing each nurse’s ward (a nurse without a ward is seen by no in-charge). Then on Rooms → Wards & Beds pick the Nurse Incharge on each ward card.',
+    text: 'Nursing → Nurses → Add Nurse, choosing each nurse’s ward (a nurse without a ward is seen by no in-charge). Then on Rooms → Wards & Beds pick the Nurse Incharge on each ward card.',
     goTo: 'nurses',
     modules: ['NURSING'],
   },

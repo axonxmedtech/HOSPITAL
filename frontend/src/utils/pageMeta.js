@@ -35,7 +35,7 @@ const PAGES = {
     search: 'Search by patient or doctor',
   },
   ot: { subtitle: 'Surgery requests, the theatre board and history' },
-  pathology: { subtitle: 'Lab tests ordered and their results' },
+  pathology: { subtitle: 'Coming soon — lab tests are ordered from the IPD case for now' },
   wards: { subtitle: 'General wards, their beds, prices and nurse in-charge' },
   'icu-wards': { subtitle: 'Critical-care units, their beds and daily rates' },
   doctors: {

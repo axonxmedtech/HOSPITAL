@@ -26,7 +26,7 @@ const SCREENS = new Set(
     // pharmacist
     'dashboard billing billing-history prescriptions inventory purchase suppliers manufacturers returns expiry reports audit-logs settings',
     // nurse, nurse in-charge, OT
-    'due-now my-patients my-tasks my-shifts my-attendance forms icu-beds my-nurses my-ward-patients unassigned-patients schedule attendance beds coverage calendar board requests day',
+    'due-now my-patients my-tasks my-shifts my-attendance forms icu-beds my-nurses my-ward-patients unassigned-patients schedule attendance beds coverage calendar board requests day history',
     // super admin
     'dashboard medicines audit_logs help_insights hospital:hospitals hospital:plans hospital:tickets hospital:faqs clinic:clinics pharmacy:pharmacies',
   ]

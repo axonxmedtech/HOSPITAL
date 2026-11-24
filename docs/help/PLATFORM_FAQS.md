@@ -9,7 +9,7 @@ Keep FAQs about the account, the plan and support. How-to questions about a scre
 ## All facility types (add under Hospital, Clinic and Pharmacy)
 
 **Q: How do I add staff and give them a login?**
-A: Open Staff and choose the role (Doctors, Receptionists, Pharmacists, Nurses). Add the person with their email and a temporary password; they change it after their first login. How many staff logins you can have depends on your plan (Administration → Plan & Usage).
+A: Open Staff and choose the role (Doctors, Receptionists, Pharmacists, OT In-charges); nurses are under Nursing → Nurses. Add the person with their email and a temporary password; they change it after their first login. How many staff logins you can have depends on your plan (Administration → Plan & Usage).
 
 **Q: A staff member forgot their password.**
 A: Passwords are reset by the facility admin — there is no self-service reset, so nobody can take over an account from the login page. Open Staff, find the person, and set a new temporary password from their row menu → Edit; they change it after signing in.
@@ -35,7 +35,7 @@ A: Yes. Reports → Audit Logs lists every important action (bills, admissions, 
 A: IPD discharges are finished in one **Discharge checkout** pop-up (collect, return any advance, print summary + bill, free the bed). Reception sees **Ready to go** patients as soon as the doctor plans a discharge. ICU is one screen (Beds · Patients · Housekeeping · History). Doctors have **Round mode** for the ward round. Nurses start on **Due Now**, which lists every dose, vitals round and sample due. The patient chart's tabs are grouped into Summary, Orders, Charts and Forms.
 
 **Q: How do I set up wards, ICU and nurses?**
-A: Rooms → Wards & Beds for general wards, Rooms → ICU Wards for critical care. Staff → Nurses adds nurses; set a ward's nurse in-charge on the ward card. Help → Guides → "Set up your hospital" walks through it in order.
+A: Rooms → Wards & Beds for general wards, Rooms → ICU Wards for critical care. Nursing → Nurses adds nurses; set a ward's nurse in-charge on the ward card. Help → Guides → "Set up your hospital" walks through it in order.
 
 ## Clinic only
 

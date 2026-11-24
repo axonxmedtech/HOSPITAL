@@ -42,7 +42,7 @@ export const SHOTS = [
     screen: 'Plan & Usage',
     caption: 'Administration → Plan & Usage',
   },
-  { id: 'admin-nurses', account: 'admin', screen: 'Nurses', caption: 'Staff → Nurses' },
+  { id: 'admin-nurses', account: 'admin', screen: 'Nurses', caption: 'Nursing → Nurses' },
   {
     id: 'admin-ot-theatres',
     account: 'admin',
