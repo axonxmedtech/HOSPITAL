@@ -11,6 +11,20 @@ import { extractApiError } from '../utils/apiError';
  * 1. Transfer an already-admitted General IPD patient to ICU
  * 2. Admit an OPD patient directly into an ICU ward
  */
+/** The ICU ward to start on: the one "Admit here" came from, else the only ward there is. */
+export const startingWardId = (wards, initialBed) => {
+  if (initialBed?.wardId) return String(initialBed.wardId);
+  return wards?.length === 1 ? String(wards[0].wardId) : '';
+};
+
+/** The bed to pre-select once a ward's free beds are in: the "Admit here" bed, else the only one. */
+export const startingBedId = (beds, initialBed, wardId) => {
+  const sameWard = initialBed?.bedId && String(initialBed.wardId) === String(wardId);
+  const wanted = sameWard ? beds.find((b) => String(b.bedId) === String(initialBed.bedId)) : null;
+  if (wanted) return String(wanted.bedId);
+  return beds.length === 1 ? String(beds[0].bedId) : '';
+};
+
 /**
  * `initialBed` ({ wardId, bedId }) pre-selects a free ICU bed: "Admit here" on the ICU bed board.
  */
@@ -58,10 +72,7 @@ const IcuAdmitModal = ({ isOpen, onClose, onSuccess, initialPatient = null, init
           const wards = await icuWardService.getIcuWards().catch(() => []);
           if (isMounted) {
             setIcuWards(wards || []);
-            if (initialBed?.wardId) setSelectedIcuWardId(String(initialBed.wardId));
-            else if (wards && wards.length === 1) {
-              setSelectedIcuWardId(String(wards[0].wardId));
-            }
+            setSelectedIcuWardId(startingWardId(wards, initialBed));
           }
           return;
         }
@@ -73,10 +84,7 @@ const IcuAdmitModal = ({ isOpen, onClose, onSuccess, initialPatient = null, init
 
         if (isMounted) {
           setIcuWards(wards || []);
-          if (initialBed?.wardId) setSelectedIcuWardId(String(initialBed.wardId));
-          else if (wards && wards.length === 1) {
-            setSelectedIcuWardId(String(wards[0].wardId));
-          }
+          setSelectedIcuWardId(startingWardId(wards, initialBed));
           // Patients already in critical care cannot be moved into it again.
           setIpdPatients((ipdRes || []).filter((r) => !r.inIcu));
         }
@@ -125,17 +133,7 @@ const IcuAdmitModal = ({ isOpen, onClose, onSuccess, initialPatient = null, init
           const bedsList = b || [];
           setAvailableBeds(bedsList);
           setBedsWardId(selectedIcuWardId);
-          const wanted =
-            initialBed?.bedId &&
-            String(initialBed.wardId) === String(selectedIcuWardId) &&
-            bedsList.find((bed) => String(bed.bedId) === String(initialBed.bedId));
-          if (wanted) {
-            setSelectedBedId(String(wanted.bedId));
-          } else if (bedsList.length === 1) {
-            setSelectedBedId(String(bedsList[0].bedId));
-          } else {
-            setSelectedBedId('');
-          }
+          setSelectedBedId(startingBedId(bedsList, initialBed, selectedIcuWardId));
         }
       } catch (err) {
         console.error('Failed to load ICU beds', err);

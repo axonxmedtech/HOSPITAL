@@ -5,7 +5,7 @@ import hospitalService from '../../services/hospitalService';
 import wardService from '../../services/wardService';
 import { printBlob } from '../../utils/printPdf';
 import CurrentAdmissionsTable from './CurrentAdmissionsTable';
-import DischargeCheckoutModal, { checkoutMoney } from './DischargeCheckoutModal';
+import DischargeCheckoutModal, { checkoutMoney, payInTurn } from './DischargeCheckoutModal';
 
 vi.mock('../../services/hospitalService', () => ({
   default: {
@@ -239,5 +239,29 @@ describe('CurrentAdmissionsTable', () => {
     expect(within(row).queryByText('Discharge checkout')).toBeNull();
     fireEvent.click(await screen.findByText('Complete admission form'));
     expect(screen.getByText('Admission form for 3')).toBeInTheDocument();
+  });
+});
+
+describe('payInTurn', () => {
+  it('pays one bill after another and reports each payment', async () => {
+    const order = [];
+    hospitalService.payBilling.mockImplementation(async (id) => {
+      order.push(`pay ${id}`);
+    });
+    const paid = vi.fn(() => order.push('paid'));
+    await payInTurn(
+      [
+        { billingId: 1, due: 10 },
+        { billingId: 2, due: 20 },
+      ],
+      { mode: 'CASH', reference: null },
+      paid
+    );
+    expect(order).toEqual(['pay 1', 'paid', 'pay 2', 'paid']);
+    expect(hospitalService.payBilling).toHaveBeenLastCalledWith(2, {
+      mode: 'CASH',
+      reference: null,
+      amount: 20,
+    });
   });
 });

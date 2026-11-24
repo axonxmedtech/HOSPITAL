@@ -10,7 +10,7 @@ const ROUTES = ['ORAL', 'IV', 'IM'];
 
 const todayStr = () => new Date().toLocaleDateString('en-CA');
 const days = (text) => {
-  const m = String(text || '').match(/\d+/);
+  const m = /\d+/.exec(String(text || ''));
   return m ? Number(m[0]) : '';
 };
 
@@ -46,7 +46,8 @@ export const draftProblem = (d) => {
   if (!d.medicineName.trim()) return 'medicine name';
   if (!d.dose.trim()) return 'dose';
   if (!d.frequency.trim()) return 'frequency';
-  if (!(Number(d.durationDays) > 0)) return 'duration (days)';
+  const daysGiven = Number(d.durationDays);
+  if (!Number.isFinite(daysGiven) || daysGiven <= 0) return 'duration (days)';
   return '';
 };
 
@@ -250,7 +251,7 @@ export default function MedicineDraftRow({ draft, onChange, onRemove, index }) {
         <FrequencyInput value={draft.frequency} onChange={(v) => set({ frequency: v })} />
         {picked && (
           <label className="text-xs text-gray-600 flex items-center gap-1">
-            Units/dose
+            Units/dose{' '}
             <input
               type="number"
               min="1"

@@ -27,6 +27,12 @@ export const shortDateTime = (v) => {
   });
 };
 
+/** The count bubble on a filter chip: amber when patients are waiting to go. */
+const countTone = (urgent, active) => {
+  if (urgent) return 'bg-amber-500 text-white';
+  return active ? 'bg-primary-100' : 'bg-slate-100';
+};
+
 const FILTERS = [
   { value: 'all', label: 'All', test: () => true },
   { value: 'ready', label: 'Ready to go', test: isReadyToGo },
@@ -37,10 +43,12 @@ const FILTERS = [
 export const useOpenIpdCase = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  return (ipdId, action) =>
-    navigate(`/ipd/${ipdId}${action ? `?action=${action}` : ''}`, {
+  return (ipdId, action) => {
+    const query = action ? `?action=${action}` : '';
+    navigate(`/ipd/${ipdId}${query}`, {
       state: { from: `${location.pathname}${location.search}` },
     });
+  };
 };
 
 /** Advance and package for one admission, without opening the case. */
@@ -56,10 +64,36 @@ function MoneyModal({ ipdId, isAdmin, onClose, onChanged }) {
     }
   };
   useEffect(() => {
-    reload();
+    // reload() reports its own failure; nothing is left to handle here.
+    reload().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ipdId]);
   const billing = data?.billing;
+  let body;
+  if (!data) {
+    body = <p className="text-sm text-gray-500">Loading…</p>;
+  } else if (!billing) {
+    body = <p className="text-sm text-gray-500">This admission has no bill.</p>;
+  } else {
+    body = (
+      <>
+        <p className="text-sm text-gray-600">
+          {data.patient?.name} · {data.ipdNumber} · Bill ₹{billing.totalAmount} · Paid ₹
+          {billing.paidAmount} · Balance ₹{billing.balance}
+        </p>
+        <IpdMoneyPanel
+          ipdId={ipdId}
+          data={data}
+          isAdmin={isAdmin}
+          canAct={data.status === 'ADMITTED' || data.status === 'DISCHARGE_PLANNED'}
+          onChanged={async () => {
+            await reload();
+            onChanged?.();
+          }}
+        />
+      </>
+    );
+  }
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
       <dialog
@@ -71,28 +105,7 @@ function MoneyModal({ ipdId, isAdmin, onClose, onChanged }) {
         <h3 id="ipd-money-title" className="text-lg font-semibold mb-1">
           Advance &amp; package
         </h3>
-        {!data ? (
-          <p className="text-sm text-gray-500">Loading…</p>
-        ) : !billing ? (
-          <p className="text-sm text-gray-500">This admission has no bill.</p>
-        ) : (
-          <>
-            <p className="text-sm text-gray-600">
-              {data.patient?.name} · {data.ipdNumber} · Bill ₹{billing.totalAmount} · Paid ₹
-              {billing.paidAmount} · Balance ₹{billing.balance}
-            </p>
-            <IpdMoneyPanel
-              ipdId={ipdId}
-              data={data}
-              isAdmin={isAdmin}
-              canAct={data.status === 'ADMITTED' || data.status === 'DISCHARGE_PLANNED'}
-              onChanged={async () => {
-                await reload();
-                onChanged?.();
-              }}
-            />
-          </>
-        )}
+        {body}
         <div className="flex justify-end mt-4">
           <button
             type="button"
@@ -263,7 +276,8 @@ export default function CurrentAdmissionsTable({
 
   return (
     <div className="p-4">
-      <div className="flex flex-wrap gap-2 mb-4" role="group" aria-label="Filter admissions">
+      <fieldset className="flex flex-wrap gap-2 mb-4 border-0 p-0 m-0 min-w-0">
+        <legend className="sr-only">Filter admissions</legend>
         {FILTERS.map((f) => {
           const n = count(f);
           const active = filter === f.value;
@@ -282,16 +296,14 @@ export default function CurrentAdmissionsTable({
             >
               {f.label}
               <span
-                className={`min-w-5 px-1.5 rounded-full text-[11px] leading-5 text-center ${
-                  urgent ? 'bg-amber-500 text-white' : active ? 'bg-primary-100' : 'bg-slate-100'
-                }`}
+                className={`min-w-5 px-1.5 rounded-full text-[11px] leading-5 text-center ${countTone(urgent, active)}`}
               >
                 {n}
               </span>
             </button>
           );
         })}
-      </div>
+      </fieldset>
 
       {shown.length === 0 ? (
         <p className="text-sm text-slate-500 py-8 text-center">
