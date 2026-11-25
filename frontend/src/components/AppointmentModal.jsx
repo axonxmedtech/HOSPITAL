@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useToast } from '../context/ToastContext';
 import hospitalService from '../services/hospitalService';
 import { extractApiError } from '../utils/apiError';
@@ -13,6 +13,9 @@ import NoDoctorsHint from './NoDoctorsHint';
 /**
  * AppointmentModal - Shared modal for creating appointments
  */
+// `patients` is no longer read: the patient field searches the whole hospital on the server as
+// the user types, so a hospital with more patients than one page still finds every one of them.
+// eslint-disable-next-line no-unused-vars
 const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => {
   const [formData, setFormData] = useState({});
   const [isNewPatient, setIsNewPatient] = useState(false);
@@ -55,9 +58,31 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
       setFilteredPatients([]);
       setSelectedSlot(null);
       setBookedSlots([]);
-      if (patients) setFilteredPatients(patients);
     }
-  }, [isOpen, patients]);
+  }, [isOpen]);
+
+  // Server-side patient search (name or phone), debounced. The newest answer wins, so a slow
+  // reply to an earlier keystroke cannot overwrite the results for what is typed now.
+  const searchSeq = useRef(0);
+  useEffect(() => {
+    const term = (formData.patientName || '').trim();
+    if (!showPatientDropdown || formData.patientId || term.length < 2) {
+      if (term.length < 2) setFilteredPatients([]);
+      return undefined;
+    }
+    const seq = ++searchSeq.current;
+    const t = setTimeout(async () => {
+      try {
+        const data = await hospitalService.getPatients(term, 0, 10);
+        if (seq === searchSeq.current) {
+          setFilteredPatients(Array.isArray(data) ? data : data?.content || []);
+        }
+      } catch {
+        if (seq === searchSeq.current) setFilteredPatients([]);
+      }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [formData.patientName, formData.patientId, showPatientDropdown]);
 
   // Auto-select doctor if only one is available
   useEffect(() => {
@@ -72,11 +97,14 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
       if (formData.doctorId && formData.appointmentDate) {
         setLoadingSlots(true);
         try {
-          // Fetch all appointments for doctor to find booked slots
-          // In a real app, we would have a specific endpoint for 'slots'
-          const appointments = await hospitalService.getAppointmentsByDoctor(formData.doctorId);
+          // Only that day's appointments, not the doctor's whole history.
+          const appointments = await hospitalService.getAppointmentsByDoctor(
+            formData.doctorId,
+            'date',
+            formData.appointmentDate
+          );
 
-          const booked = appointments
+          const booked = (appointments || [])
             .filter(
               (app) =>
                 app.appointmentDate === formData.appointmentDate && app.status !== 'CANCELLED'
@@ -111,32 +139,12 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
     }
   };
 
+  // Typing clears any earlier choice; the search effect above fetches matches, and the user
+  // picks one from the list (an exact-name guess could pick the wrong one of two namesakes).
   const handlePatientSearch = (searchValue) => {
     handleChange('patientName', searchValue);
-
-    if (!searchValue) {
-      setFilteredPatients(patients || []);
-      handleChange('patientId', null);
-      setShowPatientDropdown(true);
-      return;
-    }
-
-    const lowerTerm = searchValue.toLowerCase();
-    const filtered = (patients || []).filter(
-      (p) => p.name.toLowerCase().includes(lowerTerm) || (p.phone && p.phone.includes(lowerTerm))
-    );
-    setFilteredPatients(filtered);
+    handleChange('patientId', null);
     setShowPatientDropdown(true);
-
-    // Auto-select exact match
-    const exactMatch = filtered.find(
-      (p) => `${p.name} - ${p.phone}` === searchValue || p.name === searchValue
-    );
-    if (exactMatch) {
-      handleChange('patientId', exactMatch.id);
-    } else {
-      handleChange('patientId', null);
-    }
   };
 
   const selectPatient = (patient) => {
@@ -447,7 +455,9 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, doctors, patients }) => 
                       </ul>
                     ) : (
                       <div className="px-4 py-3 text-sm text-gray-500 text-center">
-                        No patients found.
+                        {(formData.patientName || '').trim().length < 2
+                          ? 'Type at least 2 letters of the name or phone.'
+                          : 'No patients found.'}
                         <button
                           onClick={() => setIsNewPatient(true)}
                           className="text-primary-600 hover:text-primary-800 font-medium ml-1"

@@ -141,7 +141,7 @@ const PurchaseForm = ({ isOpen, onClose, onSave, initial = null }) => {
 
   const fetchSuppliers = async () => {
     try {
-      const resp = await suppliersApi.getAll('', 0, 100);
+      const resp = await suppliersApi.getAll('', 0, 1000);
       setSuppliers(resp.content || []);
       setSuppliersLoaded(true);
     } catch (err) {

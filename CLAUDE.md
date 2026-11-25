@@ -104,7 +104,8 @@ Special flag: `isSingleDoctor` on a `HOSPITAL_ADMIN` user lets that admin also a
 - **Concurrency & retries:**
   - Anything that books a doctor's slot calls `DoctorRepository.lockById` and reads the day with `AppointmentRepository.lockActiveForDoctorOnDate` (a locking read), inside a transaction. A plain read can miss a booking another desk just committed.
   - Money and stock writes take a client `idempotencyKey`: OPD registration, dispensing, and bill payments (`billing_payments.idempotency_key`). The frontend mints one per act with `utils/idempotencyKey`, and a retry with the same key is applied once.
-  - List endpoints wrap the request `size` in `util/Pages.cap(size)` (max 1000); `PagesCapTest` fails on a raw `PageRequest.of(page, size)`.
+  - List endpoints wrap the request `size` in `util/Pages.cap(size)` (max 1000); `PagesCapTest` fails on a raw `PageRequest.of(page, size)`. A list of a growing table without paging (audit logs, purchases, cleaning tasks) is limited **in the query** (`Pageable`), never by loading everything and trimming. Screens never preload "all patients" for a picker; they search on the server (`PatientSearchPicker`).
+- **Tenant checks on ids from a request:** every `…Id` a request names (patient, admission, doctor, surgery, category, …) is looked up **scoped to the caller's hospital** before it is stored or used. An id that is only stored, never looked up, is still an id from the request. When an endpoint takes an entity as its `@RequestBody`, a create calls `setId(null)` first: otherwise `save()` merges into an existing row, possibly another tenant's.
 
 ### OT (Operation Theatre) module — `OT`-gated
 

@@ -63,6 +63,10 @@ public class SecurityConfig {
 
     @Autowired private Environment environment;
 
+    /** Prometheus bearer token for /actuator/prometheus; blank disables it (see MetricsScrapeAuthFilter). */
+    @Value("${hms.metrics.scrape-token:}")
+    private String metricsScrapeToken;
+
     /**
      * Configure HTTP security
      * 
@@ -90,6 +94,14 @@ public class SecurityConfig {
                                 "/actuator/health/readiness",
                                 "/actuator/info")
                         .permitAll()
+
+                        // Every other Actuator endpoint (metrics, prometheus) describes the whole
+                        // platform, not one tenant: Super Admin only. Before this rule they fell
+                        // through to anyRequest().authenticated(), so any hospital login -- a
+                        // receptionist's included -- could read them. Prometheus scrapes through a
+                        // separate management port (MANAGEMENT_SERVER_PORT), see OBSERVABILITY.md.
+                        .requestMatchers("/actuator/prometheus").hasAnyRole("SUPER_ADMIN", "METRICS_SCRAPER")
+                        .requestMatchers("/actuator/**").hasRole("SUPER_ADMIN")
 
                         // Platform endpoints - only Super Admin
                         .requestMatchers("/platform/**").hasRole("SUPER_ADMIN")
@@ -138,6 +150,10 @@ public class SecurityConfig {
                 // Both custom filters reference the same built-in anchor. Java's stable sort
                 // preserves insertion order, so rateLimitFilter executes first.
                 .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
+                // Before the JWT filter: a Prometheus scrape token is not a JWT, and the JWT filter
+                // leaves an authentication that is already set alone.
+                .addFilterBefore(new com.hms.security.MetricsScrapeAuthFilter(metricsScrapeToken),
+                        UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 // Demo ended / plan expired: applied once the caller's tenant is known.
                 .addFilterAfter(tenantAccessGuardFilter, JwtAuthenticationFilter.class);

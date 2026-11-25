@@ -48,17 +48,17 @@ import hospitalService from '../../services/hospitalService';
 import otService from '../../services/otService';
 import { safeLoadMessage, extractApiError } from '../../utils/apiError';
 import { canManageBilling } from '../../utils/billingAccess';
-import { pageMeta } from '../../utils/pageMeta';
-import { LEGACY_ICU_TABS } from '../../utils/sidebarNavigation';
+import { formatWhen } from '../../utils/date';
 import { rangeFor, rangeParams } from '../../utils/dateRange';
 import { createOptionalModuleFetcher } from '../../utils/optionalModule';
+import { pageMeta } from '../../utils/pageMeta';
+import { LEGACY_ICU_TABS } from '../../utils/sidebarNavigation';
+import { humanizeCode } from '../../utils/text';
 import BillingTable from './BillingTable';
 import IcuWorkspace from './icu/IcuWorkspace';
 import OtBoard from './ot/OtBoard';
 import OtWorkspace from './ot/OtWorkspace';
 
-import { formatWhen } from '../../utils/date';
-import { humanizeCode } from '../../utils/text';
 /**
  * DoctorDashboard - Doctor dashboard
  *
@@ -278,7 +278,7 @@ const DoctorDashboard = () => {
   useEffect(() => {
     const fetchDoctorRecord = async () => {
       try {
-        const docs = await hospitalService.getDoctors('', 0, 100);
+        const docs = await hospitalService.getDoctors('', 0, 1000);
         const docsList = Array.isArray(docs) ? docs : docs.content || [];
         const currentDoc = docsList.find(
           (d) => d.email?.toLowerCase() === user?.email?.toLowerCase()
@@ -539,12 +539,7 @@ const DoctorDashboard = () => {
           const followUpsData = await hospitalService.getTodaysFollowUps({ mine: true });
           setTodaysFollowUps(followUpsData || []);
 
-          // If Solo Mode or Both Mode is active, fetch patients for Overview's patient list as well
-          if (user?.receptionMode === 'SOLO' || user?.receptionMode === 'BOTH') {
-            const patData = await hospitalService.getPatients('', 0, 100);
-            const patientsArray = Array.isArray(patData) ? patData : patData.content || [];
-            setPatients(patientsArray);
-          }
+          // No patient preload: the booking form searches patients on the server.
         } finally {
           setAppointmentsLoading(false);
         }

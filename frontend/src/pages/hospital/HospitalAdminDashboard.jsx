@@ -94,10 +94,11 @@ import { extractPhoneConflicts } from '../../utils/duplicatePhone';
 import { backdropProps } from '../../utils/modalA11y';
 import { describeShift, isOnShiftNow } from '../../utils/nurseShift';
 import { createOptionalModuleFetcher } from '../../utils/optionalModule';
+import { pageMeta } from '../../utils/pageMeta';
 import { printHtml } from '../../utils/printHtml';
 import { printPdf, printBlob } from '../../utils/printPdf';
-import { pageMeta } from '../../utils/pageMeta';
 import { LEGACY_ICU_TABS } from '../../utils/sidebarNavigation';
+import { humanizeCode } from '../../utils/text';
 import { validateForm } from '../../utils/validation';
 import AlertThresholdsCard from './AlertThresholdsCard';
 import BillingTable from './BillingTable';
@@ -108,13 +109,13 @@ import IcuWardsAndBeds from './icu/IcuWardsAndBeds';
 import IcuWorkspace from './icu/IcuWorkspace';
 import IpdBillingSettingsCard from './IpdBillingSettingsCard';
 import IpdPackagesCard from './IpdPackagesCard';
+import AdmissionFormModal from './nurse/AdmissionFormModal';
 import OtAnalyticsCard from './OtAnalyticsCard';
 import OtPermissionsCard from './OtPermissionsCard';
 import OtPoliciesCard from './OtPoliciesCard';
 import OtRoomsCard from './OtRoomsCard';
 import BillingHistoryView from './pharmacy/BillingHistoryView';
 import SuppliersView from './pharmacy/SuppliersView';
-import AdmissionFormModal from './nurse/AdmissionFormModal';
 import PharmacyInvoiceDetailsCard from './PharmacyInvoiceDetailsCard';
 import PrintPaymentSettingsCard from './PrintPaymentSettingsCard';
 import ScoreSettingsCard from './ScoreSettingsCard';
@@ -123,7 +124,6 @@ import TimeSlotsView from './TimeSlotsView';
 import VentilatorSettingsCard from './VentilatorSettingsCard';
 import VitalsSettingsCard from './VitalsSettingsCard';
 import WardsAndBeds from './WardsAndBeds';
-import { humanizeCode } from '../../utils/text';
 /**
  * HospitalAdminDashboard - Hospital Admin dashboard
  *
@@ -1344,7 +1344,7 @@ const HospitalAdminDashboard = () => {
           // load with it and left Overview completely empty.
           const [globalStatsData, docData] = await Promise.all([
             hospitalService.getGlobalStats(),
-            hospitalService.getDoctors('', 0, 100),
+            hospitalService.getDoctors('', 0, 1000),
           ]);
           const [statsData, todaysAppts] = await Promise.all([
             fetchAppointmentData(() => hospitalService.getAppointmentStats(), {}),
@@ -1442,7 +1442,7 @@ const HospitalAdminDashboard = () => {
           // list for the assign dropdown (fetch a large page = "all").
           const [overview, nurseList] = await Promise.all([
             hospitalService.getNurseAssignmentsOverview(),
-            hospitalService.getNurses('', 0, 500),
+            hospitalService.getNurses('', 0, 1000),
           ]);
           setNurseAssignments(Array.isArray(overview) ? overview : []);
           setNurseOptions(nurseList.content || nurseList || []);
@@ -1451,7 +1451,7 @@ const HospitalAdminDashboard = () => {
         } else if (activeTab === 'nurse-tasks') {
           const [tasks, nurseList, overview] = await Promise.all([
             hospitalService.getNurseTasks(),
-            hospitalService.getNurses('', 0, 500),
+            hospitalService.getNurses('', 0, 1000),
             hospitalService.getNurseAssignmentsOverview(),
           ]);
           setNurseTasks(Array.isArray(tasks) ? tasks : []);
@@ -1488,10 +1488,10 @@ const HospitalAdminDashboard = () => {
           // Fetch both appointments and doctors (for name lookup)
           // Note: getAppointments now supports page/size, getDoctors might not return all if paginated
           // For now, we fetch paginated appointments and maybe "all" doctors for lookup if possible or handle missing names
-          const [apptData, docData, patData] = await Promise.all([
+          // Patients are searched on the server by the booking form, not preloaded here.
+          const [apptData, docData] = await Promise.all([
             hospitalService.getAppointments(searchTerm, page, pageSize, appointmentsViewFilter),
-            hospitalService.getDoctors('', 0, 100), // Attempt to get more doctors for lookup
-            hospitalService.getPatients('', 0, 1000), // Fetch ALL patients for lookup
+            hospitalService.getDoctors('', 0, 1000), // every doctor, for the doctor dropdowns
           ]);
 
           if (apptData.content) {
@@ -1508,12 +1508,6 @@ const HospitalAdminDashboard = () => {
             setDoctors(docData.content);
           } else {
             setDoctors(docData);
-          }
-
-          if (patData.content) {
-            setPatients(patData.content);
-          } else {
-            setPatients(patData);
           }
         } else if (activeTab === 'billing') {
           const data = await hospitalService.getBills(
@@ -1571,10 +1565,9 @@ const HospitalAdminDashboard = () => {
               dateParam = opdDateFilter;
               statusParam = ''; // show all statuses
             }
-            const [data, docData, patData] = await Promise.all([
+            const [data, docData] = await Promise.all([
               hospitalService.getOpds(searchTerm, page, pageSize, dateParam, statusParam),
-              hospitalService.getDoctors('', 0, 100),
-              hospitalService.getPatients('', 0, 1000),
+              hospitalService.getDoctors('', 0, 1000),
             ]);
             if (data.content) {
               setOpds(data.content);
@@ -1586,9 +1579,8 @@ const HospitalAdminDashboard = () => {
               setTotalPages(1);
               setTotalElements(arr.length);
             }
-            // Also set doctors and patients for the modal dropdowns
+            // Doctors for the modal dropdowns (patients are searched on the server).
             setDoctors(docData.content || (Array.isArray(docData) ? docData : []));
-            setPatients(patData.content || (Array.isArray(patData) ? patData : []));
           } catch (err) {
             console.error('Failed to load OPD cases', err);
             setLoadError(safeLoadMessage(err, "Couldn't load OPD cases."));
@@ -7914,6 +7906,9 @@ const AddModal = ({
 }) => {
   const [formData, setFormData] = useState(initialData || {});
   const [errors, setErrors] = useState({}); // Changed to object for field-level errors
+  // The billing form's patient field searches the server (any patient in the hospital), rather
+  // than a <select> over the one page of patients the dashboard happened to load.
+  const [billPatientText, setBillPatientText] = useState('');
   const isEdit = !!initialData;
   const { error: toastError } = useToast(); // Use toast for backend errors
 
@@ -9063,22 +9058,13 @@ const AddModal = ({
             {type === 'billing' && (
               <>
                 <div>
-                  <label htmlFor="fld-62" className="block text-sm font-medium text-gray-700 mb-2">
-                    Patient
-                  </label>
-                  <select
-                    id="fld-62"
-                    value={formData.patientId || ''}
-                    onChange={(e) => handleChange('patientId', e.target.value)}
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${errors.patientId ? 'border-red-500' : 'border-gray-300'}`}
-                  >
-                    <option value="">Select Patient</option>
-                    {patients.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
+                  <span className="block text-sm font-medium text-gray-700 mb-2">Patient</span>
+                  <PatientSearchPicker
+                    text={billPatientText}
+                    onTextChange={setBillPatientText}
+                    onSelect={(p) => handleChange('patientId', p ? p.id : '')}
+                    inputClassName={errors.patientId ? 'border-red-500' : ''}
+                  />
                   {errors.patientId && (
                     <p className="text-red-500 text-xs mt-1">{errors.patientId}</p>
                   )}

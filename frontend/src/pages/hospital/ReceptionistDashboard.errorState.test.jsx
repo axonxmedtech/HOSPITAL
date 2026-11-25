@@ -63,7 +63,11 @@ describe('ReceptionistDashboard — a failed load is not an empty desk', () => {
   const happyPath = () => {
     hospitalService.getAppointmentStats.mockResolvedValue({ total: 0, today: 0 });
     hospitalService.getPendingIpdRequestCount.mockResolvedValue(0);
-    hospitalService.getAppointments.mockResolvedValue({ content: [], totalPages: 1, totalElements: 0 });
+    hospitalService.getAppointments.mockResolvedValue({
+      content: [],
+      totalPages: 1,
+      totalElements: 0,
+    });
     hospitalService.getDoctors.mockResolvedValue({ content: [] });
     hospitalService.getPatients.mockResolvedValue({ content: [], totalPages: 1, totalElements: 0 });
     hospitalService.getTodaysFollowUps.mockResolvedValue([]);
@@ -102,8 +106,9 @@ describe('ReceptionistDashboard — a failed load is not an empty desk', () => {
   });
 
   it('warns that what is on screen may be out of date rather than blanking it', async () => {
-    hospitalService.getPatients.mockRejectedValue({
-      response: { data: { error: 'Patient service unavailable' } },
+    // Any mandatory desk load failing (doctors, here) must warn rather than blank the screen.
+    hospitalService.getDoctors.mockRejectedValue({
+      response: { data: { error: 'Doctor service unavailable' } },
     });
 
     render(<ReceptionistDashboard />);

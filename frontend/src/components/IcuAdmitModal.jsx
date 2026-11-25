@@ -28,7 +28,13 @@ export const startingBedId = (beds, initialBed, wardId) => {
 /**
  * `initialBed` ({ wardId, bedId }) pre-selects a free ICU bed: "Admit here" on the ICU bed board.
  */
-const IcuAdmitModal = ({ isOpen, onClose, onSuccess, initialPatient = null, initialBed = null }) => {
+const IcuAdmitModal = ({
+  isOpen,
+  onClose,
+  onSuccess,
+  initialPatient = null,
+  initialBed = null,
+}) => {
   const { success, error: toastError } = useToast();
 
   const [sourceType, setSourceType] = useState('IPD'); // 'IPD' | 'OPD'
@@ -91,7 +97,7 @@ const IcuAdmitModal = ({ isOpen, onClose, onSuccess, initialPatient = null, init
 
         // Load OPD queue for direct admission
         try {
-          const opdRes = await hospitalService.getOpds('', 0, 100, '', 'QUEUED');
+          const opdRes = await hospitalService.getOpds('', 0, 1000, '', 'QUEUED');
           const list = opdRes?.content || opdRes || [];
           if (isMounted) {
             setOpdPatients(Array.isArray(list) ? list : []);
@@ -271,7 +277,9 @@ const IcuAdmitModal = ({ isOpen, onClose, onSuccess, initialPatient = null, init
             </div>
             <div>
               <h3 className="text-lg font-bold">Move to ICU</h3>
-              <p className="text-xs text-rose-100">An admitted patient into an ICU bed, or a new patient from the OPD queue</p>
+              <p className="text-xs text-rose-100">
+                An admitted patient into an ICU bed, or a new patient from the OPD queue
+              </p>
             </div>
           </div>
           <button

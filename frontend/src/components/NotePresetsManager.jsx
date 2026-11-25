@@ -78,7 +78,7 @@ const NotePresetsManager = ({
   useEffect(() => {
     if (!isAdmin) return;
     hospitalService
-      .getDoctors('', 0, 500)
+      .getDoctors('', 0, 1000)
       .then((data) => setDoctors(data?.content || []))
       .catch(() => {
         /* dropdown just stays empty */

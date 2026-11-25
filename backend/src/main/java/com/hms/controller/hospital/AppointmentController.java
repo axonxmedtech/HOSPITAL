@@ -145,8 +145,13 @@ public class AppointmentController {
     @GetMapping("/doctor/{doctorId}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> getAppointmentsByDoctor(@PathVariable Long doctorId,
-            @RequestParam(required = false) String view) {
-        List<Appointment> appointments = appointmentService.getAppointmentsByDoctor(doctorId, view);
+            @RequestParam(required = false) String view,
+            // view=date&date=YYYY-MM-DD: one day only (the booking form's taken slots), instead
+            // of the doctor's whole history.
+            @RequestParam(required = false)
+            @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE)
+            java.time.LocalDate date) {
+        List<Appointment> appointments = appointmentService.getAppointmentsByDoctor(doctorId, view, date);
         return ResponseEntity.ok(appointments);
     }
 

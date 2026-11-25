@@ -174,7 +174,7 @@ export function ChangeDoctorModal({ title, subtitle, currentDoctorId, onSave, on
   useEffect(() => {
     let live = true;
     hospitalService
-      .getDoctors('', 0, 200)
+      .getDoctors('', 0, 1000)
       .then((res) => {
         const list = Array.isArray(res) ? res : res?.content || [];
         if (live) setDoctors(list.filter((d) => d.isActive !== false && d.id !== currentDoctorId));

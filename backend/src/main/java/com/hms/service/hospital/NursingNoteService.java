@@ -35,6 +35,8 @@ public class NursingNoteService {
     private static final int MAX_LEN = 2000;
 
     @Autowired private NursingNoteRepository noteRepository;
+
+    @Autowired private com.hms.repository.SurgeryRepository surgeryRepository;
     @Autowired private IpdAdmissionRepository ipdAdmissionRepository;
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private NurseAccessGuard nurseAccessGuard;
@@ -67,6 +69,14 @@ public class NursingNoteService {
         n.setNoteText(text);
         n.setOrders(req.getOrders());
         n.setCategory(category);
+        if (req.getSurgeryId() != null) {
+            // The note may only point at a surgery of this same admission (the id came from the
+            // request; unchecked, a note could be tied to another patient's -- or tenant's -- case).
+            boolean ownSurgery = surgeryRepository.findByIdAndHospitalId(req.getSurgeryId(), hospitalId)
+                    .filter(sg -> admission.getId().equals(sg.getIpdAdmissionId()))
+                    .isPresent();
+            if (!ownSurgery) throw new IllegalArgumentException("That surgery is not this patient's");
+        }
         n.setSurgeryId(req.getSurgeryId());
         n.setRecordedAt(LocalDateTime.now());
         n.setPerformedByNurseId(performingNurseResolver.resolve(req.getPerformedByNurseId()));

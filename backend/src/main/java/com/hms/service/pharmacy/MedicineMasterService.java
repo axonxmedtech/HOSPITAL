@@ -100,7 +100,20 @@ public class MedicineMasterService {
         return medicineListRepository.findByNameContainingIgnoreCase(query.trim());
     }
 
+    @Autowired private com.hms.repository.pharmacy.MedicineCategoryRepository categoryRepository;
+    @Autowired private com.hms.repository.pharmacy.ManufacturerRepository manufacturerRepository;
+
     private void mapDtoToEntity(MedicineMasterRequest req, MedicineMaster m) {
+        // The category and manufacturer ids come from the request: each must be this pharmacy's
+        // own, or a medicine could be filed under another tenant's category or manufacturer.
+        if (req.getCategoryId() != null
+                && categoryRepository.findByIdAndHospitalId(req.getCategoryId(), m.getHospitalId()).isEmpty()) {
+            throw new IllegalArgumentException("Choose a category of this pharmacy");
+        }
+        if (req.getManufacturerId() != null
+                && manufacturerRepository.findByIdAndHospitalId(req.getManufacturerId(), m.getHospitalId()).isEmpty()) {
+            throw new IllegalArgumentException("Choose a manufacturer of this pharmacy");
+        }
 
         m.setMedicineName(req.getMedicineName());
         m.setGenericName(req.getGenericName());

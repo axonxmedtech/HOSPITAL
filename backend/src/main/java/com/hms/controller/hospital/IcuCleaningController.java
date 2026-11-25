@@ -42,9 +42,11 @@ public class IcuCleaningController {
     public ResponseEntity<List<IcuCleaningTask>> getTasks(@RequestParam(required = false) String status) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
         if (status != null && !status.isEmpty()) {
-            return ResponseEntity.ok(cleaningTaskRepository.findByHospitalIdAndStatusOrderByCreatedAtDesc(hospitalId, status));
+            return ResponseEntity.ok(cleaningTaskRepository.findByHospitalIdAndStatusOrderByCreatedAtDesc(hospitalId, status,
+                    org.springframework.data.domain.PageRequest.of(0, com.hms.util.Pages.MAX_SIZE)));
         }
-        return ResponseEntity.ok(cleaningTaskRepository.findByHospitalIdOrderByCreatedAtDesc(hospitalId));
+        return ResponseEntity.ok(cleaningTaskRepository.findByHospitalIdOrderByCreatedAtDesc(hospitalId,
+                org.springframework.data.domain.PageRequest.of(0, com.hms.util.Pages.MAX_SIZE)));
     }
 
     @PostMapping
@@ -54,6 +56,10 @@ public class IcuCleaningController {
         if (task.getTaskDescription() == null || task.getTaskDescription().trim().isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("error", "Task description is required"));
         }
+        // The body is the entity itself, so the client could send any field. A create never
+        // updates: a client-sent id would make save() merge into an existing task -- another
+        // hospital's included -- and move it here.
+        task.setId(null);
         task.setHospitalId(hospitalId);
         String role = securityHelper.getCurrentUserRole() != null ? securityHelper.getCurrentUserRole() : "STAFF";
         String email = securityHelper.getCurrentUserEmail() != null ? securityHelper.getCurrentUserEmail() : "user";
@@ -68,6 +74,10 @@ public class IcuCleaningController {
         // Link the bed; save the task first so the status change below finds it open and does
         // not queue a duplicate.
         java.util.Optional<com.hms.entity.Bed> bed = findBedForTask(hospitalId, task);
+        // Keep bed/ward ids only when they resolved to a bed of this hospital; otherwise the ids
+        // the client sent would be stored unchecked.
+        task.setBedId(null);
+        task.setWardId(null);
         bed.ifPresent(b -> {
             task.setBedId(b.getBedId());
             task.setWardId(b.getWardId());

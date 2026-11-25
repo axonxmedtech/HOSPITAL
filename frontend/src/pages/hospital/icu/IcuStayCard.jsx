@@ -66,7 +66,7 @@ const IcuStayCard = ({ admissionId, refreshKey = 0 }) => {
     if (doctors.length === 0) {
       try {
         // Tenant-scoped by the server, like every other doctor list in the app.
-        const res = await hospitalService.getDoctors('', 0, 200);
+        const res = await hospitalService.getDoctors('', 0, 1000);
         const list = res?.content || res?.data || res || [];
         setDoctors(Array.isArray(list) ? list : []);
       } catch {
@@ -175,7 +175,6 @@ const IcuStayCard = ({ admissionId, refreshKey = 0 }) => {
             editable.
           </p>
         )}
-
       </div>
       <hr className="my-4" />
     </>

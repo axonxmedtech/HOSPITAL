@@ -248,6 +248,7 @@ public class NurseService {
         broadcastRefresh(hospitalId, "nurse deletion");
     }
 
+    @Transactional // the call below is to this same object, so it would not start one itself
     public void deleteNurse(String publicId) {
         deleteNurse(publicId, null);
     }

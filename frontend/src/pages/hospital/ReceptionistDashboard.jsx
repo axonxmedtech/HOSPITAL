@@ -14,9 +14,9 @@ import EmptyState from '../../components/EmptyState';
 import FollowUpPanel from '../../components/FollowUpPanel';
 import HistoryDrawer from '../../components/HistoryDrawer';
 import HospitalInventoryTab from '../../components/HospitalInventoryTab';
+import CurrentAdmissionsTable from '../../components/ipd/CurrentAdmissionsTable';
 import { DietSheetButton } from '../../components/ipd/DietCard';
 import OpenClaimsView from '../../components/ipd/OpenClaimsView';
-import CurrentAdmissionsTable from '../../components/ipd/CurrentAdmissionsTable';
 import IpdAdmitModal from '../../components/IpdAdmitModal';
 import LowStockBanner from '../../components/LowStockBanner';
 import MedicineInventoryTab from '../../components/MedicineInventoryTab';
@@ -59,9 +59,10 @@ import { formatDateTime, formatTime } from '../../utils/date';
 import { rangeFor, rangeParams } from '../../utils/dateRange';
 import { extractPhoneConflicts } from '../../utils/duplicatePhone';
 import { createOptionalModuleFetcher } from '../../utils/optionalModule';
-import { printPdf } from '../../utils/printPdf';
 import { pageMeta } from '../../utils/pageMeta';
+import { printPdf } from '../../utils/printPdf';
 import { LEGACY_ICU_TABS } from '../../utils/sidebarNavigation';
+import { humanizeCode } from '../../utils/text';
 import { validateForm } from '../../utils/validation';
 import BedCleaningView from './BedCleaningView';
 import BillingTable from './BillingTable';
@@ -69,7 +70,6 @@ import IcuWorkspace from './icu/IcuWorkspace';
 import AdmissionFormModal from './nurse/AdmissionFormModal';
 import OtWorkspace from './ot/OtWorkspace';
 
-import { humanizeCode } from '../../utils/text';
 const ReceptionistDashboard = () => {
   const [user, setUser] = useState(() => authService.getCurrentUser());
   const modules = user?.modules || [];
@@ -406,9 +406,11 @@ const ReceptionistDashboard = () => {
       ) {
         if (activeTab === 'overview' || activeTab === 'appointments') setAppointmentsLoading(true);
         // Mandatory desk data is deliberately separate from the optional appointments call.
-        const [docData, patData, followUpsData] = await Promise.all([
-          hospitalService.getDoctors('', 0, 100), // Fetch doctors for lookup
-          hospitalService.getPatients('', 0, 1000), // Fetch ALL patients (up to 1000) for lookup dropdown
+        // No patient list here: the booking form searches patients on the server, so a hospital
+        // with more patients than one page still finds every one (the old "up to 1000" list did
+        // not, and reloaded 1000 patients with their bills on every refresh).
+        const [docData, followUpsData] = await Promise.all([
+          hospitalService.getDoctors('', 0, 1000), // every doctor, for the doctor dropdowns
           activeTab === 'overview' ? hospitalService.getTodaysFollowUps() : Promise.resolve([]),
         ]);
         if (requestId !== activeRequestRef.current) return;
@@ -565,10 +567,6 @@ const ReceptionistDashboard = () => {
         // Set Doctors for lookup/dropdown
         if (docData?.content) setDoctors(docData.content);
         else setDoctors(docData || []);
-
-        // Set Patients for lookup/dropdown in specific modal
-        if (patData?.content) setPatients(patData.content);
-        else setPatients(patData || []);
       } else if (activeTab === 'patients') {
         const dateParam = patientTabView === 'Date' ? patientDateFilter : '';
         const data = await hospitalService.getPatients(searchTerm, page, pageSize, dateParam);

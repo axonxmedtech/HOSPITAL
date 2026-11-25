@@ -53,7 +53,7 @@ const IcuWardsAndBeds = () => {
 
   const fetchNurseIncharges = async () => {
     try {
-      const data = await hospitalService.getNurses('', 0, 500);
+      const data = await hospitalService.getNurses('', 0, 1000);
       const list = data?.content || data || [];
       setNurseIncharges(list.filter((n) => n.isIncharge));
     } catch (e) {

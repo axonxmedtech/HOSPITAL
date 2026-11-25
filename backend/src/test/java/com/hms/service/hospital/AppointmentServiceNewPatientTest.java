@@ -144,6 +144,24 @@ class AppointmentServiceNewPatientTest {
         verify(appointmentRepository, org.mockito.Mockito.never()).save(any(Appointment.class));
     }
 
+    /** The booking form asks for one day; the doctor's whole history must not be loaded. */
+    @Test
+    void doctorDayView_readsOnlyThatDay() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+        Doctor doctor = new Doctor();
+        doctor.setId(1L);
+        when(doctorRepository.findByIdAndHospitalIdAndIsActiveTrue(1L, 1L)).thenReturn(Optional.of(doctor));
+        LocalDate day = LocalDate.now().plusDays(2);
+        when(appointmentRepository.findByDoctorIdAndAppointmentDateAndIsActiveTrue(1L, day))
+                .thenReturn(Collections.emptyList());
+
+        assertThat(service.getAppointmentsByDoctor(1L, "date", day)).isEmpty();
+
+        verify(appointmentRepository).findByDoctorIdAndAppointmentDateAndIsActiveTrue(1L, day);
+        verify(appointmentRepository, org.mockito.Mockito.never())
+                .findByDoctorIdAndHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(any(), any());
+    }
+
     private void lenientStubPatient() {
         org.mockito.Mockito.lenient().when(patientRegistrar.persistNewPatient(any(Patient.class)))
                 .thenAnswer(inv -> inv.getArgument(0));

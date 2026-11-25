@@ -48,10 +48,8 @@ public class HospitalAuditController {
                 mappedRole = role.trim();
             }
 
-            List<AuditLog> logs = auditLogService.getLogsByHospitalId(hospitalId, search, mappedRole);
-            if (limit != null && logs.size() > limit) {
-                logs = logs.subList(0, limit);
-            }
+            // The limit is applied in the query (newest first, capped), not after loading them all.
+            List<AuditLog> logs = auditLogService.getLogsByHospitalId(hospitalId, search, mappedRole, limit);
             return ResponseEntity.ok(logs);
         } catch (Exception e) {
             log.warn("Could not retrieve hospital context - returning empty activity feed", e);

@@ -12,7 +12,6 @@ import categoriesApi from '../../../services/pharmacy/categoriesApi';
 import inventoryApi from '../../../services/pharmacy/inventoryApi';
 import medicinesApi from '../../../services/pharmacy/medicinesApi';
 import { extractApiError } from '../../../utils/apiError';
-
 import { formatDay, localIsoDate } from '../../../utils/date';
 const InventoryView = ({ onNavigate, refreshKey = 0 }) => {
   const currentUser = authService.getCurrentUser();
@@ -61,7 +60,7 @@ const InventoryView = ({ onNavigate, refreshKey = 0 }) => {
   } = useViewManager(fetchFn, { dependencies: [selectedStatus, selectedCategory, refreshKey] });
 
   useEffect(() => {
-    categoriesApi.getAll('', 0, 100).then((res) => setCategories(res.content || []));
+    categoriesApi.getAll('', 0, 1000).then((res) => setCategories(res.content || []));
   }, []);
 
   const fetchTransactions = useCallback(async (batchId) => {

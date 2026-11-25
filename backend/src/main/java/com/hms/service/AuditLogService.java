@@ -71,20 +71,32 @@ public class AuditLogService {
         auditLogRepository.save(log);
     }
 
+    /** Most audit rows one screen load returns (newest first); search narrows to older ones. */
+    public static final int MAX_LOGS = 1000;
+
     public List<AuditLog> getLogsByHospitalId(Long hospitalId, String search, String role) {
-        if (role != null && !role.isBlank()) {
-            if (search != null && !search.isBlank()) {
-                return auditLogRepository.findByHospitalIdAndPerformedByRoleAndActionContainingIgnoreCaseOrderByTimestampDesc(
-                        hospitalId, role, search);
-            }
-            return auditLogRepository.findByHospitalIdAndPerformedByRoleOrderByTimestampDesc(hospitalId, role);
-        }
-        if (search != null && !search.isBlank()) {
-            return auditLogRepository.findByHospitalIdAndActionContainingIgnoreCaseOrderByTimestampDesc(hospitalId,
-                    search);
-        }
-        return auditLogRepository.findByHospitalIdOrderByTimestampDesc(hospitalId);
+        return getLogsByHospitalId(hospitalId, search, role, MAX_LOGS);
     }
+
+    /**
+     * A tenant's audit trail, newest first, at most {@code limit} rows (capped at MAX_LOGS) --
+     * limited in the query, not after loading every row the hospital ever wrote.
+     */
+    public List<AuditLog> getLogsByHospitalId(Long hospitalId, String search, String role, Integer limit) {
+        org.springframework.data.domain.Pageable page = org.springframework.data.domain.PageRequest.of(0,
+                limit == null || limit <= 0 ? MAX_LOGS : Math.min(limit, MAX_LOGS));
+        boolean hasSearch = search != null && !search.isBlank();
+        if (role != null && !role.isBlank()) {
+            return hasSearch
+                    ? auditLogRepository.findByHospitalIdAndPerformedByRoleAndActionContainingIgnoreCaseOrderByTimestampDesc(
+                            hospitalId, role, search, page)
+                    : auditLogRepository.findByHospitalIdAndPerformedByRoleOrderByTimestampDesc(hospitalId, role, page);
+        }
+        return hasSearch
+                ? auditLogRepository.findByHospitalIdAndActionContainingIgnoreCaseOrderByTimestampDesc(hospitalId, search, page)
+                : auditLogRepository.findByHospitalIdOrderByTimestampDesc(hospitalId, page);
+    }
+
 
     public List<AuditLog> getLogsByHospitalId(Long hospitalId, String search) {
         return getLogsByHospitalId(hospitalId, search, null);
@@ -109,7 +121,8 @@ public class AuditLogService {
      * @return List of pharmacy audit logs
      */
     public List<AuditLog> getPharmacyLogs(Long hospitalId, Long branchId, String pharmacyPlanRole, String search) {
-        return auditLogRepository.findPharmacyLogs(hospitalId, branchId, pharmacyPlanRole, search);
+        return auditLogRepository.findPharmacyLogs(hospitalId, branchId, pharmacyPlanRole, search,
+                org.springframework.data.domain.PageRequest.of(0, MAX_LOGS));
     }
 
     public List<AuditLog> getPharmacyLogs(Long hospitalId, Long branchId, String search) {

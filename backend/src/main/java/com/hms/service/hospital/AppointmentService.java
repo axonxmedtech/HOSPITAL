@@ -481,6 +481,16 @@ public class AppointmentService {
      */
     @Transactional(readOnly = true)
     public List<Appointment> getAppointmentsByDoctor(Long doctorId, String view) {
+        return getAppointmentsByDoctor(doctorId, view, null);
+    }
+
+    /**
+     * As above; {@code view=date} with a {@code date} returns just that day's active appointments,
+     * which is what the booking form needs to grey out taken slots. Without it the form loaded the
+     * doctor's entire appointment history on every doctor/date change.
+     */
+    @Transactional(readOnly = true)
+    public List<Appointment> getAppointmentsByDoctor(Long doctorId, String view, java.time.LocalDate date) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
 
         if (hospitalId == null) {
@@ -494,7 +504,9 @@ public class AppointmentService {
         List<Appointment> appointments;
         java.time.LocalDate today = java.time.LocalDate.now();
 
-        if (view == null || view.isEmpty()) {
+        if ("date".equalsIgnoreCase(view) && date != null) {
+            appointments = appointmentRepository.findByDoctorIdAndAppointmentDateAndIsActiveTrue(doctorId, date);
+        } else if (view == null || view.isEmpty()) {
             // Default: All active appointments sorted by date desc
             appointments = appointmentRepository
                     .findByDoctorIdAndHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(doctorId, hospitalId);

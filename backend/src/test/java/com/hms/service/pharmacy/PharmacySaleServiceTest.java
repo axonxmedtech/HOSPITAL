@@ -47,6 +47,9 @@ class PharmacySaleServiceTest {
     @Mock com.hms.service.RealtimeNotifier notifier;
 
     @Mock PharmacyInvoiceNumberService invoiceNumberService;
+    @Mock com.hms.repository.PatientRepository patientRepository;
+    @Mock com.hms.repository.IpdAdmissionRepository ipdAdmissionRepository;
+    @Mock com.hms.repository.DoctorRepository doctorRepository;
 
     @InjectMocks
     PharmacySaleService saleService;
@@ -183,6 +186,37 @@ class PharmacySaleServiceTest {
     }
 
     /** The prescription id comes from the browser: another facility's prescriptions must not change. */
+    /**
+     * A sale names its patient, admission and doctor by id, from the request. One belonging to
+     * another hospital is refused before anything is priced, stocked or saved.
+     */
+    @Test
+    void createSale_refusesAnotherHospitalsPatientAdmissionOrDoctor() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+        lenient().when(securityHelper.getCurrentUserId()).thenReturn(10L);
+        MedicineBatch batch = new MedicineBatch();
+        batch.setId(7L);
+        batch.setCurrentQuantity(BigDecimal.valueOf(10));
+        batch.setBatchNumber("B001");
+        batch.setSellingPrice(new BigDecimal("50"));
+        batch.setMrp(new BigDecimal("50"));
+        lenient().when(batchRepository.findByIdAndHospitalIdForUpdate(eq(1L), eq(1L), any())).thenReturn(Optional.of(batch));
+
+        PharmacySaleRequest withPatient = buildRequest(BigDecimal.ONE);
+        withPatient.setPatientId(900L); // another hospital's: the scoped lookup finds nothing
+        assertThatThrownBy(() -> saleService.createSale(withPatient)).isInstanceOf(IllegalArgumentException.class);
+
+        PharmacySaleRequest withAdmission = buildRequest(BigDecimal.ONE);
+        withAdmission.setIpdAdmissionId(901L);
+        assertThatThrownBy(() -> saleService.createSale(withAdmission)).isInstanceOf(IllegalArgumentException.class);
+
+        PharmacySaleRequest withDoctor = buildRequest(BigDecimal.ONE);
+        withDoctor.setDoctorId(902L);
+        assertThatThrownBy(() -> saleService.createSale(withDoctor)).isInstanceOf(IllegalArgumentException.class);
+
+        verify(saleRepository, never()).save(any());
+    }
+
     @Test
     void createSale_marksOnlyThisFacilitysPrescriptionsDispensed() {
         when(securityHelper.getCurrentHospitalId()).thenReturn(1L);

@@ -111,9 +111,10 @@ describe('ReceptionistDashboard — APPOINTMENTS disabled', () => {
     // These are the loads that a 403 on appointments used to take down with it.
     await waitFor(() => {
       expect(hospitalService.getDoctors).toHaveBeenCalled();
-      expect(hospitalService.getPatients).toHaveBeenCalled();
       expect(hospitalService.getTodaysFollowUps).toHaveBeenCalled();
     });
+    // No "all patients" preload: the booking form searches the server instead.
+    expect(hospitalService.getPatients).not.toHaveBeenCalled();
     expect(hospitalService.getAppointmentStats).not.toHaveBeenCalled();
     expect(hospitalService.getAppointments).not.toHaveBeenCalled();
     await waitFor(() => {
@@ -190,7 +191,6 @@ describe('ReceptionistDashboard — APPOINTMENTS enabled', () => {
       expect(hospitalService.getAppointmentStats).toHaveBeenCalled();
       expect(hospitalService.getAppointments).toHaveBeenCalled();
       expect(hospitalService.getDoctors).toHaveBeenCalled();
-      expect(hospitalService.getPatients).toHaveBeenCalled();
       expect(hospitalService.getTodaysFollowUps).toHaveBeenCalled();
       expect(toastError).toHaveBeenCalledWith('Failed to load appointments');
     });

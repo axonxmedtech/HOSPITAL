@@ -39,6 +39,9 @@ public class PharmacySaleService {
     private com.hms.repository.PrescriptionRepository prescriptionRepository;
 
     @Autowired private com.hms.service.RealtimeNotifier notifier;
+    @Autowired private com.hms.repository.PatientRepository patientRepository;
+    @Autowired private com.hms.repository.IpdAdmissionRepository ipdAdmissionRepository;
+    @Autowired private com.hms.repository.DoctorRepository doctorRepository;
 
     /** What a counter may record as the way the customer paid. */
     private static final String PHARMACY_SALE = "PHARMACY_SALE";
@@ -84,6 +87,8 @@ public class PharmacySaleService {
             lines.add(new PharmacyBillCalculator.Line(itemReq.getQuantity(), batch.getSellingPrice(), gstRateOf(batch)));
         }
         PharmacyBillCalculator.Bill bill = PharmacyBillCalculator.calculate(lines, request.getDiscountAmount());
+
+        validateLinks(request, hospitalId);
 
         PharmacySale sale = new PharmacySale();
         sale.setHospitalId(hospitalId);
@@ -139,6 +144,33 @@ public class PharmacySaleService {
         // immediately, or they will sell against a batch that is already empty.
         notifier.refresh(hospitalId);
         return savedSale;
+    }
+
+    /**
+     * The patient, admission, prescription and doctor a sale names came from the request. Each
+     * one given must belong to this pharmacy's own hospital: a sale recorded against another
+     * tenant's patient or admission is wrong data, and one an IPD bill could later read.
+     */
+    private void validateLinks(PharmacySaleRequest request, Long hospitalId) {
+        if (request.getPatientId() != null
+                && patientRepository.findByIdAndHospitalId(request.getPatientId(), hospitalId).isEmpty()) {
+            throw new IllegalArgumentException("That patient is not registered at this hospital");
+        }
+        if (request.getIpdAdmissionId() != null
+                && ipdAdmissionRepository.findByIdAndHospitalId(request.getIpdAdmissionId(), hospitalId).isEmpty()) {
+            throw new IllegalArgumentException("That admission is not at this hospital");
+        }
+        // "prescriptionId" on a sale is the consultation (medical record) whose prescriptions are
+        // dispensed -- see markPrescriptionsDispensed -- so it must hold one of this hospital's.
+        if (request.getPrescriptionId() != null
+                && prescriptionRepository.findByMedicalRecordId(request.getPrescriptionId()).stream()
+                        .noneMatch(rx -> hospitalId.equals(rx.getHospitalId()))) {
+            throw new IllegalArgumentException("That prescription is not from this hospital");
+        }
+        if (request.getDoctorId() != null
+                && doctorRepository.findByIdAndHospitalId(request.getDoctorId(), hospitalId).isEmpty()) {
+            throw new IllegalArgumentException("That doctor is not at this hospital");
+        }
     }
 
     /**

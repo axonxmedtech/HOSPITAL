@@ -56,6 +56,9 @@ class SurgeryServiceDayCareTest {
         lenient().when(securityHelper.getCurrentUserId()).thenReturn(42L);
         lenient().when(securityHelper.getCurrentUserEmail()).thenReturn("doc@x.com");
         lenient().when(doctorRepository.findByEmailAndHospitalId(any(), any())).thenReturn(Optional.empty());
+        // The patient belongs to this hospital (the request is refused otherwise -- see below).
+        lenient().when(patientRepository.findByIdAndHospitalIdForUpdate(500L, HOSPITAL))
+                .thenReturn(Optional.of(new com.hms.entity.Patient()));
         lenient().when(surgeryRepository.save(any(Surgery.class))).thenAnswer(inv -> {
             Surgery s = inv.getArgument(0);
             s.setId(11L);
@@ -113,6 +116,35 @@ class SurgeryServiceDayCareTest {
         assertThatThrownBy(() -> service.createRequest(r))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("already has an active surgery");
+    }
+
+    /**
+     * A day-care request names the patient directly. One from another hospital is refused, and
+     * nothing is saved: before, the id was taken on trust and the OT board then showed another
+     * tenant's patient.
+     */
+    @Test
+    void aPatientOfAnotherHospital_isRefused_andNothingIsSaved() {
+        CreateSurgeryRequest r = req();
+        r.setPatientId(999L); // not this hospital's: the scoped lookup finds nothing
+
+        assertThatThrownBy(() -> service.createRequest(r))
+                .isInstanceOf(com.hms.exception.ResourceNotFoundException.class);
+        org.mockito.Mockito.verify(surgeryRepository, org.mockito.Mockito.never()).save(any());
+    }
+
+    /** Locked before the duplicate check, so two simultaneous requests cannot both pass it. */
+    @Test
+    void thePatientIsLockedBeforeTheActiveSurgeryCheck() {
+        when(surgeryRepository.findByPatientIdAndStatusIn(any(), any())).thenReturn(List.of());
+        CreateSurgeryRequest r = req();
+        r.setPatientId(500L);
+
+        service.createRequest(r);
+
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(patientRepository, surgeryRepository);
+        order.verify(patientRepository).findByIdAndHospitalIdForUpdate(500L, HOSPITAL);
+        order.verify(surgeryRepository).findByPatientIdAndStatusIn(any(), any());
     }
 
     @Test
