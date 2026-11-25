@@ -2358,7 +2358,8 @@ public class DatabaseMigrationRunner {
     }
 
     private void ensurePerformedByNurseIdColumns() {
-        for (String t : new String[]{"vitals_records","nursing_notes",MAR_TABLE,"sugar_chart_entries",SURGERY_FORMS_TABLE}) {
+        for (String t : new String[]{"vitals_records","nursing_notes",MAR_TABLE,"sugar_chart_entries",SURGERY_FORMS_TABLE,
+                "initial_assessments","vulnerability_assessments"}) {
             addColumnIfMissing(t, "performed_by_nurse_id", BIGINT_NULL);
         }
     }
