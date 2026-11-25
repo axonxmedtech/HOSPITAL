@@ -112,7 +112,7 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
                         + "AND (LOWER(p.name) LIKE LOWER(CONCAT('%', :term, '%')) "
                         + "OR p.phone LIKE CONCAT('%', :term, '%')) ORDER BY p.createdAt DESC")
         List<Patient> searchActiveByNameOrPhone(@Param("hospitalId") Long hospitalId,
-                        @Param("term") String term);
+                        @Param("term") String term, org.springframework.data.domain.Pageable limit);
 
         /**
          * Find patient by phone number and hospital ID

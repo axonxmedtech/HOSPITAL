@@ -12,6 +12,9 @@ public interface BillingPaymentRepository extends JpaRepository<BillingPayment, 
     List<BillingPayment> findByBillingIdIn(List<Long> billingIds);
     java.util.Optional<BillingPayment> findByIdAndHospitalId(Long id, Long hospitalId);
 
+    /** The payment already recorded for this act of paying, if a retry carries the same key. */
+    java.util.Optional<BillingPayment> findByBillingIdAndIdempotencyKey(Long billingId, String idempotencyKey);
+
     /** One day's ledger rows (payments and refunds), oldest first — the daily cash-closing report. */
     List<BillingPayment> findByHospitalIdAndCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtAsc(
             Long hospitalId, java.time.LocalDateTime from, java.time.LocalDateTime toExclusive);

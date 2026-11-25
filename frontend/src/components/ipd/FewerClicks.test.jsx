@@ -91,12 +91,17 @@ describe('DischargeCheckoutModal', () => {
       amount: 5000,
       mode: 'UPI',
       reference: 'UTR9',
+      idempotencyKey: expect.stringMatching(/^ipdpay-/),
     });
     expect(hospitalService.payBilling).toHaveBeenNthCalledWith(2, 2, {
       amount: 500,
       mode: 'UPI',
       reference: 'UTR9',
+      idempotencyKey: expect.stringMatching(/^ipdpay-/),
     });
+    // Each bill gets its own key, so the two payments are never mistaken for one retried.
+    const [[, first], [, second]] = hospitalService.payBilling.mock.calls;
+    expect(first.idempotencyKey).not.toBe(second.idempotencyKey);
     expect(hospitalService.confirmDischarge).toHaveBeenCalledWith(7, {
       dischargeType: 'NORMAL',
       dischargeNote: null,
@@ -128,7 +133,12 @@ describe('DischargeCheckoutModal', () => {
         ipdId={7}
         data={{
           ...planned,
-          billing: { ...planned.billing, outstandingBills: [], balance: -1000, insuranceExpected: 0 },
+          billing: {
+            ...planned.billing,
+            outstandingBills: [],
+            balance: -1000,
+            insuranceExpected: 0,
+          },
         }}
         onClose={vi.fn()}
       />
@@ -213,7 +223,9 @@ describe('CurrentAdmissionsTable', () => {
   it('opens a case in-app and remembers the list it came from', () => {
     renderTable({}, '/dashboard?tab=ipd&ipdFilter=form');
     fireEvent.click(screen.getAllByRole('button', { name: 'Meera Test' })[0]);
-    expect(screen.getByTestId('where')).toHaveTextContent('/ipd/3|/dashboard?tab=ipd&ipdFilter=form');
+    expect(screen.getByTestId('where')).toHaveTextContent(
+      '/ipd/3|/dashboard?tab=ipd&ipdFilter=form'
+    );
   });
 
   it('announces a discharge planned while the list is open', () => {
@@ -234,7 +246,10 @@ describe('CurrentAdmissionsTable', () => {
 
   it('offers the admission form only while it is pending', async () => {
     renderTable();
-    const row = screen.getAllByText('Meera Test').map((el) => el.closest('tr')).find(Boolean);
+    const row = screen
+      .getAllByText('Meera Test')
+      .map((el) => el.closest('tr'))
+      .find(Boolean);
     fireEvent.click(within(row).getAllByRole('button').at(-1)); // the ⋮ menu
     expect(within(row).queryByText('Discharge checkout')).toBeNull();
     fireEvent.click(await screen.findByText('Complete admission form'));

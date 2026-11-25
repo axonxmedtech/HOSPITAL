@@ -66,6 +66,7 @@ public class AuditLogService {
         } catch (Exception ignored) {
             // Ignore if called out of authenticated request context
         }
+        log.setClientIp(com.hms.util.ClientIp.current());
 
         auditLogRepository.save(log);
     }

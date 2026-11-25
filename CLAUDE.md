@@ -100,7 +100,11 @@ Special flag: `isSingleDoctor` on a `HOSPITAL_ADMIN` user lets that admin also a
 - **Module gating:** a hospital's plan enables modules (`OPD`, `IPD`, `PHARMACY`, `BILLING`, `NURSING`, `OT`, …). Backend gates controllers/methods with `@RequireModule("NURSING")` (enforced by `ModuleAccessAspect`); the frontend reads `user.modules` and conditionally renders tabs. The module list lives in `frontend/src/components/PlansTab.jsx`.
 - **Migrations:** `config/DatabaseMigrationRunner` runs idempotent `ensureXxx()` methods on `ApplicationReadyEvent` (each checks `information_schema` then `CREATE TABLE` / `ALTER TABLE`, wrapped in try/catch). Add a new `ensureXxxTable()`/`addColumnIfMissing(...)`, call it from `runMigrations()`, **and** mirror the DDL in `setup/schema-full.sql`. Hibernate `ddl-auto=update` also applies entity changes, so migrations are a safety net + the canonical schema record.
 - **Errors:** `GlobalExceptionHandler` maps `IllegalArgumentException`→400, `UnauthorizedException`→401, `AccessDeniedException`→403. `ApiResponse.error(msg)` puts the message in the **`error`** field — the frontend reads `err.response.data.error`.
-- **Audit:** `AuditLogService.logAction(action, details, performedByEmail, hospitalId, entityType, entityId, reason)` — best-effort, wrap calls in try/catch.
+- **Audit:** `AuditLogService.logAction(action, details, performedByEmail, hospitalId, entityType, entityId, reason)` — best-effort, wrap calls in try/catch. It also records the caller's role and client IP (`util/ClientIp`).
+- **Concurrency & retries:**
+  - Anything that books a doctor's slot calls `DoctorRepository.lockById` and reads the day with `AppointmentRepository.lockActiveForDoctorOnDate` (a locking read), inside a transaction. A plain read can miss a booking another desk just committed.
+  - Money and stock writes take a client `idempotencyKey`: OPD registration, dispensing, and bill payments (`billing_payments.idempotency_key`). The frontend mints one per act with `utils/idempotencyKey`, and a retry with the same key is applied once.
+  - List endpoints wrap the request `size` in `util/Pages.cap(size)` (max 1000); `PagesCapTest` fails on a raw `PageRequest.of(page, size)`.
 
 ### OT (Operation Theatre) module — `OT`-gated
 

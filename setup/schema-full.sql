@@ -65,6 +65,9 @@ CREATE TABLE `audit_logs` (
   `entity_type` varchar(255) DEFAULT NULL,
   `hospital_id` bigint DEFAULT NULL,
   `performed_by` varchar(255) NOT NULL,
+  `performed_by_role` varchar(255) DEFAULT NULL,
+  `branch_id` bigint DEFAULT NULL,
+  `client_ip` varchar(45) DEFAULT NULL,
   `public_id` varchar(255) NOT NULL,
   `reason` varchar(2000) DEFAULT NULL,
   `timestamp` datetime(6) NOT NULL,
@@ -165,7 +168,9 @@ CREATE TABLE `billing_payments` (
   `kind` varchar(10) DEFAULT 'PAYMENT',
   `recorded_by` varchar(150) DEFAULT NULL,
   `note` varchar(255) DEFAULT NULL,
-  PRIMARY KEY (`id`)
+  `idempotency_key` varchar(64) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_billing_payments_idempotency` (`billing_id`,`idempotency_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2652,3 +2657,42 @@ CREATE TABLE IF NOT EXISTS `patient_access_logs` (
   KEY `idx_pal_patient` (`hospital_id`,`patient_id`,`accessed_at`),
   KEY `idx_pal_user` (`hospital_id`,`user_email`,`accessed_at`)
 );
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Indexes created by Flyway migrations (V6, V7, V11). Mirrored here so a database built from
+-- this file (dev, a fresh install, a restore drill) has the same query performance as
+-- production. Keep in sync when a migration adds an index.
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE INDEX `idx_patients_status` ON `patients` (status); -- V6
+CREATE INDEX `idx_queue_doctor` ON `queue_entry` (doctor_id, token_number); -- V7
+CREATE INDEX `idx_appointments_hospital_id` ON `appointments` (hospital_id); -- V11
+CREATE INDEX `idx_audit_logs_hospital_id` ON `audit_logs` (hospital_id); -- V11
+CREATE INDEX `idx_beds_hospital_id` ON `beds` (hospital_id); -- V11
+CREATE INDEX `idx_billing_hospital_id` ON `billing` (hospital_id); -- V11
+CREATE INDEX `idx_billing_items_hospital_id` ON `billing_items` (hospital_id); -- V11
+CREATE INDEX `idx_billing_payments_hospital_id` ON `billing_payments` (hospital_id); -- V11
+CREATE INDEX `idx_doctors_hospital_id` ON `doctors` (hospital_id); -- V11
+CREATE INDEX `idx_ipd_admission_hospital_id` ON `ipd_admission` (hospital_id); -- V11
+CREATE INDEX `idx_lab_orders_hospital_id` ON `lab_orders` (hospital_id); -- V11
+CREATE INDEX `idx_manufacturers_hospital_id` ON `manufacturers` (hospital_id); -- V11
+CREATE INDEX `idx_medical_records_hospital_id` ON `medical_records` (hospital_id); -- V11
+CREATE INDEX `idx_medicine_batches_hospital_id` ON `medicine_batches` (hospital_id); -- V11
+CREATE INDEX `idx_medicine_categories_hospital_id` ON `medicine_categories` (hospital_id); -- V11
+CREATE INDEX `idx_medicine_master_hospital_id` ON `medicine_master` (hospital_id); -- V11
+CREATE INDEX `idx_medicines_hospital_id` ON `medicines` (hospital_id); -- V11
+CREATE INDEX `idx_patients_hospital_id` ON `patients` (hospital_id); -- V11
+CREATE INDEX `idx_pharmacy_sales_hospital_id` ON `pharmacy_sales` (hospital_id); -- V11
+CREATE INDEX `idx_prescriptions_hospital_id` ON `prescriptions` (hospital_id); -- V11
+CREATE INDEX `idx_purchase_invoices_hospital_id` ON `purchase_invoices` (hospital_id); -- V11
+CREATE INDEX `idx_sale_returns_hospital_id` ON `sale_returns` (hospital_id); -- V11
+CREATE INDEX `idx_storage_locations_hospital_id` ON `storage_locations` (hospital_id); -- V11
+CREATE INDEX `idx_suppliers_hospital_id` ON `suppliers` (hospital_id); -- V11
+CREATE INDEX `idx_users_hospital_id` ON `users` (hospital_id); -- V11
+CREATE INDEX `idx_wards_hospital_id` ON `wards` (hospital_id); -- V11
+CREATE INDEX `idx_appointments_date_active` ON `appointments` (hospital_id, appointment_date, is_active); -- V11
+CREATE INDEX `idx_appointments_doctor_active` ON `appointments` (hospital_id, doctor_id, is_active); -- V11
+CREATE INDEX `idx_patients_active_created` ON `patients` (hospital_id, is_active, created_at DESC); -- V11
+CREATE INDEX `idx_billing_patient_created` ON `billing` (patient_id, created_at DESC); -- V11
+CREATE INDEX `idx_medical_records_patient_created` ON `medical_records` (patient_id, created_at DESC); -- V11
+CREATE INDEX `idx_users_hospital_role` ON `users` (hospital_id, role); -- V11

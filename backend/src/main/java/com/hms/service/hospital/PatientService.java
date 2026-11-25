@@ -23,6 +23,9 @@ import java.util.List;
 
 @Service
 public class PatientService {
+
+    /** Most results a patient name/phone search returns (newest first). */
+    static final int SEARCH_LIMIT = 100;
     private static final String HOSPITAL_NOT_FOUND = "Hospital not found";
 
     /**
@@ -550,7 +553,10 @@ public class PatientService {
             return getAllPatients();
         }
 
-        List<Patient> patients = patientRepository.searchActiveByNameOrPhone(hospitalId, query.trim());
+        // Newest matches first, at most SEARCH_LIMIT: a one-letter search must not load every
+        // patient in the hospital (and their latest bills) in one call.
+        List<Patient> patients = patientRepository.searchActiveByNameOrPhone(hospitalId, query.trim(),
+                org.springframework.data.domain.PageRequest.of(0, SEARCH_LIMIT));
 
         // Populate latest bill
         populateLatestBills(patients);

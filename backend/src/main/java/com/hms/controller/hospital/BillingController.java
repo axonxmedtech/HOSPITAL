@@ -80,7 +80,7 @@ public class BillingController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         validateBillingAccess();
-        Pageable pageable = PageRequest.of(page, size, org.springframework.data.domain.Sort.by("createdAt").descending());
+        Pageable pageable = PageRequest.of(page, com.hms.util.Pages.cap(size), org.springframework.data.domain.Sort.by("createdAt").descending());
         // Fetch page of Billing
         org.springframework.data.domain.Page<com.hms.entity.Billing> billsPage =
                 billingService.getAllBills(search, status, category, from, to, pageable);
@@ -426,6 +426,11 @@ public class BillingController {
         @Size(max = 100, message = "Payment reference is too long")
         @NoEmoji
         public String reference;
+
+        /** Optional: the same value on every retry of one act of paying (see BillingPayment). */
+        @Size(max = 64, message = "Idempotency key is too long")
+        @jakarta.validation.constraints.Pattern(regexp = "^[A-Za-z0-9_-]*$", message = "Invalid idempotency key")
+        public String idempotencyKey;
     }
 
     /**
@@ -450,7 +455,8 @@ public class BillingController {
         // Full or part payment, Cash / Card / UPI. The service scopes the bill to the caller's
         // hospital, locks it, checks the amount fits the (discount-aware) balance and records
         // who took the money.
-        return ResponseEntity.ok(billingService.recordPayment(billingId, req.amount, req.mode, req.reference));
+        return ResponseEntity.ok(billingService.recordPayment(billingId, req.amount, req.mode, req.reference,
+                req.idempotencyKey));
     }
 
     public static class DiscountRequest {

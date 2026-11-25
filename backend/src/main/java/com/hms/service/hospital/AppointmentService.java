@@ -232,9 +232,8 @@ public class AppointmentService {
 
         // Strict 30-minute slot enforcement logic
         // Fetches all active appointments for this doctor on this date
-        List<Appointment> existingAppointments = appointmentRepository
-                .findByDoctorIdAndAppointmentDateAndIsActiveTrue(appointment.getDoctorId(),
-                        appointment.getAppointmentDate());
+        List<Appointment> existingAppointments = lockedDaySchedule(appointment.getDoctorId(),
+                appointment.getAppointmentDate());
 
         for (Appointment existing : existingAppointments) {
             // Check for exact time match (assuming strict 30 min slots) for non-cancelled appointments
@@ -304,6 +303,19 @@ public class AppointmentService {
      * another patient's slot is refused rather than double-booking the doctor. The appointment's
      * own slot is excluded from that check so re-saving it unchanged is not a clash with itself.
      */
+    /**
+     * The doctor's active appointments on a day, for a slot check that is safe under concurrency:
+     * lock the doctor's row (bookings for this doctor now run one at a time), then read the day
+     * with a locking read so a booking another desk just committed is seen. Without this, two
+     * desks could both find a slot free and both book it. Must run inside a transaction.
+     */
+    private List<Appointment> lockedDaySchedule(Long doctorId, java.time.LocalDate date) {
+        if (doctorId != null) {
+            doctorRepository.lockById(doctorId);
+        }
+        return appointmentRepository.lockActiveForDoctorOnDate(doctorId, date);
+    }
+
     private void reschedule(Appointment appointment, java.time.LocalDate newDate,
             java.time.LocalTime newTime, Long hospitalId) {
         if (newDate == null && newTime == null) {
@@ -315,8 +327,7 @@ public class AppointmentService {
             return;
         }
 
-        for (Appointment existing : appointmentRepository
-                .findByDoctorIdAndAppointmentDateAndIsActiveTrue(appointment.getDoctorId(), date)) {
+        for (Appointment existing : lockedDaySchedule(appointment.getDoctorId(), date)) {
             if (existing.getId().equals(appointment.getId())) continue;
             if (STATUS_CANCELLED.equals(existing.getStatus())) continue;
             if (time.equals(existing.getAppointmentTime())) {
@@ -739,6 +750,7 @@ public class AppointmentService {
      * @param notes  New Notes
      * @return Updated Appointment
      */
+    @Transactional // a reschedule takes the doctor's schedule lock, which needs a transaction
     public Appointment updateDetails(String publicId, String status, String notes,
             java.time.LocalDate newDate, java.time.LocalTime newTime) {
         Long hospitalId = securityHelper.getCurrentHospitalId();

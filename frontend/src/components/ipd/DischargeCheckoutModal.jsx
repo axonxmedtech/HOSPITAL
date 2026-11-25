@@ -3,6 +3,7 @@ import { useToast } from '../../context/ToastContext';
 import hospitalService from '../../services/hospitalService';
 import wardService from '../../services/wardService';
 import { extractApiError } from '../../utils/apiError';
+import { newIdempotencyKey } from '../../utils/idempotencyKey';
 import { printBlob } from '../../utils/printPdf';
 import { DischargeTypeFields, dischargeNoteRequired, leavesWithDues } from './DischargeType';
 
@@ -44,11 +45,19 @@ const PAY_MODES = [
  * next one is checked against). `onPaid` runs after each, so a later refusal still knows that
  * money was taken.
  */
-export const payInTurn = (bills, payment, onPaid) =>
+export const payInTurn = (bills, payment, onPaid, keyFor) =>
   bills.reduce(
     (chain, bill) =>
       chain
-        .then(() => hospitalService.payBilling(bill.billingId, { ...payment, amount: bill.due }))
+        .then(() =>
+          hospitalService.payBilling(bill.billingId, {
+            ...payment,
+            amount: bill.due,
+            // keyFor(billingId): one idempotency key per bill for this checkout, so retrying a
+            // checkout whose response was lost never collects a bill twice.
+            ...(keyFor ? { idempotencyKey: keyFor(bill.billingId) } : {}),
+          })
+        )
         .then(onPaid),
     Promise.resolve()
   );
@@ -129,7 +138,9 @@ function PaymentFields({ mode, onMode, reference, onReference }) {
 function RefundBox({ amount, refundMode, onRefundMode }) {
   return (
     <div className="text-sm rounded-xl p-3 mb-3 bg-emerald-50 text-emerald-900">
-      <p className="mb-2">{rupees(amount)} of the advance is unused and goes back to the patient.</p>
+      <p className="mb-2">
+        {rupees(amount)} of the advance is unused and goes back to the patient.
+      </p>
       <select
         aria-label="Return the advance by"
         value={refundMode}
@@ -210,6 +221,13 @@ export default function DischargeCheckoutModal({
   const [printing, setPrinting] = useState(false);
   const [bedCleaned, setBedCleaned] = useState(false);
   const closeRef = useRef(onClose);
+  // One idempotency key per bill for the life of this checkout (see payInTurn).
+  const payKeys = useRef(new Map());
+  const payKeyFor = (billingId) => {
+    if (!payKeys.current.has(billingId))
+      payKeys.current.set(billingId, newIdempotencyKey('ipdpay'));
+    return payKeys.current.get(billingId);
+  };
   closeRef.current = onClose;
 
   useEffect(() => {
@@ -254,9 +272,14 @@ export default function DischargeCheckoutModal({
     let paidSomething = false;
     try {
       if (collecting) {
-        await payInTurn(money.bills, { mode, reference: reference.trim() || null }, () => {
-          paidSomething = true;
-        });
+        await payInTurn(
+          money.bills,
+          { mode, reference: reference.trim() || null },
+          () => {
+            paidSomething = true;
+          },
+          payKeyFor
+        );
       }
       await hospitalService.confirmDischarge(ipdId, {
         dischargeType: type,

@@ -585,7 +585,32 @@ public class BillingService {
      */
     @Transactional
     public Map<String, Object> recordPayment(Long id, BigDecimal amount, String mode, String reference) {
+        return recordPayment(id, amount, mode, reference, null);
+    }
+
+    /**
+     * As above, with an idempotency key. A retry carrying the key of a payment already recorded
+     * on this bill is answered with the bill as it now stands -- checked under the bill's lock and
+     * before the balance check, so a retry after the first attempt cleared the balance succeeds
+     * instead of failing, and the money is never taken twice. The same key with a different
+     * amount is refused: that is a different payment reusing a key, not a retry.
+     */
+    @Transactional
+    public Map<String, Object> recordPayment(Long id, BigDecimal amount, String mode, String reference,
+                                             String idempotencyKey) {
         Billing bill = lockedBill(id);
+        String key = idempotencyKey == null || idempotencyKey.isBlank() ? null : idempotencyKey.trim();
+        if (key != null) {
+            java.util.Optional<com.hms.entity.BillingPayment> earlier =
+                    billingPaymentRepository.findByBillingIdAndIdempotencyKey(bill.getId(), key);
+            if (earlier.isPresent()) {
+                if (amount == null || earlier.get().getAmount().compareTo(amount) != 0) {
+                    throw new com.hms.exception.ConflictException(
+                            "This payment was already recorded with a different amount. Refresh the bill.");
+                }
+                return moneyMap(bill, moneyFor(bill));
+            }
+        }
         if (STATUS_CANCELLED.equalsIgnoreCase(bill.getPaymentStatus()) || STATUS_CLOSED.equalsIgnoreCase(bill.getPaymentStatus())) {
             throw new IllegalArgumentException("This bill is " + bill.getPaymentStatus().toLowerCase() + " and can't take payments");
         }
@@ -611,6 +636,7 @@ public class BillingService {
         p.setReference(ref == null || ref.isEmpty() ? null : ref);
         p.setKind(KIND_PAYMENT);
         p.setRecordedBy(currentActor());
+        p.setIdempotencyKey(key);
         billingPaymentRepository.save(p);
 
         BillMoney after = moneyFor(bill);

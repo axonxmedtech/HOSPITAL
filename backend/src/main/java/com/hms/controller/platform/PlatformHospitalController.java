@@ -33,7 +33,7 @@ public class PlatformHospitalController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String type) {
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(page, com.hms.util.Pages.cap(size));
         Page<Hospital> hospitals = hospitalService.getAllHospitals(pageable, type);
         return ResponseEntity.ok(hospitals);
     }

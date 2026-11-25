@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { DiscountModal } from '../../components/billing/BillActionModals';
 import ConfirmationModal from '../../components/ConfirmationModal';
@@ -9,11 +9,11 @@ import IcuAdmitModal from '../../components/IcuAdmitModal';
 import IcuDischargeToIpdModal from '../../components/IcuDischargeToIpdModal';
 import CancelAdmissionModal from '../../components/ipd/CancelAdmissionModal';
 import DietCard from '../../components/ipd/DietCard';
-import DischargeSummaryModal from '../../components/ipd/DischargeSummaryModal';
 import DischargeCheckoutModal from '../../components/ipd/DischargeCheckoutModal';
-import GroupedTabs from '../../components/ipd/GroupedTabs';
+import DischargeSummaryModal from '../../components/ipd/DischargeSummaryModal';
 import { dischargeTypeLabel } from '../../components/ipd/DischargeType';
 import DoctorRoundsTimeline from '../../components/ipd/DoctorRoundsTimeline';
+import GroupedTabs from '../../components/ipd/GroupedTabs';
 import InsurancePanel from '../../components/ipd/InsurancePanel';
 import InvestigationsPanel from '../../components/ipd/InvestigationsPanel';
 import IpdMoneyPanel from '../../components/ipd/IpdMoneyPanel';
@@ -35,7 +35,9 @@ import otService from '../../services/otService';
 import wardService from '../../services/wardService';
 import { extractApiError } from '../../utils/apiError';
 import { canManageBilling as userCanManageBilling } from '../../utils/billingAccess';
+import { formatDay, formatWhen } from '../../utils/date';
 import { FOOD_TIMING_OPTIONS, isFoodTimingApplicable } from '../../utils/foodTiming';
+import { newIdempotencyKey } from '../../utils/idempotencyKey';
 import { printBlob } from '../../utils/printPdf';
 import { buildSidebarConfig, getRoleNavigateUrl } from '../../utils/sidebarNavigation';
 import IcuStayCard from './icu/IcuStayCard';
@@ -54,7 +56,6 @@ import VulnerabilityAssessmentPanel from './nurse/VulnerabilityAssessmentPanel';
 import SurgeryRequestModal from './ot/SurgeryRequestModal';
 import StayBillsSummary from './StayBillsSummary';
 
-import { formatDay, formatWhen } from '../../utils/date';
 const IpdDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -299,6 +300,7 @@ const IpdDetails = () => {
   );
   const hospitalItemResults = stockResults.filter((o) => o.source === 'HOSPITAL_ITEM');
   const [billModal, setBillModal] = useState({ isOpen: false, loading: false, bill: null });
+  const payKeyRef = useRef(null); // idempotency key for the payment taken in the bill dialog
   const [printingBill, setPrintingBill] = useState(false);
   const [payment, setPayment] = useState({ amount: '', mode: 'CASH', saving: false });
   const [bedModal, setBedModal] = useState({
@@ -600,6 +602,7 @@ const IpdDetails = () => {
   }, [data, searchParams]);
 
   const openBillModal = async () => {
+    payKeyRef.current = newIdempotencyKey('ipdbill'); // one key per opening of the bill
     setBillModal({ isOpen: true, loading: true, bill: null });
     try {
       const b = await hospitalService.getIpdBill(id);
@@ -2103,6 +2106,7 @@ const IpdDetails = () => {
                                     amount: amountVal,
                                     mode: payment.mode,
                                     reference: (payment.reference || '').trim() || null,
+                                    idempotencyKey: payKeyRef.current,
                                   };
                                   const resp = await hospitalService.payBilling(
                                     billModal.bill.billingId,

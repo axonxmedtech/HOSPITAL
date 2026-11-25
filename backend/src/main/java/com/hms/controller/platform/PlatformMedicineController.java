@@ -40,13 +40,13 @@ public class PlatformMedicineController {
         try {
             // If hospitalType is provided, use isolated service
             if (hospitalType != null && !hospitalType.isEmpty()) {
-                Pageable pageable = PageRequest.of(page, size, Sort.by("name").ascending());
+                Pageable pageable = PageRequest.of(page, com.hms.util.Pages.cap(size), Sort.by("name").ascending());
                 Page<MedicineList> result = platformMedicineListService.searchMedicinesByType(hospitalType, search, pageable);
                 return ResponseEntity.ok(result);
             }
 
             // Otherwise, get all medicines (backward compatibility)
-            Pageable pageable = PageRequest.of(page, size, Sort.by("name").ascending());
+            Pageable pageable = PageRequest.of(page, com.hms.util.Pages.cap(size), Sort.by("name").ascending());
             return ResponseEntity.ok(medicineService.getPlatformMedicines(search, pageable));
         } catch (Exception e) {
             return com.hms.util.ApiErrors.handle(e);

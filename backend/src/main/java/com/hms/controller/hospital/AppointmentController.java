@@ -103,7 +103,7 @@ public class AppointmentController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String view) {
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(page, com.hms.util.Pages.cap(size));
         return ResponseEntity.ok(appointmentService.getAllAppointments(search, pageable, view));
     }
 
@@ -128,7 +128,7 @@ public class AppointmentController {
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(page, com.hms.util.Pages.cap(size));
         org.springframework.data.domain.Page<Appointment> appointments = appointmentService.getMyAppointments(view,
                 search, pageable);
         return ResponseEntity.ok(appointments);

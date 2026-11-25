@@ -95,6 +95,49 @@ class BillingMoneyOperationsTest {
         when(securityHelper.getCurrentUserRole()).thenReturn("HOSPITAL_ADMIN");
     }
 
+    // ── idempotency: a retried payment is taken once ─────────────────────────
+
+    private void keysLookUpTheLedger() {
+        when(billingPaymentRepository.findByBillingIdAndIdempotencyKey(any(), any())).thenAnswer(i ->
+                ledger.stream().filter(p -> i.getArgument(1).equals(p.getIdempotencyKey())).findFirst());
+    }
+
+    @Test
+    void aRetriedPartPaymentIsTakenOnce() {
+        keysLookUpTheLedger();
+        billingService.recordPayment(7L, new BigDecimal("200"), "CASH", null, "pay-abc");
+        Map<String, Object> retry = billingService.recordPayment(7L, new BigDecimal("200"), "CASH", null, "pay-abc");
+
+        assertThat(ledger).hasSize(1);
+        assertThat(retry.get("balance")).isEqualTo(new BigDecimal("400"));
+        assertThat(bill.getPaymentStatus()).isEqualTo("PARTIAL");
+    }
+
+    @Test
+    void aRetryAfterTheFullPaymentClearedTheBillStillSucceeds() {
+        keysLookUpTheLedger();
+        billingService.recordPayment(7L, new BigDecimal("600"), "CARD", null, "pay-full");
+        // Without the key check before the balance check, this would fail "remaining balance is 0".
+        Map<String, Object> retry = billingService.recordPayment(7L, new BigDecimal("600"), "CARD", null, "pay-full");
+
+        assertThat(ledger).hasSize(1);
+        assertThat(retry.get("balance")).isEqualTo(new BigDecimal("0"));
+    }
+
+    @Test
+    void theSameKeyWithADifferentAmountIsRefused_andDifferentKeysAreSeparatePayments() {
+        keysLookUpTheLedger();
+        billingService.recordPayment(7L, new BigDecimal("200"), "CASH", null, "pay-1");
+
+        assertThatThrownBy(() -> billingService.recordPayment(7L, new BigDecimal("300"), "CASH", null, "pay-1"))
+                .isInstanceOf(com.hms.exception.ConflictException.class)
+                .hasMessageContaining("different amount");
+
+        billingService.recordPayment(7L, new BigDecimal("300"), "CASH", null, "pay-2");
+        assertThat(ledger).extracting(BillingPayment::getIdempotencyKey).containsExactly("pay-1", "pay-2");
+        assertThat(bill.getPaymentStatus()).isEqualTo("PARTIAL");
+    }
+
     // ── part-payment and payment modes ───────────────────────────────────────
 
     @Test
