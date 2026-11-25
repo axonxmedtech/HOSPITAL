@@ -14,6 +14,7 @@ import com.hms.security.SecurityContextHelper;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -81,7 +82,8 @@ public class NurseWorklistService {
     }
 
     public List<NurseWorklistItemDTO> worklist() {
-        return worklist(LocalDateTime.now());
+        // Same clock as the dose, vitals and sample times it is compared with (stored in server time).
+        return worklist(LocalDateTime.now(ZoneId.systemDefault()));
     }
 
     List<NurseWorklistItemDTO> worklist(LocalDateTime now) {
@@ -98,16 +100,26 @@ public class NurseWorklistService {
 
         List<NurseWorklistItemDTO> out = new ArrayList<>();
         for (MyPatientDTO p : patients) {
-            Long admissionId = p.getIpdAdmissionId();
-            for (Prescription rx : prescriptionRepository.findByIpdAdmissionIdAndStatus(admissionId, "ACTIVE")) {
-                if (hospitalId != null && !hospitalId.equals(rx.getHospitalId())) continue;
-                if (!onCourse(rx, now.toLocalDate())) continue;
+            out.addAll(itemsFor(p, hospitalId, marsByOrder, lastVitals.get(p.getIpdAdmissionId()), now));
+        }
+        return out;
+    }
+
+    /** One patient's doses, vitals round and samples. */
+    private List<NurseWorklistItemDTO> itemsFor(MyPatientDTO p, Long hospitalId,
+                                                Map<Long, List<MedicationAdministration>> marsByOrder,
+                                                VitalsRecord lastVitals, LocalDateTime now) {
+        Long admissionId = p.getIpdAdmissionId();
+        List<NurseWorklistItemDTO> out = new ArrayList<>();
+        for (Prescription rx : prescriptionRepository.findByIpdAdmissionIdAndStatus(admissionId, "ACTIVE")) {
+            boolean ours = hospitalId == null || hospitalId.equals(rx.getHospitalId());
+            if (ours && onCourse(rx, now.toLocalDate())) {
                 out.addAll(dosesFor(p, rx, marsByOrder.getOrDefault(rx.getId(), List.of()), now));
             }
-            out.add(vitalsFor(p, lastVitals.get(admissionId), now));
-            for (LabOrder o : labOrderRepository.findByHospitalIdAndIpdAdmissionIdOrderByCreatedAtDescIdDesc(hospitalId, admissionId)) {
-                if ("ORDERED".equalsIgnoreCase(o.getStatus())) out.add(sampleFor(p, o));
-            }
+        }
+        out.add(vitalsFor(p, lastVitals, now));
+        for (LabOrder o : labOrderRepository.findByHospitalIdAndIpdAdmissionIdOrderByCreatedAtDescIdDesc(hospitalId, admissionId)) {
+            if ("ORDERED".equalsIgnoreCase(o.getStatus())) out.add(sampleFor(p, o));
         }
         return out;
     }
