@@ -6,8 +6,13 @@
  * The server accepts letters, digits, `-` and `_`, up to 64 characters.
  */
 export const newIdempotencyKey = (prefix) => {
+  // randomUUID needs a secure context; getRandomValues works everywhere and is still a
+  // cryptographic source (Math.random is not, and keys must not be guessable).
   const random =
-    globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    globalThis.crypto?.randomUUID?.() ??
+    Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)), (b) =>
+      b.toString(16).padStart(2, '0')
+    ).join('');
   return `${prefix}-${random}`.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64);
 };
 
