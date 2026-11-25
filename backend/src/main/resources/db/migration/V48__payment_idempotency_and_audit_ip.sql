@@ -3,7 +3,7 @@
 --    response) carries the same key and is answered from the payment already recorded, so the
 --    money is never taken twice. Unique per bill; MySQL allows any number of NULLs, so payments
 --    recorded without a key are unaffected.
--- 2. audit_logs.client_ip: the admin audit trail records where a change came from, as the
+-- 2. audit_logs.client_ip: the admin audit trail records where each edit came from, as the
 --    patient access log already does. performed_by_role has been written by the app for a while
 --    but only ever created by Hibernate; it is added here too when missing.
 --
