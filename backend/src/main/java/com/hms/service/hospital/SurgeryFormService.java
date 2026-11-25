@@ -55,6 +55,7 @@ public class SurgeryFormService {
     @Autowired private com.hms.security.PerformingNurseResolver performingNurseResolver;
     @Autowired private ObjectMapper objectMapper;
     @Autowired private com.hms.service.RealtimeNotifier notifier;
+    @Autowired private FormAccessService formAccessService;
 
     @Transactional
     public SurgeryFormView save(SaveSurgeryFormRequest req) {
@@ -62,10 +63,11 @@ public class SurgeryFormService {
         if (req.getFormType() == null || req.getFormType().trim().isEmpty()) {
             throw new IllegalArgumentException("formType is required");
         }
+        String formType = req.getFormType().trim();
+        assertFormAccess(formType);
         Surgery surgery = resolveSurgery(req.getSurgeryId(), req.getIpdAdmissionId(), hospitalId);
         assertCanWriteFor(surgery);
 
-        String formType = req.getFormType().trim();
         SurgeryForm current = formRepository
                 .findBySurgeryIdAndFormTypeAndIsCurrentTrue(surgery.getId(), formType)
                 .orElse(null);
@@ -101,6 +103,7 @@ public class SurgeryFormService {
     @Transactional
     public SurgeryFormView sign(Long surgeryId, String formType) {
         Long hospitalId = requireHospitalId();
+        assertFormAccess(formType);
         Surgery surgery = requireSurgery(surgeryId, hospitalId);
         assertCanWriteFor(surgery);
 
@@ -184,6 +187,22 @@ public class SurgeryFormService {
     private void assertCanWriteFor(Surgery surgery) {
         if (surgery.getIpdAdmissionId() != null) {
             nurseWriteAccess.assertCanWriteFor(surgery.getIpdAdmissionId());
+        }
+    }
+
+    /**
+     * Files & Access, enforced on the server (the Consent Forms tab only hides the entry form).
+     * Off ⇒ nobody saves or signs it. On ⇒ the chosen role(s) edit and the other is read-only.
+     * The OT in-charge holds no Files & Access role, so only the on/off switch applies to them;
+     * otherwise a "Nurse only" form would lock the OT manager out. A form type outside the
+     * registry has no Files & Access entry and stays governed by the OT permissions alone.
+     */
+    private void assertFormAccess(String formType) {
+        if (formType == null || !FormRegistry.isValidKey(formType)) return;
+        if ("OT_INCHARGE".equals(securityHelper.getCurrentUserRole())) {
+            formAccessService.assertEnabled(formType);
+        } else {
+            formAccessService.assertCanEdit(formType);
         }
     }
 

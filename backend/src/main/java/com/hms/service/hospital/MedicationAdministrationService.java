@@ -50,6 +50,7 @@ public class MedicationAdministrationService {
     @Autowired private SecurityContextHelper securityHelper;
     @Autowired private NurseAccessGuard nurseAccessGuard;
     @Autowired private com.hms.security.NurseWriteAccess nurseWriteAccess;
+    @Autowired private FormAccessService formAccessService;
     @Autowired private com.hms.security.PerformingNurseResolver performingNurseResolver;
     @Autowired private AuditLogService auditLogService;
     @Autowired private com.hms.service.RealtimeNotifier notifier;
@@ -473,6 +474,9 @@ public class MedicationAdministrationService {
             throw new org.springframework.security.access.AccessDeniedException(
                     "Your role can't record medicines in this hospital. The admin can allow it in Settings.");
         }
+        // Files & Access: the Medication tab is read-only (or off) for this role, so the server
+        // refuses the write too — the same check the ICU infusion chart already applies.
+        formAccessService.assertCanEdit("MEDICATION");
         // Nurses keep their ward / assignment rules; other roles are scoped to the hospital above.
         if (ROLE_NURSE.equals(role) || "NURSE_INCHARGE".equals(role)) {
             nurseWriteAccess.assertCanWriteFor(admission.getId());
