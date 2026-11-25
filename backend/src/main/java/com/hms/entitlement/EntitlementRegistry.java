@@ -129,7 +129,11 @@ public final class EntitlementRegistry {
         // Booking requires the OPD case and consultation workflow, but OPD remains useful for
         // walk-in hospitals that do not sell appointments.
         IMPLIED_BY.put(APPOINTMENTS, Set.of(OPD));
-        IMPLIED_BY.put(IPD, Set.of(WARDS, BEDS, CLINICAL_RECORDS));
+        // An admission always produces a bill (bed, nursing and visit days) and is settled at
+        // discharge, so IPD without BILLING cannot work. BILLING is sellable, so it is persisted
+        // with the plan (like APPOINTMENTS -> OPD) and every gate sees it; OPD-only plans may
+        // still leave it out. V46 backfills plans and hospitals saved before this rule.
+        IMPLIED_BY.put(IPD, Set.of(WARDS, BEDS, CLINICAL_RECORDS, BILLING));
         IMPLIED_BY.put(TIER_MULTI_PHARMACY, Set.of(PHARMACY_BRANCH));
     }
 
