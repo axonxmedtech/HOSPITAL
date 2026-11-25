@@ -19,6 +19,10 @@ private key kept off it): [OFFSITE_BACKUPS.md](OFFSITE_BACKUPS.md).
 
 ## One-time setup (on the VPS)
 
+**Shortcut:** `scripts/ops/server-setup.sh` does steps 1–3 and 5 (plus the Prometheus scrape token)
+safely — `check` reports, `apply --dry-run` previews, and it only restarts MySQL or the backend when
+passed `--restart-mysql` / `--restart-backend`. Steps 4 (bucket rule) and 6 (alert) stay manual.
+
 1. **Binary logging** — `/etc/mysql/mysql.conf.d/hms-binlog.cnf`:
    ```ini
    [mysqld]
