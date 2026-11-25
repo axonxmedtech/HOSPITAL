@@ -88,7 +88,7 @@ import salesApi from '../../services/pharmacy/salesApi';
 import timeSlotService from '../../services/timeSlotService';
 import wardService from '../../services/wardService';
 import { safeLoadMessage, extractApiError } from '../../utils/apiError';
-import { localIsoDate } from '../../utils/date';
+import { formatDay, formatWhen, localIsoDate } from '../../utils/date';
 import { rangeFor, rangeParams } from '../../utils/dateRange';
 import { extractPhoneConflicts } from '../../utils/duplicatePhone';
 import { backdropProps } from '../../utils/modalA11y';
@@ -96,6 +96,7 @@ import { describeShift, isOnShiftNow } from '../../utils/nurseShift';
 import { createOptionalModuleFetcher } from '../../utils/optionalModule';
 import { printHtml } from '../../utils/printHtml';
 import { printPdf, printBlob } from '../../utils/printPdf';
+import { pageMeta } from '../../utils/pageMeta';
 import { LEGACY_ICU_TABS } from '../../utils/sidebarNavigation';
 import { validateForm } from '../../utils/validation';
 import AlertThresholdsCard from './AlertThresholdsCard';
@@ -122,6 +123,7 @@ import TimeSlotsView from './TimeSlotsView';
 import VentilatorSettingsCard from './VentilatorSettingsCard';
 import VitalsSettingsCard from './VitalsSettingsCard';
 import WardsAndBeds from './WardsAndBeds';
+import { humanizeCode } from '../../utils/text';
 /**
  * HospitalAdminDashboard - Hospital Admin dashboard
  *
@@ -2121,7 +2123,7 @@ const HospitalAdminDashboard = () => {
                 <div class="header">
                     <div>
                         <div class="hospital-name">${user?.hospitalName || 'Hospital'} Analytics Summary</div>
-                        <div style="font-size: 12px; color: #666; margin-top: 4px;">Run Date: ${new Date().toLocaleDateString()}</div>
+                        <div style="font-size: 12px; color: #666; margin-top: 4px;">Run Date: ${formatDay(new Date())}</div>
                     </div>
                     <div class="report-title">Executive Summary</div>
                 </div>
@@ -3124,65 +3126,36 @@ const HospitalAdminDashboard = () => {
               <PageHeader
                 title={tabs.find((t) => t.id === activeTab)?.label}
                 subtitle={
-                  activeTab === 'settings'
-                    ? 'Configure operational settings and permissions'
-                    : activeTab === 'opd'
-                      ? 'Active patients currently in queue or being consulted'
-                      : activeTab === 'ipd'
-                        ? adminIpdView === 'history'
-                          ? 'Every admission — discharged, current and cancelled — kept for good'
-                          : 'Manage currently admitted patients in general wards'
-                        : activeTab === 'icu'
-                          ? 'Beds, patients in critical care, housekeeping and history'
-                          : `Manage ${isPharmacyTenant ? 'pharmacy' : user?.hospitalType === 'CLINIC' ? 'clinic' : 'hospital'} ${activeTab} records`
+                  activeTab === 'ipd' && adminIpdView === 'history'
+                    ? 'Every admission — discharged, current and cancelled — kept for good'
+                    : pageMeta(activeTab).subtitle
                 }
+                // Only where the list below filters by it (the IPD history view has its own).
                 onSearch={
-                  activeTab === 'fees' ||
-                  activeTab === 'settings' ||
-                  activeTab === 'icu' || // the ICU view has its own search (in ICU history)
-                  (activeTab === 'ipd' && adminIpdView === 'history')
-                    ? null
-                    : (e) => setSearchInput(e.target.value)
+                  pageMeta(activeTab).search && !(activeTab === 'ipd' && adminIpdView === 'history')
+                    ? (e) => setSearchInput(e.target.value)
+                    : null
                 }
-                searchValue={activeTab === 'fees' || activeTab === 'settings' ? '' : searchInput}
-                searchPlaceholder={
-                  activeTab === 'fees' || activeTab === 'settings' ? '' : `Search ${activeTab}...`
-                }
+                searchValue={searchInput}
+                searchPlaceholder={pageMeta(activeTab).search}
+                // Screens that add inside their own card (wards, presets, theatres…) have none here.
                 onAdd={
-                  activeTab === 'opd'
-                    ? () => setIsAdminOpdModalOpen(true)
-                    : activeTab === 'nurse-tasks'
-                      ? () => setCreateTaskModal(true)
-                      : activeTab === 'ipd'
-                        ? () => {
-                            setAdminIpdOpdForAdmit(null);
-                            setIsAdminIpdAdmitOpen(true);
-                          }
-                        : activeTab === 'icu'
-                          ? null
-                          : activeTab !== 'billing' &&
-                              activeTab !== 'audit-logs' &&
-                              activeTab !== 'fees' &&
-                              activeTab !== 'settings' &&
-                              activeTab !== 'ot' &&
-                              activeTab !== 'time-slots' &&
-                              activeTab !== 'calendar' &&
-                              activeTab !== 'icu-wards' &&
-                              user?.role === 'HOSPITAL_ADMIN'
+                  !pageMeta(activeTab).add
+                    ? null
+                    : activeTab === 'opd'
+                      ? () => setIsAdminOpdModalOpen(true)
+                      : activeTab === 'nurse-tasks'
+                        ? () => setCreateTaskModal(true)
+                        : activeTab === 'ipd'
+                          ? () => {
+                              setAdminIpdOpdForAdmit(null);
+                              setIsAdminIpdAdmitOpen(true);
+                            }
+                          : user?.role === 'HOSPITAL_ADMIN'
                             ? handleAdd
                             : null
                 }
-                addLabel={
-                  activeTab === 'opd'
-                    ? 'New OPD'
-                    : activeTab === 'ipd'
-                      ? 'Admit Patient'
-                      : activeTab === 'nurse-tasks'
-                        ? 'New Task'
-                        : activeTab === 'fees' || activeTab === 'settings'
-                          ? ''
-                          : `Add ${activeTab === 'patients' ? 'Patient' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'nurses' ? 'Nurse' : activeTab === 'pharmacists' ? 'Pharmacist' : activeTab === 'ot-incharges' ? 'OT Incharge' : activeTab === 'appointments' && hasAppointments ? 'Appointment' : activeTab === 'wards' ? 'Ward' : ''}`
-                }
+                addLabel={pageMeta(activeTab).add}
                 filter={
                   activeTab === 'ipd' ? (
                     <SubTabs
@@ -3365,7 +3338,7 @@ const HospitalAdminDashboard = () => {
                       />
                     </div>
                   ) : activeTab === 'audit-logs' ? (
-                    <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 gap-1">
+                    <div className="flex flex-wrap bg-gray-100 rounded-lg p-1 border border-gray-200 gap-1">
                       {(isPharmacyTenant
                         ? [
                             { id: 'ALL', label: 'All Pharmacy Users' },
@@ -3379,6 +3352,16 @@ const HospitalAdminDashboard = () => {
                             ...(operationsSettings.receptionMode !== 'SOLO'
                               ? [{ id: 'RECEPTIONIST', label: 'Reception' }]
                               : []),
+                            ...(modules.includes('PHARMACY')
+                              ? [{ id: 'PHARMACIST', label: 'Pharmacist' }]
+                              : []),
+                            ...(modules.includes('NURSING')
+                              ? [
+                                  { id: 'NURSE_INCHARGE', label: 'Nurse in-charge' },
+                                  { id: 'NURSE', label: 'Nurse' },
+                                ]
+                              : []),
+                            ...(modules.includes('OT') ? [{ id: 'OT_INCHARGE', label: 'OT' }] : []),
                           ]
                       ).map((item) => (
                         <button
@@ -3800,8 +3783,7 @@ const HospitalAdminDashboard = () => {
                                   Custom Charges
                                 </h3>
                                 <p className="text-xs text-gray-500">
-                                  Custom rates available for selection when editing hospital billing
-                                  items.
+                                  Custom rates you can pick when editing a bill items.
                                 </p>
                               </div>
                               {user?.role === 'HOSPITAL_ADMIN' && (
@@ -5837,10 +5819,12 @@ const HospitalAdminDashboard = () => {
                                 />
                               </svg>
                               <p className="text-sm font-medium text-gray-600">
-                                No matching FAQs found
+                                {faqSearch ? 'No matching FAQs found' : 'No FAQs yet'}
                               </p>
                               <p className="text-xs text-gray-400 mt-1">
-                                Try searching for other keywords
+                                {faqSearch
+                                  ? 'Try searching for other keywords'
+                                  : 'Use the ? at the top right for help on any screen, or raise a ticket below.'}
                               </p>
                             </div>
                           ) : (
@@ -7433,6 +7417,7 @@ const PatientsTable = ({
     }),
     columnHelper.accessor('gender', {
       header: 'Gender',
+      cell: (info) => humanizeCode(info.getValue()),
     }),
     columnHelper.accessor('phone', {
       header: 'Phone',
@@ -7729,7 +7714,7 @@ const DeletedDoctorsTable = ({ doctors, onRestore, onViewDetails, startIndex = 0
       cell: (info) => {
         const val = info.getValue();
         if (!val) return '-';
-        return new Date(val).toLocaleDateString();
+        return formatDay(val);
       },
     }),
     columnHelper.display({
@@ -10126,9 +10111,10 @@ const AuditLogsTable = ({ auditLogs, startIndex = 0 }) => {
       header: 'ACTION',
       cell: (info) => (
         <span
-          className={`px-2 py-1 rounded-full text-xs font-semibold ${getActionBadgeColor(info.getValue())}`}
+          title={info.getValue()}
+          className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${getActionBadgeColor(info.getValue())}`}
         >
-          {info.getValue()}
+          {humanizeCode(info.getValue())}
         </span>
       ),
     }),
@@ -10143,7 +10129,7 @@ const AuditLogsTable = ({ auditLogs, startIndex = 0 }) => {
     columnHelper.accessor('entityType', {
       header: 'ENTITY TYPE',
       cell: (info) => (
-        <span className="text-xs text-gray-500 uppercase">{info.getValue() || 'N/A'}</span>
+        <span className="text-xs text-gray-500">{humanizeCode(info.getValue()) || '—'}</span>
       ),
     }),
     columnHelper.accessor('reason', {
@@ -10721,7 +10707,7 @@ const AdminOpdTable = ({
     }),
     columnHelper.accessor('createdAt', {
       header: 'REGISTERED AT',
-      cell: (info) => new Date(info.getValue()).toLocaleString(),
+      cell: (info) => formatWhen(info.getValue()),
     }),
     columnHelper.display({
       id: 'bill',

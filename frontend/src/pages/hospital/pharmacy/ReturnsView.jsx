@@ -7,6 +7,7 @@ import suppliersApi from '../../../services/pharmacy/suppliersApi';
 import { extractApiError } from '../../../utils/apiError';
 import { paidPerUnit, roundMoney } from '../../../utils/pharmacyMoney';
 
+import { formatWhen } from '../../../utils/date';
 const ReturnsView = () => {
   const { success, error: toastError } = useToast();
 
@@ -816,7 +817,7 @@ const ReturnsView = () => {
                       {historyData.map((tx) => (
                         <tr key={tx.id} className="hover:bg-gray-50/50 transition-colors">
                           <td className="px-4 py-3.5 text-gray-500 whitespace-nowrap">
-                            {tx.createdAt ? new Date(tx.createdAt).toLocaleString() : 'N/A'}
+                            {tx.createdAt ? formatWhen(tx.createdAt) : 'N/A'}
                           </td>
                           <td className="px-4 py-3.5">
                             <div className="flex flex-col">

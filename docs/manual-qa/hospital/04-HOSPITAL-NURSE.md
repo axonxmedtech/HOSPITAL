@@ -1,10 +1,10 @@
 # 04 — HOSPITAL NURSE (staff nurse)
 
-**Baseline:** `aa143a7` · **Cases:** `TC-HN-001` … `TC-HN-040` · Tenant HOSPITAL_A · login `nurse.hospa@qa.test` → `/hospital/nurse`
+**Baseline:** `aa143a7` · **Cases:** `TC-HN-001` … `TC-HN-043` · Tenant HOSPITAL_A · login `nurse.hospa@qa.test` → `/hospital/nurse`
 **Requires:** NURSING module + _Separate Nurse Login_ **ON** (`TC-HAS-006`).
 
-**Tabs:** Dashboard · My Patients · My Tasks · My Shifts · My Attendance · Forms · ICU Beds
-**`NursePatientDetail` sub-tabs (verified):** Overview · Vitals · Medication · Notes · Initial Assessment · Vulnerability Assessment · Sugar Chart · Intake / Output · Ventilator · Severity Scores · Consent Forms · Documents
+**Tabs:** Due Now (landing tab) · Dashboard · My Patients · My Tasks · My Shifts · My Attendance · Forms · ICU Beds
+**`NursePatientDetail` tabs (grouped):** **Summary** (Overview) · **Orders** (Medication, Investigations) · **Charts** (Vitals, Sugar Chart, Intake / Output, Ventilator, Severity Scores, Notes) · **Forms** (Initial Assessment, Vulnerability Assessment, Consent Forms, Documents) — click the group, then the pill
 **`NurseFormsView` standalone forms:** Admission Form · General Consent Form · Sugar Chart · Vulnerability Assessment
 **Task states:** `PENDING` → **Start Task** (`Task started`) → **Complete Task** (`Task completed successfully`) · `COMPLETED` · `CANCELLED`; priorities `HIGH`/`MEDIUM`
 **Attendance values:** `PRESENT` · `ABSENT` · `LATE` · `LEAVE` · `HOLIDAY` · `Half Day`
@@ -25,7 +25,7 @@
 ### TC-HN-002 — Nurse dashboard overview
 
 `HOSPITAL_A · NURSE · Dashboard · High · Dashboard`
-**Steps:** open; read counts (my patients, pending tasks, today's shift, attendance).
+**Steps:** open; read the cards (assigned patients, doses due now, vitals due, samples to collect); each due card opens Due Now.
 **Expected:** `NurseOverviewView` figures match My Patients / My Tasks / My Shifts; `GET /hospital/nurse` (workspace) is the source; on-shift state derived from today's schedule, never a manual toggle.
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
 
@@ -314,4 +314,29 @@
 `HOSPITAL_A · NURSE · UI · Low · all`
 **Steps:** 768px and 1024px; open a patient and each clinical sub-tab.
 **Expected:** sub-tab strip scrolls; forms usable; print preview fits.
+**Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
+
+---
+
+## FEWER SCREENS (Due Now)
+
+### TC-HN-041 — Due Now lists the day's doses
+
+`HOSPITAL_A · NURSE · Nursing · Critical · Due Now`
+**Steps:** the doctor orders a 1-0-1 medicine at 15:00 and an As Per Required one; open **Due Now** at 19:30.
+**Expected:** the night (20:00) dose is **Due now**; no morning dose is owed (ordered after it); the as-needed order is under **As needed**; **Given ✓** records against 20:00, moves the dose to **Done** ("Given 19:31") and, from stock, bills it.
+**Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
+
+### TC-HN-042 — Refused / skipped from the list
+
+`HOSPITAL_A · NURSE · Nursing · High · Due Now`
+**Steps:** use the ⋮ next to Given ✓ → Refused by patient.
+**Expected:** the dose shows Done · Refused; nothing is taken from stock or billed; the MAR on the chart shows the same entry.
+**Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
+
+### TC-HN-043 — Vitals and samples from the list
+
+`HOSPITAL_A · NURSE · Nursing · High · Due Now`
+**Steps:** a patient with no vitals for 6 h and an ordered CBC: **Record vitals** (BP 120/80, pulse 88), then **Collected ✓** on CBC.
+**Expected:** the vitals form opens in place and saves; the vitals row moves to Done; the CBC sample is collected (status SAMPLE_COLLECTED) and leaves the list; the Dashboard cards (doses, vitals, samples due) drop accordingly.
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____

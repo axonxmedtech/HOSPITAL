@@ -136,7 +136,7 @@ admin-only actions, reports, and the admin OPD intake modal (`New OPD Case`).
 **Expected:** as documented there.
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
 
-### TC-HAC-016 — ICU Dashboard / Bed Board (admin) — see `09`
+### TC-HAC-016 — ICU screen (Beds / Patients) (admin) — see `09`
 
 `HOSPITAL_A · HOSPITAL_ADMIN · ICU · High · Critical Care`
 **Steps:** execute `TC-HICU-001`…`006` as admin.

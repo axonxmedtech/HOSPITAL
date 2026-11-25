@@ -78,7 +78,8 @@ const ADMISSION = {
 const openMedicineForm = async (user) => {
   render(<IpdDetails />);
   await waitFor(() => expect(hospitalService.getIpdDetails).toHaveBeenCalled());
-  await user.click(await screen.findByRole('button', { name: 'Medication' }));
+  // Medication is the first tab of the Orders group.
+  await user.click(await screen.findByRole('tab', { name: 'Orders' }));
   await user.click(await screen.findByRole('button', { name: '+ Add Medicine' }));
   return await screen.findByLabelText('Food Timing');
 };

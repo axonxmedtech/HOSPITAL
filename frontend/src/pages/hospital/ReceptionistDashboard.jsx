@@ -60,6 +60,7 @@ import { rangeFor, rangeParams } from '../../utils/dateRange';
 import { extractPhoneConflicts } from '../../utils/duplicatePhone';
 import { createOptionalModuleFetcher } from '../../utils/optionalModule';
 import { printPdf } from '../../utils/printPdf';
+import { pageMeta } from '../../utils/pageMeta';
 import { LEGACY_ICU_TABS } from '../../utils/sidebarNavigation';
 import { validateForm } from '../../utils/validation';
 import BedCleaningView from './BedCleaningView';
@@ -68,6 +69,7 @@ import IcuWorkspace from './icu/IcuWorkspace';
 import AdmissionFormModal from './nurse/AdmissionFormModal';
 import OtWorkspace from './ot/OtWorkspace';
 
+import { humanizeCode } from '../../utils/text';
 const ReceptionistDashboard = () => {
   const [user, setUser] = useState(() => authService.getCurrentUser());
   const modules = user?.modules || [];
@@ -1369,16 +1371,16 @@ const ReceptionistDashboard = () => {
               >
                 {hasAppointments && (
                   <div className="bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col h-[650px] overflow-hidden">
-                    <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-gradient-to-r from-gray-50/50 to-white">
-                      <div>
+                    <div className="p-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-gray-50/50 to-white">
+                      <div className="min-w-[8rem]">
                         <h3 className="text-lg font-bold text-gray-955">Appointments</h3>
                         <p className="text-xs text-gray-500 mt-0.5">
-                          Manage scheduled clinical slots
+                          Booked visits for today and ahead
                         </p>
                       </div>
                       <button
                         onClick={() => setIsAddModalOpen(true)}
-                        className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white text-xs font-semibold rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer animate-fade-in"
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 whitespace-nowrap bg-gray-900 hover:bg-gray-800 text-white text-xs font-semibold rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer animate-fade-in"
                       >
                         <svg
                           className="w-4 h-4"
@@ -1540,12 +1542,14 @@ const ReceptionistDashboard = () => {
 
                 {/* Right Div: Queue */}
                 <div className="bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col h-[650px] overflow-hidden">
-                  <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-gradient-to-r from-gray-50/50 to-white">
-                    <div>
+                  <div className="p-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-gray-50/50 to-white">
+                    <div className="min-w-[8rem]">
                       <h3 className="text-lg font-bold text-gray-955">Queue</h3>
-                      <p className="text-xs text-gray-500 mt-0.5">Real-time OPD patient workflow</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Patients waiting for a doctor today
+                      </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       {doctors && doctors.length > 1 && (
                         <div className="relative">
                           <select
@@ -1651,28 +1655,22 @@ const ReceptionistDashboard = () => {
                 tabs.find((t) => t.id === activeTab)?.label ||
                 activeTab.charAt(0).toUpperCase() + activeTab.slice(1)
               }
-              subtitle={`Manage ${tabs.find((t) => t.id === activeTab)?.label || activeTab} records`}
+              subtitle={
+                activeTab === 'ipd' && ipdSubTab === 'history'
+                  ? 'Every admission — discharged, current and cancelled — kept for good'
+                  : pageMeta(activeTab).subtitle
+              }
+              // Only where the list below filters by it (IPD history and claims have their own).
               onSearch={
-                activeTab === 'queue' ||
-                activeTab === 'hospital-inventory' ||
-                activeTab === 'icu' || // the ICU view has its own search (in ICU history)
-                (activeTab === 'ipd' && (ipdSubTab === 'history' || ipdSubTab === 'claims'))
-                  ? null
-                  : (e) => setSearchInput(e.target.value)
+                pageMeta(activeTab).search &&
+                !(activeTab === 'ipd' && (ipdSubTab === 'history' || ipdSubTab === 'claims'))
+                  ? (e) => setSearchInput(e.target.value)
+                  : null
               }
               searchValue={searchInput}
-              searchPlaceholder={
-                activeTab === 'queue' || activeTab === 'hospital-inventory'
-                  ? ''
-                  : `Search ${activeTab}...`
-              }
+              searchPlaceholder={pageMeta(activeTab).search}
               onAdd={
-                activeTab === 'queue' ||
-                activeTab === 'billing' ||
-                activeTab === 'inventory' ||
-                activeTab === 'hospital-inventory' ||
-                activeTab === 'ot' ||
-                activeTab === 'icu'
+                !pageMeta(activeTab).add
                   ? null
                   : () => {
                       if (activeTab === 'opd') setIsOpdModalOpen(true);
@@ -1684,13 +1682,7 @@ const ReceptionistDashboard = () => {
                       } else setIsAddModalOpen(true);
                     }
               }
-              addLabel={
-                activeTab === 'opd'
-                  ? 'New OPD / Case'
-                  : activeTab === 'ipd'
-                    ? 'Admit Patient'
-                    : `Add ${activeTab.slice(0, -1)}`
-              }
+              addLabel={activeTab === 'opd' ? 'New OPD / Case' : pageMeta(activeTab).add}
               filter={
                 activeTab === 'appointments' && hasAppointments ? (
                   <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
@@ -3238,6 +3230,7 @@ const PatientsTable = ({
     }),
     columnHelper.accessor('gender', {
       header: 'GENDER',
+      cell: (info) => humanizeCode(info.getValue()),
     }),
     columnHelper.accessor('phone', {
       header: 'PHONE',

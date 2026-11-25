@@ -5,6 +5,7 @@ import { useToast } from '../context/ToastContext';
 import hospitalService from '../services/hospitalService';
 import { extractApiError } from '../utils/apiError';
 
+import { formatDay } from '../utils/date';
 const HistoryDrawer = ({ isOpen, onClose, entityType, entityId, entityName }) => {
   const [clinicalLogs, setClinicalLogs] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
@@ -206,7 +207,7 @@ const HistoryDrawer = ({ isOpen, onClose, entityType, entityId, entityName }) =>
                                           dateTime={log.timestamp}
                                           className="flex-none py-0.5 text-xs leading-5 text-gray-500"
                                         >
-                                          {new Date(log.timestamp).toLocaleDateString()}
+                                          {formatDay(log.timestamp)}
                                         </time>
                                       </div>
                                       <p className="text-sm leading-6 text-gray-600 break-words mt-1">

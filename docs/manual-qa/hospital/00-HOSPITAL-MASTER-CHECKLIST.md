@@ -51,8 +51,8 @@ Sidebar groups are shown as they render. `requiredModule` is the value read from
 | Patient Management | **Pathology**            | `PATHOLOGY`        | **PLACEHOLDER** | `TC-HA-038`, `TC-HAC-023`, `TC-MOD-030`     |
 | —                  | **Follow-ups**           | OPD                | TESTED          | `TC-HAC-008`/`009`, `TC-HR-037`/`038`       |
 | Rooms              | **Wards & Beds**         | IPD                | TESTED          | `TC-HAC-015`, `TC-HWB-001`…`024`            |
-| Critical Care      | **ICU Dashboard**        | ICU                | TESTED          | `TC-HAC-016`, `TC-HICU-004`                 |
-| Critical Care      | **ICU Bed Board**        | ICU                | TESTED          | `TC-HICU-005`                               |
+| Critical Care      | **ICU screen**        | ICU                | TESTED          | `TC-HAC-016`, `TC-HICU-004`                 |
+| Critical Care      | **ICU → Beds**        | ICU                | TESTED          | `TC-HICU-005`                               |
 | Staff              | **Doctors**              | OPD                | TESTED          | `TC-HA-004`…`010`                           |
 | Staff              | **Pharmacists**          | PHARMACY           | TESTED          | `TC-HA-014`/`015`                           |
 | Staff              | **Receptionists**        | OPD                | TESTED          | `TC-HA-011`…`013`                           |
@@ -107,7 +107,7 @@ from the original 40-tab list disappears silently.
 | Billing                       | TESTED | `TC-HR-045`, `TC-HB-*`     |
 | Medicine Inventory            | TESTED | `TC-HR-046`                |
 | Operation Theatre             | TESTED | `TC-HR-047`, `TC-HOT-006`  |
-| ICU Dashboard / ICU Bed Board | TESTED | `TC-HR-048`, `TC-HICU-005` |
+| ICU screen (Beds / Patients) | TESTED | `TC-HR-048`, `TC-HICU-005` |
 
 ### DOCTOR → `/hospital/doctor` (11 tabs)
 
@@ -121,7 +121,7 @@ from the original 40-tab list disappears silently.
 | IPD                           | TESTED | `TC-HD-023`…`027` |
 | Billing                       | TESTED | `TC-HD-032`       |
 | Operation Theatre             | TESTED | `TC-HD-034`/`035` |
-| ICU Dashboard / ICU Bed Board | TESTED | `TC-HD-036`       |
+| ICU screen (Beds / Patients) | TESTED | `TC-HD-036`       |
 | Medicine Inventory            | TESTED | `TC-HD-033`       |
 
 ### NURSE → `/hospital/nurse` (7 tabs + 12 patient panels)

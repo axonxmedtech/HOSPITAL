@@ -42,7 +42,7 @@ export const SHOTS = [
     screen: 'Plan & Usage',
     caption: 'Administration → Plan & Usage',
   },
-  { id: 'admin-nurses', account: 'admin', screen: 'Nurses', caption: 'Staff → Nurses' },
+  { id: 'admin-nurses', account: 'admin', screen: 'Nurses', caption: 'Nursing → Nurses' },
   {
     id: 'admin-ot-theatres',
     account: 'admin',
@@ -53,7 +53,7 @@ export const SHOTS = [
     id: 'admin-hospital-inventory',
     account: 'admin',
     screen: 'Hospital Inventory',
-    caption: 'Inventory → Hospital Inventory',
+    caption: 'Hospital Inventory',
   },
   { id: 'admin-billing', account: 'admin', screen: 'Billing', caption: 'Finance → Billing' },
   { id: 'admin-audit', account: 'admin', screen: 'Audit Logs', caption: 'Reports → Audit Logs' },

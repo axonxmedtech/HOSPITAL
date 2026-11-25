@@ -22,11 +22,11 @@ import { progressStore } from './progressStore';
 const SCREENS = new Set(
   [
     // hospital / clinic / pharmacy admin
-    'overview patients appointments opd follow-ups ipd icu wards icu-wards icu-dashboard icu-beds ot pathology pharmacy pharmacists inventory hospital-inventory billing fees daily-collection doctors receptionists ot-incharges ot-theatres ot-analytics nurses nurse-assignments nurse-tasks time-slots calendar analytics audit-logs settings plan-usage support quick-notes symptom-presets diagnosis-presets prescription-presets in-clinic-presets pharmacies suppliers pharmacy-billing',
+    'overview patients appointments opd follow-ups ipd icu beds wards icu-wards ot pathology pharmacy pharmacists inventory hospital-inventory billing fees daily-collection doctors receptionists ot-incharges ot-theatres ot-analytics nurses nurse-assignments nurse-tasks time-slots calendar analytics audit-logs settings plan-usage support quick-notes symptom-presets diagnosis-presets prescription-presets in-clinic-presets pharmacies suppliers pharmacy-billing',
     // pharmacist
     'dashboard billing billing-history prescriptions inventory purchase suppliers manufacturers returns expiry reports audit-logs settings',
     // nurse, nurse in-charge, OT
-    'my-patients my-tasks my-shifts my-attendance forms icu-beds my-nurses my-ward-patients unassigned-patients schedule attendance beds coverage calendar board requests day',
+    'due-now my-patients my-tasks my-shifts my-attendance forms icu-beds my-nurses my-ward-patients unassigned-patients schedule attendance beds coverage calendar board requests day history',
     // super admin
     'dashboard medicines audit_logs help_insights hospital:hospitals hospital:plans hospital:tickets hospital:faqs clinic:clinics pharmacy:pharmacies',
   ]

@@ -3,6 +3,7 @@ import { useToast } from '../../context/ToastContext';
 import hospitalService from '../../services/hospitalService';
 import { extractApiError } from '../../utils/apiError';
 
+import { formatWhen } from '../../utils/date';
 export const PAYER_TYPES = [
   { value: 'TPA', label: 'TPA (cashless)' },
   { value: 'INSURANCE', label: 'Insurance company' },
@@ -229,8 +230,7 @@ export default function InsurancePanel({ admissionId, canEdit = false, onChanged
               <ol className="mt-3 border-t pt-2 space-y-1 text-xs text-gray-600">
                 {c.events.map((e) => (
                   <li key={e.id}>
-                    {new Date(e.createdAt).toLocaleString()} ·{' '}
-                    {CLAIM_STATUS[e.status]?.label || e.status}
+                    {formatWhen(e.createdAt)} · {CLAIM_STATUS[e.status]?.label || e.status}
                     {e.amount != null ? ` · ${rupees(e.amount)}` : ''}
                     {e.note ? ` · ${e.note}` : ''}
                   </li>

@@ -13,6 +13,7 @@ import inventoryApi from '../../../services/pharmacy/inventoryApi';
 import medicinesApi from '../../../services/pharmacy/medicinesApi';
 import { extractApiError } from '../../../utils/apiError';
 
+import { formatDay, localIsoDate } from '../../../utils/date';
 const InventoryView = ({ onNavigate, refreshKey = 0 }) => {
   const currentUser = authService.getCurrentUser();
   // Standalone pharmacy ERP: no category filter / no manual "Add Medicine"
@@ -93,7 +94,7 @@ const InventoryView = ({ onNavigate, refreshKey = 0 }) => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Inventory_Export_${new Date().toLocaleDateString()}.csv`;
+    link.download = `Inventory_Export_${localIsoDate()}.csv`;
     link.click();
   };
 
@@ -546,7 +547,7 @@ const InventoryView = ({ onNavigate, refreshKey = 0 }) => {
                                   {tx.quantity})
                                 </p>
                                 <span className="text-[9px] text-gray-400">
-                                  {new Date(tx.createdAt).toLocaleDateString()}
+                                  {formatDay(tx.createdAt)}
                                 </span>
                               </div>
                               <p className="text-gray-500 text-[9px] mt-0.5">

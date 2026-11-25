@@ -6,20 +6,56 @@ import nurseService from '../../../services/nurseService';
 
 /**
  * NurseOverviewView - dashboard landing for a nurse (Phase 1).
- * Stat cards + recent assigned patients. Task/vitals/notification widgets
- * arrive with later milestones (M4, M7, M8).
+ * Stat cards (from the Due Now list) + recent assigned patients.
  */
-const StatCard = ({ label, value, accent }) => (
-  <div className="bg-white border border-gray-200 rounded-xl p-5">
-    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{label}</p>
-    <p className={`text-3xl font-bold mt-2 ${accent || 'text-gray-900'}`}>{value}</p>
-  </div>
-);
+const StatCard = ({ label, value, accent, hint, onClick }) => {
+  const body = (
+    <>
+      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{label}</p>
+      <p className={`text-3xl font-bold mt-2 ${accent || 'text-gray-900'}`}>{value}</p>
+      {hint && <p className="text-xs text-gray-500 mt-1">{hint}</p>}
+    </>
+  );
+  if (!onClick) return <div className="bg-white border border-gray-200 rounded-xl p-5">{body}</div>;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex flex-col items-start justify-start text-left bg-white border border-gray-200 rounded-xl p-5 hover:border-primary-300 hover:shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+    >
+      {body}
+    </button>
+  );
+};
 
-const NurseOverviewView = ({ onOpenPatient, refreshKey }) => {
+const isNow = (i) => i.state === 'OVERDUE' || i.state === 'DUE';
+/** Counts for the overview cards, from the Due now list. */
+export const dueCounts = (items) => {
+  const now = (items || []).filter(isNow);
+  return {
+    doses: now.filter((i) => i.kind === 'DOSE').length,
+    overdue: now.filter((i) => i.state === 'OVERDUE').length,
+    vitals: now.filter((i) => i.kind === 'VITALS').length,
+    samples: now.filter((i) => i.kind === 'SAMPLE').length,
+  };
+};
+
+const NurseOverviewView = ({ onOpenPatient, onOpenDueNow, refreshKey }) => {
   const { error: toastError } = useToast();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
+  const [due, setDue] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    nurseService
+      .getWorklist()
+      .then((rows) => active && setDue(dueCounts(rows)))
+      .catch(() => active && setDue(null));
+    return () => {
+      active = false;
+    };
+  }, [refreshKey]);
 
   useEffect(() => {
     let active = true;
@@ -48,10 +84,23 @@ const NurseOverviewView = ({ onOpenPatient, refreshKey }) => {
     <div className="space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Assigned Patients" value={data?.assignedPatientCount ?? 0} />
-        {/* Placeholders for later milestones — kept visible for layout stability */}
-        <StatCard label="Pending Tasks" value="—" accent="text-gray-400" />
-        <StatCard label="Vitals Today" value="—" accent="text-gray-400" />
-        <StatCard label="Unread Alerts" value="—" accent="text-gray-400" />
+        <StatCard
+          label="Doses due now"
+          value={due ? due.doses : '…'}
+          accent={due?.overdue ? 'text-rose-600' : 'text-gray-900'}
+          hint={due?.overdue ? `${due.overdue} overdue` : 'Open Due Now'}
+          onClick={onOpenDueNow}
+        />
+        <StatCard
+          label="Vitals due"
+          value={due ? due.vitals : '…'}
+          onClick={onOpenDueNow}
+        />
+        <StatCard
+          label="Samples to collect"
+          value={due ? due.samples : '…'}
+          onClick={onOpenDueNow}
+        />
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl">

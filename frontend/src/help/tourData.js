@@ -88,7 +88,7 @@ export const TOURS = [
         goTo: 'ipd',
         target: { text: 'Admit Patient' },
         title: 'Admit',
-        text: 'Admit directly here, or Admit on a doctor’s admission request. Pick doctor, ward and a free bed.',
+        text: 'Admit directly here, or Admit on a doctor’s admission request. The list below has Ready to go and Form pending filters, and each row’s menu does the desk’s jobs.',
         modules: ['IPD'],
       },
       screen(
@@ -131,7 +131,7 @@ export const TOURS = [
       screen(
         'ipd',
         'Admitted patients',
-        'Open a patient to prescribe from stock, write round notes, see vitals and plan the discharge.',
+        'Start ward round goes through your patients one screen at a time: vitals, medicines, tests, diet and your note, then Save & next.',
         {
           modules: ['IPD'],
         }
@@ -146,9 +146,14 @@ export const TOURS = [
     summary: 'Your patients, tasks and shifts.',
     steps: [
       screen(
+        'due-now',
+        'Due now',
+        'Every dose, vitals round and sample due across your patients — one tap each.'
+      ),
+      screen(
         'my-patients',
         'Your patients',
-        'Patients your in-charge gave you. Open one to record vitals, give medicines and write notes.'
+        'Patients in your care. Open one for the full chart: Summary, Orders, Charts and Forms.'
       ),
       screen('my-tasks', 'Your tasks', 'Start Task when you begin, Complete Task when done.'),
       screen('my-shifts', 'Your shifts', 'Your duty roster.'),
@@ -161,6 +166,11 @@ export const TOURS = [
     summary: 'Assign patients, plan the roster and keep beds ready.',
     steps: [
       screen(
+        'due-now',
+        'Due now',
+        'Doses, vitals and samples due in your wards. With a shared nurse login, choose Recording for once at the top.'
+      ),
+      screen(
         'unassigned-patients',
         'Patients without a nurse',
         'Assign a primary nurse to every admitted patient in your wards.'
@@ -170,7 +180,7 @@ export const TOURS = [
         'Roster',
         'Set each nurse’s shifts; Attendance and Coverage are next to it.'
       ),
-      screen('beds', 'Beds', 'Mark Cleaned after a discharge, or put a bed under maintenance.'),
+      screen('beds', 'Beds', 'Mark cleaned after a discharge, or put a bed under maintenance.'),
     ],
   },
   {

@@ -14,6 +14,7 @@ import nurseService from '../../services/nurseService';
 import { extractApiError } from '../../utils/apiError';
 import HospitalCalendar from './HospitalCalendar';
 import IcuBedBoard from './icu/IcuBedBoard';
+import DueNowView from './nurse/DueNowView';
 import NursePatientDetail from './nurse/NursePatientDetail';
 import AttendanceView from './nurse-incharge/AttendanceView';
 import CoverageView from './nurse-incharge/CoverageView';
@@ -37,6 +38,7 @@ const NurseInchargeDashboard = () => {
   // The chart the incharge has open, if any. Ward-scoped: the list they opened it from
   // only contains their wards, and the server re-checks on every read and write.
   const [selectedAdmissionId, setSelectedAdmissionId] = useState(null);
+  const [returnTab, setReturnTab] = useState('my-ward-patients');
   const [refreshKey, setRefreshKey] = useState(0);
 
   const handleRefresh = useCallback(() => setRefreshKey((k) => k + 1), []);
@@ -50,6 +52,7 @@ const NurseInchargeDashboard = () => {
 
   const sidebarTabs = [
     { id: 'dashboard', label: 'Dashboard' },
+    { id: 'due-now', label: 'Due Now' },
     { id: 'my-nurses', label: 'My Nurses' },
     { id: 'my-ward-patients', label: 'My Ward Patients' },
     { id: 'unassigned-patients', label: 'Unassigned Patients' },
@@ -64,6 +67,7 @@ const NurseInchargeDashboard = () => {
   const titleFor = () => {
     if (activeTab === 'patient-detail') return 'Patient Chart';
     if (activeTab === 'dashboard') return 'Dashboard';
+    if (activeTab === 'due-now') return 'Due Now';
     if (activeTab === 'my-ward-patients') return 'My Ward Patients';
     if (activeTab === 'unassigned-patients') return 'Unassigned Patients';
     if (activeTab === 'schedule') return 'Schedule';
@@ -82,13 +86,24 @@ const NurseInchargeDashboard = () => {
           admissionId={selectedAdmissionId}
           onBack={() => {
             setSelectedAdmissionId(null);
-            setActiveTab('my-ward-patients');
+            setActiveTab(returnTab);
           }}
           refreshKey={refreshKey}
         />
       );
     }
     switch (activeTab) {
+      case 'due-now':
+        return (
+          <DueNowView
+            refreshKey={refreshKey}
+            onOpenPatient={(id) => {
+              setSelectedAdmissionId(id);
+              setReturnTab('due-now');
+              setActiveTab('patient-detail');
+            }}
+          />
+        );
       case 'dashboard':
         return <InchargeOverview onNavigate={setActiveTab} refreshKey={refreshKey} />;
       case 'my-ward-patients':
@@ -97,6 +112,7 @@ const NurseInchargeDashboard = () => {
             refreshKey={refreshKey}
             onOpenPatient={(id) => {
               setSelectedAdmissionId(id);
+              setReturnTab('my-ward-patients');
               setActiveTab('patient-detail');
             }}
           />
@@ -132,7 +148,7 @@ const NurseInchargeDashboard = () => {
       <Sidebar
         title="Nurse Incharge"
         tabs={sidebarTabs}
-        activeTab={activeTab}
+        activeTab={activeTab === 'patient-detail' ? returnTab : activeTab}
         onTabChange={setActiveTab}
         footerTitle="Hospital"
         footerData={user?.hospitalName || 'HMS Medical Center'}
@@ -156,7 +172,8 @@ const NurseInchargeDashboard = () => {
               <div className="w-1 h-6 bg-gray-900 rounded-full"></div>
               <h2 className="text-lg font-bold text-gray-800">{titleFor()}</h2>
             </div>
-            <DietSheetButton />
+            {/* The kitchen sheet belongs with the patient lists, not on schedules or attendance. */}
+            {DIET_SHEET_TABS.has(activeTab) && <DietSheetButton />}
           </div>
           {renderContent()}
         </main>
@@ -166,6 +183,8 @@ const NurseInchargeDashboard = () => {
     </div>
   );
 };
+
+const DIET_SHEET_TABS = new Set(['dashboard', 'my-ward-patients']);
 
 /**
  * WardPatientsView - active admissions across the incharge's wards, with an

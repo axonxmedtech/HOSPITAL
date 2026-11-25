@@ -3,6 +3,7 @@ import useLiveRefresh from '../hooks/useLiveRefresh';
 import hospitalService from '../services/hospitalService';
 import { SkeletonFeed } from './Skeleton';
 
+import { formatWhen } from '../utils/date';
 const ActivityFeed = () => {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -41,7 +42,7 @@ const ActivityFeed = () => {
   const formatTime = (timestamp) => {
     if (!timestamp) return '';
     const date = new Date(timestamp);
-    return date.toLocaleString();
+    return formatWhen(date);
   };
 
   if (loading)

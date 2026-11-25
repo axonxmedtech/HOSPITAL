@@ -3,7 +3,7 @@
 **Baseline:** `aa143a7` · **Cases:** `TC-CR-001` … `TC-CR-022` · Tenant CLINIC_A · `rec.clina@qa.test` → `/hospital/receptionist`
 
 **Tabs (clinic):** Overview · Patients · Appointments · OPD · Follow-ups · Billing · Medicine Inventory.
-**Absent:** IPD, Operation Theatre, ICU Dashboard, ICU Bed Board.
+**Absent:** IPD, Operation Theatre, ICU.
 
 Shared behaviour is referenced to `02-HOSPITAL-RECEPTIONIST.md`; only clinic deltas and the
 identity journey are specified here.

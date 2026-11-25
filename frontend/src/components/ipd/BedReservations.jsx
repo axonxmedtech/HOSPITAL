@@ -3,6 +3,7 @@ import { useToast } from '../../context/ToastContext';
 import wardService from '../../services/wardService';
 import { extractApiError } from '../../utils/apiError';
 
+import { formatWhen } from '../../utils/date';
 /** "2026-11-22T10:00" for a datetime-local input, in local time. */
 const localInput = (d) => {
   const pad = (n) => String(n).padStart(2, '0');
@@ -179,8 +180,7 @@ export function ReservationsList({ reservations, onChanged }) {
               {r.patientPhone ? ` · ${r.patientPhone}` : ''}
             </span>
             <span className="text-xs text-gray-500">
-              expected {new Date(r.expectedAt).toLocaleString()} · held until{' '}
-              {new Date(r.reservedUntil).toLocaleString()}
+              expected {formatWhen(r.expectedAt)} · held until {formatWhen(r.reservedUntil)}
             </span>
             {r.notes && <span className="text-xs text-gray-500">{r.notes}</span>}
             <button

@@ -12,6 +12,13 @@ import hospitalService from '../services/hospitalService';
 const dismissKey = () =>
   `hms.setupChecklist.dismissed.${authService.getCurrentUser()?.hospitalId ?? 'default'}`;
 
+const facilityWord = () => {
+  const t = authService.getCurrentUser()?.hospitalType;
+  if (t === 'CLINIC') return 'clinic';
+  if (t === 'PHARMACY') return 'pharmacy';
+  return 'hospital';
+};
+
 const readCollapsed = () => {
   try {
     return window.localStorage.getItem(dismissKey()) === '1';
@@ -95,7 +102,7 @@ export default function SetupChecklist({ onGo, alwaysShown = false }) {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 id="setup-checklist-title" className="text-lg font-semibold text-gray-900">
-            Get your hospital ready
+            Get your {facilityWord()} ready
           </h2>
           <p className="text-sm text-gray-600 mt-0.5">
             {status.done} of {status.total} done. Finish these so your staff can start working.

@@ -174,14 +174,14 @@ Plus: **Fees** (Finance ▸ Fees, `01b TC-HAC-019`), **OT Theatres** (`OtRoomsCa
 
 `HOSPITAL_A · HOSPITAL_ADMIN → NURSE · Settings · High · Severity Scores`
 **Delta:** disable one score type; set another to `Total only`.
-**Downstream:** nurse's Severity Scores panel omits the disabled type; the total-only type captures a single number instead of components; ICU dashboard shows the score. Restore.
+**Downstream:** nurse's Severity Scores panel omits the disabled type; the total-only type captures a single number instead of components; ICU screen shows the score. Restore.
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
 
 ### TC-HAS-020 — ICU Alert Thresholds → dashboard alert
 
 `HOSPITAL_A · HOSPITAL_ADMIN → NURSE · Settings · Critical · ICU Alert Thresholds`
 **Delta:** set SpO2 low threshold to 95.
-**Downstream:** nurse records SpO2 92 on the ICU patient → ICU Dashboard / stay card flags the alert; at 96 no flag. Non-numeric → `Could not save the threshold`. Restore.
+**Downstream:** nurse records SpO2 92 on the ICU patient → ICU screen / stay card flags the alert; at 96 no flag. Non-numeric → `Could not save the threshold`. Restore.
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
 
 ### TC-HAS-021 — ICU cards hidden without ICU module

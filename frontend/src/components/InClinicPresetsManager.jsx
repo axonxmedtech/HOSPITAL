@@ -184,7 +184,7 @@ const InClinicPresetsManager = () => {
 
   return (
     <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
-      <div className="flex justify-between items-start">
+      <div className="flex flex-wrap justify-between items-start gap-3">
         <div>
           <h3 className="text-lg font-semibold text-gray-900 mb-1">In-Clinic Presets</h3>
           <p className="text-xs text-gray-500">
@@ -197,7 +197,7 @@ const InClinicPresetsManager = () => {
           <button
             type="button"
             onClick={openCreateForm}
-            className="bg-gray-950 text-white text-xs font-semibold px-4 py-2 rounded-lg hover:bg-gray-800 transition"
+            className="bg-gray-950 text-white text-xs font-semibold px-4 py-2 rounded-lg hover:bg-gray-800 transition whitespace-nowrap"
           >
             + Create Preset
           </button>

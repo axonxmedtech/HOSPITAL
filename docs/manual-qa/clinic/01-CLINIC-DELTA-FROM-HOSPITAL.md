@@ -70,7 +70,7 @@ closed — see §4.
 `CLINIC_A · HOSPITAL_ADMIN · UI · Critical · sidebar` — `CLINIC_VARIANT`
 **Steps:** log in on the full clinic plan; list every sidebar group and tab.
 **Expected — present:** Overview · Patients · Appointments · OPD · Follow-ups · Pharmacy · Pharmacists · Medicine Inventory · Billing · Fees · Doctors · Receptionists · Reports & Analytics · Audit Logs · Settings · Support · the five preset tabs.
-**Expected — absent:** **IPD, Wards & Beds, ICU Dashboard, ICU Bed Board, Operation Theatre, OT Incharge, OT Theatres, OT Analytics, Nurses, Nurse Assignments, Nurse Tasks, Time Slots, Calendar, Hospital Inventory, Pathology.**
+**Expected — absent:** **IPD, Wards & Beds, ICU, Operation Theatre, OT Incharge, OT Theatres, OT Analytics, Nurses, Nurse Assignments, Nurse Tasks, Time Slots, Calendar, Hospital Inventory, Pathology.**
 Empty sidebar groups (Rooms, Critical Care, Nursing) must not render.
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
 

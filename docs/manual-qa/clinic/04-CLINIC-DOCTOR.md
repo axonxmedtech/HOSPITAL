@@ -3,7 +3,7 @@
 **Baseline:** `aa143a7` · **Cases:** `TC-CDR-001` … `TC-CDR-020` · Tenant CLINIC_A · `doc.clina@qa.test` → `/hospital/doctor`
 
 **Tabs (clinic):** Overview · Patients · Appointments · OPD · Follow-ups · Billing · Medicine Inventory.
-**Absent:** IPD, Operation Theatre, ICU Dashboard, ICU Bed Board.
+**Absent:** IPD, Operation Theatre, ICU.
 
 ---
 

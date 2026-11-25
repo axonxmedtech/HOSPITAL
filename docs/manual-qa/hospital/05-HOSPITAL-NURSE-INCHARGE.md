@@ -2,7 +2,7 @@
 
 **Baseline:** `aa143a7` · **Cases:** `TC-HNI-001` … `TC-HNI-032` · Tenant HOSPITAL_A · login `ni.hospa@qa.test` → `/hospital/nurse-incharge`
 
-**Tabs:** Dashboard · My Nurses · My Ward Patients · Unassigned Patients · Schedule · Attendance · Beds · ICU Beds · Coverage · Calendar
+**Tabs:** Dashboard · Due Now · My Nurses · My Ward Patients · Unassigned Patients · Schedule · Attendance · Beds · ICU Beds · Coverage · Calendar
 
 **Verified strings:** Attendance `PRESENT/Present`, `ABSENT/Absent`, `LATE/Late`, `LEAVE/Leave`, `HOLIDAY/Holiday`, `Half Day`, `Attendance saved`. Schedule: **Fill Schedule** (`Filling…`), `Shift assigned`, `Shift cleared`, `Please fill in all required fields`. Beds: `Available`, `Occupied`, `Cleaning Required`, `Under Maintenance`, **Mark Bed Cleaned**, **Put Bed Under Maintenance**, **Return Bed to Available**, `Bed status updated`. Coverage: `Temporary assignment created/removed`, `Substitution created/removed`, `Select a nurse and a ward`, `Select both nurses`, `Primary and replacement must differ`, `Active`/`Ended`.
 
@@ -161,7 +161,7 @@
 ### TC-HNI-019 — ICU Beds (incharge)
 
 `HOSPITAL_A · NURSE_INCHARGE · ICU · High · ICU Beds`
-**Steps:** open; compare with the admin ICU Bed Board; open an ICU ward patient.
+**Steps:** open; compare with the admin ICU → Beds view; open an ICU ward patient.
 **Expected:** ward-scoped; ICU-gated; states consistent with the Beds tab.
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
 

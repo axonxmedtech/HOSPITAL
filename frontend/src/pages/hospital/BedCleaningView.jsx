@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Button from '../../components/Button';
+import IcuAdmitModal from '../../components/IcuAdmitModal';
+import IpdAdmitModal from '../../components/IpdAdmitModal';
 import { ReservationsList, ReserveBedModal, holdLabel } from '../../components/ipd/BedReservations';
 import { useConfirm } from '../../context/ConfirmContext';
 import { useToast } from '../../context/ToastContext';
@@ -15,16 +18,30 @@ import { extractApiError } from '../../utils/apiError';
  * recorded in the bed's status history on the server, with who did it and when.
  */
 const STATUS = {
-  cleaning: { label: 'Needs cleaning', badge: 'bg-amber-100 text-amber-800 border-amber-200' },
   available: { label: 'Available', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  cleaning: { label: 'Needs cleaning', badge: 'bg-amber-50 text-amber-800 border-amber-200' },
   occupied: { label: 'Occupied', badge: 'bg-rose-50 text-rose-700 border-rose-200' },
-  maintenance: { label: 'Maintenance', badge: 'bg-gray-100 text-gray-600 border-gray-200' },
+  maintenance: { label: 'Maintenance', badge: 'bg-slate-100 text-slate-600 border-slate-200' },
 };
 
+/** The desk's two questions: which beds can take a patient, and which need cleaning first. */
 const FILTERS = [
+  { id: 'available', label: 'Free beds' },
   { id: 'cleaning', label: 'Needs cleaning' },
   { id: 'all', label: 'All beds' },
 ];
+
+/**
+ * An operating theatre is booked through the OT module, never admitted into. Same rule the OT
+ * screens use for wards that predate OT Theatres ("OT" in the name), as a whole word.
+ */
+export const isTheatreWard = (name) => /\bOT\b|operation theat(re|er)/i.test(name || '');
+
+const EMPTY_TEXT = {
+  available: 'No bed is free right now.',
+  cleaning: 'No bed is waiting for cleaning.',
+  all: 'No beds are set up yet.',
+};
 
 function waited(since) {
   if (!since) return null;
@@ -40,10 +57,11 @@ export default function BedCleaningView() {
   const { success, error: toastError } = useToast();
   const [wards, setWards] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('cleaning');
+  const [filter, setFilter] = useState('available');
   const [busyBed, setBusyBed] = useState(null);
   const [reservations, setReservations] = useState([]);
   const [reserving, setReserving] = useState(null); // { bed, wardName }
+  const [admitting, setAdmitting] = useState(null); // { wardId, bedId, isIcu }
 
   const load = useCallback(
     async (silent = false) => {
@@ -65,7 +83,10 @@ export default function BedCleaningView() {
             name: w.wardName,
             type: w.unitType || 'ICU',
           })),
-        ].filter((w, i, all) => w.id && all.findIndex((x) => x.id === w.id) === i);
+        ]
+          .filter((w, i, all) => w.id && all.findIndex((x) => x.id === w.id) === i)
+          // An ICU bed is admitted through the ICU form (the general one lists ward beds only).
+          .map((w) => ({ ...w, isIcu: (icu || []).some((u) => u.wardId === w.id) }));
         const withBeds = await Promise.all(
           list.map(async (w) => ({
             ...w,
@@ -130,94 +151,128 @@ export default function BedCleaningView() {
     <div className="space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Beds</h2>
-          <p className="text-sm text-gray-500 mt-0.5">
-            A vacated bed needs cleaning before anyone can be admitted to it.
+          <h2 className="text-2xl font-bold text-slate-900">Beds</h2>
+          <p className="text-sm text-slate-500 mt-0.5">
+            Admit straight into a free bed. A vacated bed needs cleaning before anyone can use it.
           </p>
         </div>
-        <div className="inline-flex p-1 bg-gray-100 rounded-xl" role="group" aria-label="Show">
-          {FILTERS.map((f) => (
-            <button
-              key={f.id}
-              type="button"
-              aria-pressed={filter === f.id}
-              onClick={() => setFilter(f.id)}
-              className={`px-4 py-1.5 text-sm font-semibold rounded-lg ${
-                filter === f.id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
-              }`}
-            >
-              {f.label}
-              {f.id === 'cleaning' ? ` (${counts.cleaning})` : ''}
-            </button>
-          ))}
-        </div>
+        <fieldset className="flex flex-wrap gap-2 border-0 p-0 m-0 min-w-0">
+          <legend className="sr-only">Show</legend>
+          {FILTERS.map((f) => {
+            const active = filter === f.id;
+            const n = f.id === 'all' ? null : counts[f.id];
+            const urgent = f.id === 'cleaning' && n > 0;
+            return (
+              <button
+                key={f.id}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setFilter(f.id)}
+                className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-xs font-semibold border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
+                  active
+                    ? 'bg-primary-50 text-primary-700 border-primary-300'
+                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                {f.label}
+                {n != null && (
+                  <span
+                    className={`min-w-5 px-1.5 rounded-full text-[11px] leading-5 text-center ${
+                      urgent ? 'bg-amber-500 text-white' : 'bg-slate-100'
+                    }`}
+                  >
+                    {n}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </fieldset>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {Object.entries(STATUS).map(([key, meta]) => (
-          <div key={key} className="bg-white border border-gray-200 rounded-xl px-4 py-3">
-            <div className="text-xs font-semibold text-gray-500">{meta.label}</div>
-            <div className="text-2xl font-bold text-gray-900">{counts[key]}</div>
+          <div key={key} className="bg-white border border-slate-200 rounded-2xl px-4 py-3">
+            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              {meta.label}
+            </div>
+            <div className="text-2xl font-bold text-slate-900 mt-1">{counts[key]}</div>
           </div>
         ))}
       </div>
 
       <ReservationsList reservations={reservations} onChanged={() => load(true)} />
 
-      {loading && <div className="text-sm text-gray-500">Loading beds…</div>}
+      {loading && <div className="text-sm text-slate-500">Loading beds…</div>}
       {!loading && visible.length === 0 && (
-        <div className="bg-white border border-gray-200 rounded-xl p-8 text-center text-sm text-gray-500">
-          {filter === 'cleaning' ? 'No bed is waiting for cleaning.' : 'No beds are set up yet.'}
+        <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-sm text-slate-500">
+          {EMPTY_TEXT[filter]}
         </div>
       )}
 
       {visible.map((w) => (
-        <section key={w.id} className="bg-white border border-gray-200 rounded-xl">
-          <h3 className="px-4 py-3 border-b border-gray-100 font-semibold text-gray-900 text-sm">
+        <section key={w.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+          <h3 className="px-4 py-3 bg-slate-50 border-b border-slate-200 font-semibold text-slate-900 text-sm">
             {w.name}
             {w.type ? (
-              <span className="ml-2 text-xs font-normal text-gray-500">{w.type}</span>
+              <span className="ml-2 text-xs font-normal text-slate-500">{w.type}</span>
             ) : null}
           </h3>
-          <ul className="divide-y divide-gray-100">
+          <ul className="divide-y divide-slate-100">
             {w.beds.map((b) => {
               const key = (b.status || '').toLowerCase();
-              const meta = STATUS[key] || { label: b.status, badge: 'bg-gray-100 text-gray-600' };
+              const meta = STATUS[key] || {
+                label: b.status,
+                badge: 'bg-slate-100 text-slate-600 border-slate-200',
+              };
               const since = waited(b.statusSince);
               return (
                 <li key={b.bedId} className="px-4 py-3 flex items-center gap-3 flex-wrap">
-                  <span className="font-semibold text-gray-900 text-sm min-w-[8rem]">
+                  <span className="font-semibold text-slate-900 text-sm min-w-[8rem]">
                     {b.bedCode}
                   </span>
                   <span
-                    className={`px-2 py-0.5 text-xs font-semibold rounded-full border ${meta.badge}`}
+                    className={`px-2 py-0.5 text-xs font-medium rounded-full border ${meta.badge}`}
                   >
                     {meta.label}
                   </span>
                   {since && (
-                    <span className="text-xs text-gray-500">
+                    <span className="text-xs text-slate-500">
                       {key === 'cleaning' ? `waiting ${since}` : `for ${since}`}
                     </span>
                   )}
                   {b.reservedFor && <span className="text-xs text-sky-700">{holdLabel(b)}</span>}
-                  {key === 'available' && !b.reservedFor && (
-                    <button
-                      type="button"
-                      onClick={() => setReserving({ bed: b, wardName: w.name })}
-                      className="ml-auto px-3 py-1.5 text-sm font-semibold rounded-lg border border-sky-300 text-sky-700 hover:bg-sky-50"
-                    >
-                      Reserve
-                    </button>
+                  {key === 'available' && !isTheatreWard(w.name) && (
+                    <div className="ml-auto flex items-center gap-2">
+                      {!b.reservedFor && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => setReserving({ bed: b, wardName: w.name })}
+                        >
+                          Reserve
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          setAdmitting({ wardId: w.id, bedId: b.bedId, isIcu: w.isIcu })
+                        }
+                      >
+                        {b.reservedFor ? 'Admit reserved patient' : 'Admit here'}
+                      </Button>
+                    </div>
                   )}
                   {key === 'cleaning' && (
-                    <button
-                      type="button"
+                    <Button
+                      size="sm"
+                      variant="success"
+                      className="ml-auto"
+                      loading={busyBed === b.bedId}
                       onClick={() => markCleaned(b, w.name)}
-                      disabled={busyBed === b.bedId}
-                      className="ml-auto px-3 py-1.5 text-sm font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
                     >
-                      {busyBed === b.bedId ? 'Saving…' : 'Mark cleaned'}
-                    </button>
+                      Mark cleaned
+                    </Button>
                   )}
                 </li>
               );
@@ -225,6 +280,28 @@ export default function BedCleaningView() {
           </ul>
         </section>
       ))}
+      {admitting &&
+        (admitting.isIcu ? (
+          <IcuAdmitModal
+            isOpen
+            initialBed={admitting}
+            onClose={() => setAdmitting(null)}
+            onSuccess={() => {
+              setAdmitting(null);
+              load(true);
+            }}
+          />
+        ) : (
+          <IpdAdmitModal
+            isOpen
+            initialBed={admitting}
+            onClose={() => setAdmitting(null)}
+            onSuccess={() => {
+              setAdmitting(null);
+              load(true);
+            }}
+          />
+        ))}
       {reserving && (
         <ReserveBedModal
           bed={reserving.bed}

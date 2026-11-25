@@ -1,6 +1,22 @@
 import { useEffect, useState } from 'react';
 import apiClient from '../../services/apiService';
 import { extractApiError } from '../../utils/apiError';
+import authService from '../../services/authService';
+
+/**
+ * A limit only means something where the facility can use it: a pharmacy has no beds or
+ * theatres, and a clinic without IPD / OT on its plan has nothing to count against them.
+ */
+const LIMIT_NEEDS = { BEDS: 'IPD', ICU_BEDS: 'IPD', OT_THEATRES: 'OT' };
+export function relevantLimits(limits, user) {
+  const modules = new Set((user?.modules || []).map((m) => String(m).toUpperCase()));
+  return (limits || []).filter((row) => {
+    const need = LIMIT_NEEDS[row.key];
+    if (!need) return true;
+    if (user?.hospitalType === 'PHARMACY') return false;
+    return modules.size === 0 || modules.has(need);
+  });
+}
 
 const STATE_TEXT = {
   ACTIVE: 'Active',
@@ -94,13 +110,13 @@ export default function PlanUsage() {
       <section className="bg-white border border-gray-200 rounded-xl px-5">
         <h3 className="pt-4 text-sm font-semibold text-gray-900">Limits</h3>
         <ul className="divide-y divide-gray-100">
-          {(data.limits || []).map((row) => (
+          {relevantLimits(data.limits, authService.getCurrentUser()).map((row) => (
             <UsageRow key={row.key} row={row} />
           ))}
         </ul>
       </section>
       <p className="text-sm text-gray-700">
-        Need more beds, doctors or staff logins? Call{' '}
+        Need a higher limit? Call{' '}
         <a className="font-semibold underline" href={`tel:${data.supportPhone}`}>
           {data.supportPhone}
         </a>{' '}

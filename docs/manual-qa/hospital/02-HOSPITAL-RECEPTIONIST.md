@@ -1,8 +1,10 @@
 # 02 — HOSPITAL RECEPTIONIST
 
-**Baseline:** `aa143a7` · **Cases:** `TC-HR-001` … `TC-HR-058` · Tenant HOSPITAL_A · login `rec.hospa@qa.test` at `/login/hospital` → `/hospital/receptionist`
+**Baseline:** `aa143a7` · **Cases:** `TC-HR-001` … `TC-HR-064` · Tenant HOSPITAL_A · login `rec.hospa@qa.test` at `/login/hospital` → `/hospital/receptionist`
 
-**Tabs (module-gated):** Overview · Patients · Appointments · OPD · Follow-ups · IPD · Billing · Medicine Inventory · Operation Theatre · ICU Dashboard · ICU Bed Board
+**Tabs (module-gated):** Overview · Patients · Appointments · OPD · Follow-ups · IPD · ICU · Beds · Billing · Daily Collection · Medicine Inventory · Hospital Inventory · Operation Theatre
+
+**IPD → Current Patients (current UI):** filters **All / Ready to go / Form pending** with counts; each row: patient (opens the case in-app; Back returns to the same list), ward/bed with an ICU tag, status (**Admitted** / **Ready to go**, "Form pending" note), a green **Checkout** button when the discharge is planned, and a ⋮ menu: Complete admission form · Advance & package · Print bill · Move to ICU / Move out of ICU · Change bed · Open case.
 
 **Shared UI facts (from code):** `PatientModal` title `Add New Patient` / `Edit Patient`; fields **Full Name**, **Phone Number**, DOB (Day/Month/Year selects), Gender, **Email Address** (optional), **Address**, **Medical History / Allergies**, Insurance (UI-only, never sent). Rules: name/DOB/gender/phone required; phone = exactly 10 digits; DOB not future, not >120 y. Row actions: `View Details`, `Edit`, `Create OPD`, `View Prescription`, `View IPD details`. OPD modal `New OPD / Case` with `Existing Patient` / `New Patient` toggle, `Create OPD` button. Duplicate-phone chooser: **Mobile number already registered** → per-row **Use This Patient** · **Register Different Patient** · **Cancel**.
 
@@ -320,7 +322,7 @@
 ### TC-HR-042 — Change bed (transfer) and discharge from reception
 
 `HOSPITAL_A · RECEPTIONIST · IPD · Critical · /ipd/:id`
-**Steps:** **change bed** to `GA-02`; then doctor plans discharge; reception **confirm discharge**.
+**Steps:** **change bed** to `GA-02`; then doctor plans discharge; reception finishes it in the **discharge checkout** (IPD → Ready to go → Checkout).
 **Expected:** `GA-01` → cleaning, `GA-02` occupied; on discharge `GA-02` → cleaning; status `DISCHARGED`; final bill; `PUT /change-bed` is `ADM DOC` — **record** if reception is denied (then transfer is doctor/admin only).
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
 
@@ -361,7 +363,7 @@
 **Steps:** = `08` `TC-HOT-004`…`008` as reception (per OT Permissions defaults).
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
 
-### TC-HR-048 — ICU Dashboard / Bed Board (reception, read)
+### TC-HR-048 — ICU screen (Beds / Patients) (reception, read)
 
 `HOSPITAL_A · RECEPTIONIST · ICU · Medium · ICU`
 **Steps:** open both; attempt a write.
@@ -437,4 +439,50 @@
 `HOSPITAL_A · RECEPTIONIST · Persistence · High · all`
 **Steps:** after A–F, logout/login; re-open each record created.
 **Expected:** everything persists exactly.
+**Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
+
+---
+
+## H. FEWER SCREENS (IPD desk shortcuts)
+
+### TC-HR-059 — Ready to go filter and live alert
+
+`HOSPITAL_A · RECEPTIONIST + DOCTOR · IPD · Critical · IPD`
+**Steps:** reception keeps IPD → Current Patients open; in another browser the doctor plans the discharge of P1.
+**Expected:** without refreshing, a toast says P1 is ready to go; the **Ready to go** count goes up; the filter lists only planned discharges (ICU patients included); the row shows **Ready to go** and a green **Checkout** button.
+**Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
+
+### TC-HR-060 — Discharge checkout collects everything in one pop-up
+
+`HOSPITAL_A · RECEPTIONIST · IPD/Billing · Critical · Discharge checkout`
+**Steps:** P1 has an unpaid IPD bill and an unpaid OPD bill; open **Checkout**; choose UPI without a UTR, then add one; **Collect … & discharge**.
+**Expected:** the pop-up shows total, paid, insurer share (if any) and "Patient pays now" = both bills; the button stays disabled until the UTR is entered; both bills are paid with the same mode and reference; the admission is DISCHARGED; **Print summary + bill** prints one PDF (summary, then bill); **Mark bed cleaned** makes the bed Available.
+**Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
+
+### TC-HR-061 — Checkout with unused advance and with death / absconding
+
+`HOSPITAL_A · RECEPTIONIST · IPD/Billing · High · Discharge checkout`
+**Steps:** (a) an admission whose advance exceeds the bill; (b) a discharge planned as EXPIRED with dues — untick **Collect now**.
+**Expected:** (a) the unused amount is shown with a return mode and refunded on confirm; (b) discharge succeeds and the bill stays open; a NORMAL discharge with dues is refused if payment fails.
+**Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
+
+### TC-HR-062 — Row actions without opening the case
+
+`HOSPITAL_A · RECEPTIONIST · IPD · High · IPD row menu`
+**Steps:** from one row's ⋮ use Complete admission form, Advance & package (take ₹1000 UPI), Print bill, Move to ICU, Change bed, Open case.
+**Expected:** each opens in place (no page reload); the advance receipt prints; Change bed opens the case with the bed dialog already open; Back from the case returns to IPD with the same filter.
+**Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
+
+### TC-HR-063 — Admit in one sitting
+
+`HOSPITAL_A · RECEPTIONIST · IPD · High · Admit Patient`
+**Steps:** admit P2; when the admission form opens, **Save & Print Form + Consent**, then **Save & Mark as Admitted**.
+**Expected:** the form opens straight after Admit; one print job holds both documents; the row shows Admitted with no "Form pending".
+**Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____
+
+### TC-HR-064 — Admit here from the Beds board
+
+`HOSPITAL_A · RECEPTIONIST · IPD/Beds · High · Beds`
+**Steps:** open **Beds** (opens on Free beds); click **Admit here** on a general bed, then on an ICU bed; check an OT-named ward.
+**Expected:** the general bed opens the IPD admit form with that ward and bed chosen; the ICU bed opens the ICU form with that bed chosen; OT wards show no Admit here; **Needs cleaning** lists beds to turn over with **Mark cleaned**.
 **Result:** `[ ] PASS [ ] FAIL [ ] BLOCKED [ ] N/A` · Actual: ____ · Bug: ____ · Tester: ____ · Date: ____

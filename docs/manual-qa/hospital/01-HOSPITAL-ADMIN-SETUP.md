@@ -2,7 +2,7 @@
 
 **Baseline:** `aa143a7` · **Cases:** `TC-HA-001` … `TC-HA-046` · Tenant **HOSPITAL_A** unless stated · Login `admin.hospa@qa.test` at `/login/hospital`
 
-**Sidebar (grouped):** Overview · **Patient Management** (Patients, Appointments, OPD, IPD, Operation Theatre, Pathology) · **Rooms** (Wards & Beds) · **Critical Care** (ICU Dashboard, ICU Bed Board) · **Staff** (Doctors, Pharmacists, Receptionists, OT Incharge, OT Theatres) · **Nursing** (Nurses, Nurse Assignments, Nurse Tasks, Time Slots, Calendar) · **Pharmacy** (Pharmacy) · **Inventory** (Medicine Inventory, Hospital Inventory) · **Finance** (Billing, Fees) · **Reports** (Reports & Analytics, OT Analytics, Audit Logs) · **Presets** (Quick Notes, Symptom Presets, Diagnosis Presets, Prescription Presets, In-Clinic Presets) · **Administration** (Settings, Support).
+**Sidebar (grouped):** Overview · **Patient Management** (Patients, Appointments, OPD, IPD, ICU, Operation Theatre, Pathology) · **Rooms** (Wards & Beds, ICU Wards) · **Staff** (Doctors, Pharmacists, Receptionists, OT Incharge, OT Theatres) · **Nursing** (Nurses, Nurse Assignments, Nurse Tasks, Time Slots, Calendar) · **Pharmacy** (Pharmacy) · **Inventory** (Medicine Inventory, Hospital Inventory) · **Finance** (Billing, Fees) · **Reports** (Reports & Analytics, OT Analytics, Audit Logs) · **Presets** (Quick Notes, Symptom Presets, Diagnosis Presets, Prescription Presets, In-Clinic Presets) · **Administration** (Settings, Support).
 
 > Global rule (`TC-AUTH-015`): F5 returns to **Overview**. Do not re-file per screen.
 > Every "create staff" case here proves a **downstream effect**, not just the row.

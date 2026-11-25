@@ -4,7 +4,7 @@ import { useToast } from '../../context/ToastContext';
 import otService from '../../services/otService';
 import { extractApiError } from '../../utils/apiError';
 import { localIsoDate } from '../../utils/date';
-
+import { humanizeCode } from '../../utils/text';
 /**
  * OtAnalyticsCard - the NABH surgical-care indicators over a date range.
  *
@@ -61,7 +61,7 @@ const OtAnalyticsCard = () => {
             Surgical-care indicators over the selected period.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <DateSelect value={from} onChange={(v) => setFrom(v)} />
           <span className="text-gray-400 text-sm">to</span>
           <DateSelect value={to} onChange={(v) => setTo(v)} />
@@ -113,7 +113,7 @@ const OtAnalyticsCard = () => {
                 <div className="space-y-1">
                   {data.cancellationsByReason.map((r) => (
                     <div key={r.reason} className="flex justify-between text-sm">
-                      <span className="text-gray-600">{String(r.reason).replace(/_/g, ' ')}</span>
+                      <span className="text-gray-600">{humanizeCode(r.reason)}</span>
                       <span className="font-semibold text-gray-800">{r.count}</span>
                     </div>
                   ))}
