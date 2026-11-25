@@ -4,7 +4,8 @@
 # Why: backup.sh keeps dumps on the same server as the database. If that server is lost, so are the
 # backups. This script puts an encrypted copy with a different provider.
 #
-# Usage: offsite-copy.sh <backup.sql.gz>
+# Usage: offsite-copy.sh <backup.sql.gz>            → <prefix>/daily/ (+ monthly/ once a month)
+#        offsite-copy.sh <file> <folder>            → <prefix>/<folder>/ only (e.g. binlog)
 #
 # Encryption: age (https://age-encryption.org), PUBLIC-KEY. The server holds only the recipient
 # public key, so neither the server nor the bucket can decrypt a copy. The matching private key
@@ -28,7 +29,10 @@
 set -euo pipefail
 
 SRC="${1:?backup file required}"
+FOLDER="${2:-}"   # empty = the nightly layout (daily/ + monthly/)
 [ -f "$SRC" ] || { echo "ERROR: backup not found: $SRC" >&2; exit 2; }
+case "$FOLDER" in '' | [a-z]*) ;; *) echo "ERROR: folder must be a plain lowercase name" >&2; exit 3 ;; esac
+case "$FOLDER" in *[!a-z0-9-]*) echo "ERROR: folder must be a plain lowercase name" >&2; exit 3 ;; esac
 
 OFFSITE_CONFIG="${OFFSITE_CONFIG:-/etc/hms/offsite.env}"
 ENV_LABEL="${ENV_LABEL:-production}"
@@ -99,6 +103,11 @@ upload() { # <s3 key>
   fi
   echo "[offsite] OK — s3://$OFFSITE_S3_BUCKET/$1 ($BYTES bytes, sha256=$SHA)"
 }
+
+if [ -n "$FOLDER" ]; then
+  upload "$PREFIX/$FOLDER/$NAME"
+  exit 0
+fi
 
 upload "$PREFIX/daily/$NAME"
 

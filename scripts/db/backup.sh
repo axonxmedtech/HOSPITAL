@@ -72,10 +72,24 @@ if [ -e "$OUT" ]; then
 fi
 
 echo "[backup] $MYSQL_DATABASE @ $MYSQL_HOST:$MYSQL_PORT → $OUT"
+# Point-in-time recovery (PITR=1, docs/database/POINT_IN_TIME_RECOVERY.md): record the exact
+# binary-log position the dump's snapshot corresponds to, as a comment in the dump header, so
+# pitr-restore.sh knows where to start replaying. Opt-in because it needs the RELOAD and
+# REPLICATION CLIENT privileges and binary logging switched on; without it nothing changes.
+pitr_args=()
+if [ "${PITR:-0}" = "1" ]; then
+  if mysqldump --help 2>/dev/null | grep -q -- '--source-data'; then
+    pitr_args=(--source-data=2)
+  else
+    pitr_args=(--master-data=2) # MySQL < 8.0.26
+  fi
+fi
+
 # Consistent, self-contained dump. --single-transaction = online (no table locks) for InnoDB.
 mysqldump --defaults-extra-file="$CNF" \
   --single-transaction --quick --routines --triggers --events \
   --set-gtid-purged=OFF --no-tablespaces --hex-blob \
+  ${pitr_args[@]+"${pitr_args[@]}"} \
   "$MYSQL_DATABASE" | gzip -9 > "$OUT"
 
 # ── Verify ─────────────────────────────────────────────────────────────────
@@ -95,11 +109,25 @@ if ! gzip -dc "$OUT" | tail -5 | grep -qi 'Dump completed'; then
   echo "WARNING: backup missing 'Dump completed' footer — keeping but flag for review." >&2
 fi
 
+# The binlog coordinates the dump recorded (PITR=1), e.g. mysql-bin.000123 / 4567.
+BINLOG_FILE=""; BINLOG_POS=""
+if [ "${PITR:-0}" = "1" ]; then
+  coords=$(gzip -dc "$OUT" | head -60 | grep -m1 -E "CHANGE (REPLICATION SOURCE|MASTER) TO" || true)
+  BINLOG_FILE=$(printf '%s' "$coords" | sed -nE "s/.*_LOG_FILE='([^']+)'.*/\1/p")
+  BINLOG_POS=$(printf '%s' "$coords" | sed -nE 's/.*_LOG_POS=([0-9]+).*/\1/p')
+  if [ -z "$BINLOG_FILE" ] || [ -z "$BINLOG_POS" ]; then
+    echo "ERROR: PITR=1 but the dump recorded no binlog position (is log_bin ON?) — removing $OUT" >&2
+    rm -f "$OUT"
+    exit 9
+  fi
+fi
+
 # Sidecar metadata (checksum + facts) for the audit trail.
 SHA=$(sha256sum "$OUT" | awk '{print $1}')
 cat > "$OUT.meta.json" <<EOF
 {"file":"$(basename "$OUT")","database":"$MYSQL_DATABASE","environment":"$ENV_LABEL",
- "createdAt":"$(date -u '+%Y-%m-%dT%H:%M:%SZ')","bytes":$SIZE,"sha256":"$SHA"}
+ "createdAt":"$(date -u '+%Y-%m-%dT%H:%M:%SZ')","bytes":$SIZE,"sha256":"$SHA",
+ "binlogFile":"$BINLOG_FILE","binlogPos":"$BINLOG_POS"}
 EOF
 
 echo "[backup] OK — ${SIZE} bytes, sha256=$SHA"

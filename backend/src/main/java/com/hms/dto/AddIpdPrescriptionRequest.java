@@ -71,4 +71,11 @@ public class AddIpdPrescriptionRequest {
 
     public LocalDate getStartDate() { return startDate; }
     public void setStartDate(LocalDate startDate) { this.startDate = startDate; }
+
+    /** Optional: the same value on every retry of one act of prescribing (RequestIdempotencyService). */
+    @jakarta.validation.constraints.Size(max = 64)
+    private String idempotencyKey;
+
+    public String getIdempotencyKey() { return idempotencyKey; }
+    public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
 }

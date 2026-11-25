@@ -45,8 +45,10 @@ CREATE TABLE `appointments` (
   `patient_id` bigint NOT NULL,
   `public_id` varchar(255) NOT NULL,
   `status` varchar(20) NOT NULL,
+  `active_slot_key` varchar(64) GENERATED ALWAYS AS ((case when ((`is_active` = 1) and (`status` <> _utf8mb4'CANCELLED')) then concat(`doctor_id`,_utf8mb4'|',`appointment_date`,_utf8mb4'|',`appointment_time`) end)) VIRTUAL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `UK_by8ybe23gqrq9m7r9knbgsilm` (`public_id`)
+  UNIQUE KEY `UK_by8ybe23gqrq9m7r9knbgsilm` (`public_id`),
+  UNIQUE KEY `uq_appointment_active_slot` (`hospital_id`,`active_slot_key`)
 ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2658,6 +2660,18 @@ CREATE TABLE IF NOT EXISTS `patient_access_logs` (
   KEY `idx_pal_user` (`hospital_id`,`user_email`,`accessed_at`)
 );
 
+
+-- V50: idempotency for clinical orders (RequestIdempotencyService).
+CREATE TABLE `request_idempotency` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `scope` varchar(40) NOT NULL,
+  `idempotency_key` varchar(64) NOT NULL,
+  `result_ids` varchar(500) NOT NULL,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_request_idempotency` (`hospital_id`,`scope`,`idempotency_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Indexes created by Flyway migrations (V6, V7, V11). Mirrored here so a database built from

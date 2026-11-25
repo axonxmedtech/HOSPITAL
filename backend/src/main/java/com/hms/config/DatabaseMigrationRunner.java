@@ -320,6 +320,8 @@ public class DatabaseMigrationRunner {
         ensureIcuStayTable();          // ICU Phase 3
         migrateIcuWardsAndStays();
         ensurePatientDuplicatePhoneAckColumns(); // Patient duplicate prevention (Phase A)
+        ensureAppointmentActiveSlotUniqueness(); // V49 — one active booking per doctor slot
+        ensureRequestIdempotencyTable(); // V50 — idempotent IPD prescriptions / lab orders
         
         // Bilingual consultation instructions & statements
         addColumnIfMissing(HOSPITAL_SETTINGS_TABLE, "default_consultation_language", "VARCHAR(10) NOT NULL DEFAULT 'EN'");
@@ -2003,6 +2005,72 @@ public class DatabaseMigrationRunner {
             throw new IllegalStateException(
                 "patients.uq_patient_active_phone covers [" + columns
                     + "] instead of [hospital_id,active_phone_key].");
+        }
+    }
+
+    /**
+     * V49: one active booking per doctor slot, enforced by the database behind the application's
+     * lock. Strict like {@link #ensurePatientActivePhoneUniqueness}: a constraint that silently
+     * fails to exist is worse than none, so everything propagates, and an existing column or
+     * index is checked for shape rather than assumed. Fails (ER_DUP_ENTRY) if two active bookings
+     * already share a slot -- resolve them first: docs/operations/appointment-slot-preflight.sql.
+     */
+    /** V50: one row per act of ordering, so a retried prescription / lab order is applied once. */
+    private void ensureRequestIdempotencyTable() {
+        try {
+            jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS request_idempotency ("
+                    + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                    + " hospital_id BIGINT NOT NULL,"
+                    + " scope VARCHAR(40) NOT NULL,"
+                    + " idempotency_key VARCHAR(64) NOT NULL,"
+                    + " result_ids VARCHAR(500) NOT NULL,"
+                    + " created_at DATETIME(6) NOT NULL,"
+                    + " PRIMARY KEY (id),"
+                    + " UNIQUE KEY uk_request_idempotency (hospital_id, scope, idempotency_key)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci");
+        } catch (Exception e) {
+            log.warn("DB migration skipped (request_idempotency): {}", e.getMessage());
+        }
+    }
+
+    private void ensureAppointmentActiveSlotUniqueness() {
+        Integer keyColumn = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() "
+                + "AND TABLE_NAME = 'appointments' AND COLUMN_NAME = 'active_slot_key'", Integer.class);
+        if (keyColumn == null || keyColumn == 0) {
+            jdbcTemplate.execute(
+                "ALTER TABLE appointments ADD COLUMN active_slot_key VARCHAR(64) GENERATED ALWAYS AS ("
+                    + "CASE WHEN is_active = 1 AND status <> 'CANCELLED' "
+                    + "THEN CONCAT(doctor_id, '|', appointment_date, '|', appointment_time) END) VIRTUAL");
+            log.info("DB migration applied: appointments.active_slot_key generated column added");
+        } else {
+            String expression = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(GENERATION_EXPRESSION, '') FROM information_schema.COLUMNS "
+                    + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'appointments' "
+                    + "AND COLUMN_NAME = 'active_slot_key'", String.class);
+            if (expression == null || !expression.contains("CANCELLED") || !expression.contains("doctor_id")) {
+                throw new IllegalStateException(
+                    "appointments.active_slot_key exists but is not the active-slot expression; "
+                        + "resolve it before starting the application.");
+            }
+        }
+
+        Integer index = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() "
+                + "AND TABLE_NAME = 'appointments' AND INDEX_NAME = 'uq_appointment_active_slot'", Integer.class);
+        if (index == null || index == 0) {
+            jdbcTemplate.execute(
+                "ALTER TABLE appointments ADD UNIQUE KEY uq_appointment_active_slot (hospital_id, active_slot_key)");
+            log.info("DB migration applied: appointments.uq_appointment_active_slot unique index added");
+            return;
+        }
+        Integer nonUnique = jdbcTemplate.queryForObject(
+            "SELECT MAX(NON_UNIQUE) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() "
+                + "AND TABLE_NAME = 'appointments' AND INDEX_NAME = 'uq_appointment_active_slot'", Integer.class);
+        if (nonUnique != null && nonUnique == 1) {
+            throw new IllegalStateException(
+                "appointments.uq_appointment_active_slot exists but is NOT UNIQUE, so it enforces nothing. "
+                    + "Drop it and restart so the unique index can be created.");
         }
     }
 

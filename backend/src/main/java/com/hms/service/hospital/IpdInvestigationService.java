@@ -45,10 +45,13 @@ public class IpdInvestigationService {
     private final NotificationService notificationService;
     private final IpdCareAccess access;
     private final com.hms.service.AuditLogService auditLogService;
+    private final RequestIdempotencyService requestIdempotency;
 
     public IpdInvestigationService(LabOrderRepository labOrders, MedicalRecordRepository medicalRecords,
                                    PatientNurseAssignmentRepository nurseAssignments, NotificationService notificationService,
-                                   IpdCareAccess access, com.hms.service.AuditLogService auditLogService) {
+                                   IpdCareAccess access, com.hms.service.AuditLogService auditLogService,
+                                   RequestIdempotencyService requestIdempotency) {
+        this.requestIdempotency = requestIdempotency;
         this.labOrders = labOrders;
         this.medicalRecords = medicalRecords;
         this.nurseAssignments = nurseAssignments;
@@ -70,7 +73,27 @@ public class IpdInvestigationService {
     /** Orders one or more tests (one row each, so each has its own sample and result). */
     @Transactional
     public List<Map<String, Object>> order(Long ipdAdmissionId, List<String> tests, String priority, String notes) {
-        IpdAdmission a = access.requireOrderable(ipdAdmissionId);
+        return order(ipdAdmissionId, tests, priority, notes, null);
+    }
+
+    /**
+     * As above, with an idempotency key: a retry of the same order returns the tests it already
+     * created instead of ordering them again. The admission is locked, so copies run one at a time.
+     */
+    @Transactional
+    public List<Map<String, Object>> order(Long ipdAdmissionId, List<String> tests, String priority, String notes,
+                                           String idempotencyKey) {
+        IpdAdmission a = access.requireOrderableForUpdate(ipdAdmissionId);
+        String key = RequestIdempotencyService.normalise(idempotencyKey);
+        java.util.Optional<List<Long>> earlier =
+                requestIdempotency.replay(a.getHospitalId(), RequestIdempotencyService.IPD_INVESTIGATION, key);
+        if (earlier.isPresent()) {
+            List<Map<String, Object>> again = new ArrayList<>();
+            for (LabOrder o : labOrders.findAllById(earlier.get())) {
+                if (a.getHospitalId().equals(o.getHospitalId())) again.add(view(o));
+            }
+            if (!again.isEmpty()) return again;
+        }
         List<String> names = testNames(tests);
         String p = priority(priority);
         String note = notes == null || notes.isBlank() ? null : notes.trim();
@@ -78,6 +101,7 @@ public class IpdInvestigationService {
 
         Long recordId = ipdRecordId(a);
         List<Map<String, Object>> out = new ArrayList<>();
+        List<Long> createdIds = new ArrayList<>();
         for (String n : names) {
             LabOrder o = new LabOrder();
             o.setHospitalId(a.getHospitalId());
@@ -89,8 +113,11 @@ public class IpdInvestigationService {
             o.setStatus(ORDERED);
             o.setNotes(note);
             o.setOrderedBy(access.actor());
-            out.add(view(labOrders.save(o)));
+            LabOrder saved = labOrders.save(o);
+            createdIds.add(saved.getId());
+            out.add(view(saved));
         }
+        requestIdempotency.record(a.getHospitalId(), RequestIdempotencyService.IPD_INVESTIGATION, key, createdIds);
         boolean urgent = URGENT.equals(p);
         audit("IPD_INVESTIGATION_ORDERED", a, String.join(", ", names) + (urgent ? " (urgent)" : ""));
         nurseAssignments.findByIpdAdmissionIdAndIsActiveTrue(a.getId()).ifPresent(asg ->

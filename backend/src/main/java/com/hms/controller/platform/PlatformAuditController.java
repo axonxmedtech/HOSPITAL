@@ -32,9 +32,31 @@ public class PlatformAuditController {
      * 
      * @return List of audit logs
      */
+    @Autowired
+    private com.hms.service.AuditLogService auditLogService;
+
+    /**
+     * Platform activity. With {@code page}: one page of any period (from/to dates, optional exact
+     * action), with totals. Without it: the newest entries as a plain list (unchanged).
+     */
     @GetMapping
-    public ResponseEntity<List<AuditLog>> getAuditLogs() {
+    public ResponseEntity<?> getAuditLogs(
+            @org.springframework.web.bind.annotation.RequestParam(required = false) Integer page,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "25") int size,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String action,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate from,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate to) {
+        if (page != null) {
+            return ResponseEntity.ok(com.hms.service.AuditLogService.pageBody(
+                    auditLogService.pagePlatformLogs(action, from, to, page, size)));
+        }
         List<AuditLog> logs = hospitalService.getAuditLogs();
         return ResponseEntity.ok(logs);
+    }
+
+    /** Distinct platform actions, for the paged view's action filter. */
+    @GetMapping("/actions")
+    public ResponseEntity<List<String>> getActions() {
+        return ResponseEntity.ok(auditLogService.platformActions());
     }
 }

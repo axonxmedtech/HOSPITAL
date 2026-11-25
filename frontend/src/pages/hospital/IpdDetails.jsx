@@ -37,7 +37,7 @@ import { extractApiError } from '../../utils/apiError';
 import { canManageBilling as userCanManageBilling } from '../../utils/billingAccess';
 import { formatDay, formatWhen } from '../../utils/date';
 import { FOOD_TIMING_OPTIONS, isFoodTimingApplicable } from '../../utils/foodTiming';
-import { newIdempotencyKey } from '../../utils/idempotencyKey';
+import { keyForAct, newIdempotencyKey } from '../../utils/idempotencyKey';
 import { printBlob } from '../../utils/printPdf';
 import { buildSidebarConfig, getRoleNavigateUrl } from '../../utils/sidebarNavigation';
 import IcuStayCard from './icu/IcuStayCard';
@@ -301,6 +301,7 @@ const IpdDetails = () => {
   const hospitalItemResults = stockResults.filter((o) => o.source === 'HOSPITAL_ITEM');
   const [billModal, setBillModal] = useState({ isOpen: false, loading: false, bill: null });
   const payKeyRef = useRef(null); // idempotency key for the payment taken in the bill dialog
+  const rxNonceRef = useRef(newIdempotencyKey('rx')); // nonce for the add-medicine dialog
   const [printingBill, setPrintingBill] = useState(false);
   const [payment, setPayment] = useState({ amount: '', mode: 'CASH', saving: false });
   const [bedModal, setBedModal] = useState({
@@ -423,6 +424,7 @@ const IpdDetails = () => {
   };
 
   const onAddMedicine = () => {
+    rxNonceRef.current = newIdempotencyKey('rx'); // one nonce per opening of the medicine dialog
     setMedicineModal({
       isOpen: true,
       medicineId: null,
@@ -1514,7 +1516,11 @@ const IpdDetails = () => {
                                         ? medicineModal.foodTiming || null
                                         : null,
                                     };
-                                    await hospitalService.addIpdPrescription(id, payload);
+                                    await hospitalService.addIpdPrescription(id, {
+                                      ...payload,
+                                      // Same medicine resent -> prescribed once; edited -> new key.
+                                      idempotencyKey: keyForAct(rxNonceRef.current, payload),
+                                    });
                                     success('Medicine prescribed successfully');
                                     setMedicineModal((prev) => ({ ...prev, isOpen: false }));
                                     setMedChartVersion((v) => v + 1);

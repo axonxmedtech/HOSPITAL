@@ -88,6 +88,17 @@ public class IpdCareAccess {
         return a;
     }
 
+    /**
+     * As {@link #requireOrderable}, with the admission's row locked for the rest of the
+     * transaction: two copies of one order (a double-click, a resend) run one after the other, so
+     * the idempotency check sees the first one's record.
+     */
+    public IpdAdmission requireOrderableForUpdate(Long ipdAdmissionId) {
+        IpdAdmission a = requireOrderable(ipdAdmissionId);
+        return admissions.findByIdAndHospitalIdForUpdate(a.getId(), hospitalId())
+                .orElseThrow(() -> new ResourceNotFoundException("IPD admission not found"));
+    }
+
     /** Ward work on an admission (may be after discharge: reports arrive late). */
     public void assertWardWork(IpdAdmission a) {
         String role = role();

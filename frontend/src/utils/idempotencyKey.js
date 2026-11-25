@@ -10,3 +10,19 @@ export const newIdempotencyKey = (prefix) => {
     globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return `${prefix}-${random}`.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64);
 };
+
+/** Short, stable fingerprint of a request body (djb2 over its JSON), for {@link keyForAct}. */
+const fingerprint = (payload) => {
+  const text = JSON.stringify(payload ?? null);
+  let h = 5381;
+  for (let i = 0; i < text.length; i += 1) h = ((h << 5) + h + text.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+};
+
+/**
+ * Key for a clinical order: the form's nonce plus a fingerprint of what is being ordered. A resend
+ * of the same order (a double-click, a retry after a lost response) gets the same key and is
+ * applied once; editing the order before resending gives a new key, so the server never answers
+ * a changed order with the old one. Mint the nonce when the form opens (newIdempotencyKey).
+ */
+export const keyForAct = (nonce, payload) => `${nonce}-${fingerprint(payload)}`.slice(0, 64);

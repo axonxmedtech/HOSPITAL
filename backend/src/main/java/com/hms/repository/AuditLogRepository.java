@@ -52,4 +52,39 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
     List<AuditLog> findByHospitalIdAndPerformedByRoleOrderByTimestampDesc(Long hospitalId, String performedByRole, org.springframework.data.domain.Pageable limit);
     List<AuditLog> findByHospitalIdAndPerformedByRoleAndActionContainingIgnoreCaseOrderByTimestampDesc(Long hospitalId, String performedByRole, String action, org.springframework.data.domain.Pageable limit);
     List<AuditLog> findByHospitalIdIsNullOrderByTimestampDesc(org.springframework.data.domain.Pageable limit);
+
+    // ── Paged audit browsing (any period, in full): filters run in the database ─────────────
+    // from inclusive, to exclusive; any filter may be null. Order comes from the Pageable.
+
+    @org.springframework.data.jpa.repository.Query("SELECT a FROM AuditLog a WHERE a.hospitalId = :hid "
+            + "AND (:role IS NULL OR a.performedByRole = :role) "
+            + "AND (:search IS NULL OR LOWER(a.action) LIKE LOWER(CONCAT('%', :search, '%'))) "
+            + "AND (:fromTs IS NULL OR a.timestamp >= :fromTs) AND (:toTs IS NULL OR a.timestamp < :toTs)")
+    org.springframework.data.domain.Page<AuditLog> pageHospitalLogs(@org.springframework.data.repository.query.Param("hid") Long hospitalId,
+            @org.springframework.data.repository.query.Param("role") String role, @org.springframework.data.repository.query.Param("search") String search,
+            @org.springframework.data.repository.query.Param("fromTs") java.time.LocalDateTime from, @org.springframework.data.repository.query.Param("toTs") java.time.LocalDateTime to,
+            org.springframework.data.domain.Pageable page);
+
+    @org.springframework.data.jpa.repository.Query("SELECT a FROM AuditLog a WHERE a.hospitalId = :hid "
+            + "AND a.entityType IN ('SUPPLIER', 'MEDICINE_BATCH', 'PURCHASE_INVOICE', 'PHARMACY_SALE') "
+            + "AND (:branchId IS NULL OR a.branchId IS NULL OR a.branchId = :branchId) "
+            + "AND (:role IS NULL OR a.performedByRole = :role) "
+            + "AND (:search IS NULL OR LOWER(a.action) LIKE LOWER(CONCAT('%', :search, '%'))) "
+            + "AND (:fromTs IS NULL OR a.timestamp >= :fromTs) AND (:toTs IS NULL OR a.timestamp < :toTs)")
+    org.springframework.data.domain.Page<AuditLog> pagePharmacyLogs(@org.springframework.data.repository.query.Param("hid") Long hospitalId,
+            @org.springframework.data.repository.query.Param("branchId") Long branchId, @org.springframework.data.repository.query.Param("role") String role, @org.springframework.data.repository.query.Param("search") String search,
+            @org.springframework.data.repository.query.Param("fromTs") java.time.LocalDateTime from, @org.springframework.data.repository.query.Param("toTs") java.time.LocalDateTime to,
+            org.springframework.data.domain.Pageable page);
+
+    /** Platform-level activity (Super Admin actions carry no hospital). action: exact match. */
+    @org.springframework.data.jpa.repository.Query("SELECT a FROM AuditLog a WHERE a.hospitalId IS NULL "
+            + "AND (:action IS NULL OR a.action = :action) "
+            + "AND (:fromTs IS NULL OR a.timestamp >= :fromTs) AND (:toTs IS NULL OR a.timestamp < :toTs)")
+    org.springframework.data.domain.Page<AuditLog> pagePlatformLogs(@org.springframework.data.repository.query.Param("action") String action,
+            @org.springframework.data.repository.query.Param("fromTs") java.time.LocalDateTime from, @org.springframework.data.repository.query.Param("toTs") java.time.LocalDateTime to,
+            org.springframework.data.domain.Pageable page);
+
+    /** The distinct platform actions, for the action filter of the paged platform view. */
+    @org.springframework.data.jpa.repository.Query("SELECT DISTINCT a.action FROM AuditLog a WHERE a.hospitalId IS NULL ORDER BY a.action")
+    List<String> platformActions();
 }

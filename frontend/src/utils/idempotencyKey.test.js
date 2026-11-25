@@ -10,3 +10,15 @@ describe('newIdempotencyKey', () => {
     expect(a.length).toBeLessThanOrEqual(64);
   });
 });
+
+describe('keyForAct', () => {
+  it('is the same for the same order and changes when the order changes', async () => {
+    const { keyForAct } = await import('./idempotencyKey');
+    const nonce = 'rx-abc';
+    const order = { medicineName: 'Paracetamol', dose: '500mg', frequency: '1-0-1' };
+    expect(keyForAct(nonce, order)).toBe(keyForAct(nonce, { ...order }));
+    expect(keyForAct(nonce, order)).not.toBe(keyForAct(nonce, { ...order, dose: '650mg' }));
+    expect(keyForAct(nonce, order)).not.toBe(keyForAct('rx-other', order));
+    expect(keyForAct(nonce, order)).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
+  });
+});

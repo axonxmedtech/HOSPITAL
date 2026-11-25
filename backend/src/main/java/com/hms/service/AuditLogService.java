@@ -74,6 +74,58 @@ public class AuditLogService {
     /** Most audit rows one screen load returns (newest first); search narrows to older ones. */
     public static final int MAX_LOGS = 1000;
 
+    /** Newest first; a page of at most {@code com.hms.util.Pages.MAX_SIZE} rows. */
+    private static org.springframework.data.domain.Pageable page(int page, int size) {
+        return org.springframework.data.domain.PageRequest.of(Math.max(page, 0),
+                Math.max(1, com.hms.util.Pages.cap(size)),
+                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "timestamp"));
+    }
+
+    private static java.time.LocalDateTime startOf(java.time.LocalDate d) {
+        return d == null ? null : d.atStartOfDay();
+    }
+
+    private static java.time.LocalDateTime endOf(java.time.LocalDate d) {
+        return d == null ? null : d.plusDays(1).atStartOfDay(); // exclusive: the whole "to" day counts
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s.trim();
+    }
+
+    /** A tenant's audit trail, one page of any period (from/to inclusive dates, both optional). */
+    public org.springframework.data.domain.Page<AuditLog> pageHospitalLogs(Long hospitalId, String search, String role,
+            java.time.LocalDate from, java.time.LocalDate to, int page, int size) {
+        return auditLogRepository.pageHospitalLogs(hospitalId, blankToNull(role), blankToNull(search),
+                startOf(from), endOf(to), page(page, size));
+    }
+
+    public org.springframework.data.domain.Page<AuditLog> pagePharmacyLogs(Long hospitalId, Long branchId, String role,
+            String search, java.time.LocalDate from, java.time.LocalDate to, int page, int size) {
+        return auditLogRepository.pagePharmacyLogs(hospitalId, branchId, blankToNull(role), blankToNull(search),
+                startOf(from), endOf(to), page(page, size));
+    }
+
+    public org.springframework.data.domain.Page<AuditLog> pagePlatformLogs(String action,
+            java.time.LocalDate from, java.time.LocalDate to, int page, int size) {
+        return auditLogRepository.pagePlatformLogs(blankToNull(action), startOf(from), endOf(to), page(page, size));
+    }
+
+    public List<String> platformActions() {
+        return auditLogRepository.platformActions();
+    }
+
+    /** The JSON a paged audit screen reads. */
+    public static java.util.Map<String, Object> pageBody(org.springframework.data.domain.Page<AuditLog> p) {
+        java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+        m.put("content", p.getContent());
+        m.put("page", p.getNumber());
+        m.put("size", p.getSize());
+        m.put("totalPages", p.getTotalPages());
+        m.put("totalElements", p.getTotalElements());
+        return m;
+    }
+
     public List<AuditLog> getLogsByHospitalId(Long hospitalId, String search, String role) {
         return getLogsByHospitalId(hospitalId, search, role, MAX_LOGS);
     }
