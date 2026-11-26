@@ -47,6 +47,7 @@ public class SecurityConfig {
     private static final String DOCTOR = "DOCTOR";
     private static final String RECEPTIONIST = "RECEPTIONIST";
     private static final String PHARMACIST = "PHARMACIST";
+    private static final String SUPER_ADMIN = "SUPER_ADMIN";
 
 
     @Autowired
@@ -100,14 +101,14 @@ public class SecurityConfig {
                         // through to anyRequest().authenticated(), so any hospital login -- a
                         // receptionist's included -- could read them. Prometheus scrapes through a
                         // separate management port (MANAGEMENT_SERVER_PORT), see OBSERVABILITY.md.
-                        .requestMatchers("/actuator/prometheus").hasAnyRole("SUPER_ADMIN", "METRICS_SCRAPER")
-                        .requestMatchers("/actuator/**").hasRole("SUPER_ADMIN")
+                        .requestMatchers("/actuator/prometheus").hasAnyRole(SUPER_ADMIN, "METRICS_SCRAPER")
+                        .requestMatchers("/actuator/**").hasRole(SUPER_ADMIN)
 
                         // Platform endpoints - only Super Admin
-                        .requestMatchers("/platform/**").hasRole("SUPER_ADMIN")
+                        .requestMatchers("/platform/**").hasRole(SUPER_ADMIN)
 
                         // WebSocket endpoints - authenticated standard HMS roles & Super Admin
-                        .requestMatchers("/ws/**").hasAnyRole(HOSPITAL_ADMIN, DOCTOR, RECEPTIONIST, PHARMACIST, "NURSE", "NURSE_INCHARGE", "SUPER_ADMIN", "OT_INCHARGE")
+                        .requestMatchers("/ws/**").hasAnyRole(HOSPITAL_ADMIN, DOCTOR, RECEPTIONIST, PHARMACIST, "NURSE", "NURSE_INCHARGE", SUPER_ADMIN, "OT_INCHARGE")
 
                         // Legacy patient import: HOSPITAL_ADMIN only, decided HERE in the filter chain
                         // rather than only by the controller's @PreAuthorize. Method security runs after
