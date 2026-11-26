@@ -30,6 +30,7 @@ public class DatabaseMigrationRunner {
 
     // Table names and column types repeated across the add-column-if-missing steps.
     private static final String BILLING_TABLE = "billing";
+    private static final String PATIENTS_TABLE = "patients";
     private static final String NOTE_PRESETS_TABLE = "consultation_note_presets";
     private static final String HOSPITALS_TABLE = "hospitals";
     private static final String PURCHASE_INVOICES_TABLE = "purchase_invoices";
@@ -323,6 +324,7 @@ public class DatabaseMigrationRunner {
         ensurePatientDuplicatePhoneAckColumns(); // Patient duplicate prevention (Phase A)
         ensureAppointmentActiveSlotUniqueness(); // V49 — one active booking per doctor slot
         ensureRequestIdempotencyTable(); // V50 — idempotent IPD prescriptions / lab orders
+        ensureTenantNumberSequences(); // V51 — per-hospital PAT / BIL numbers
         
         // Bilingual consultation instructions & statements
         addColumnIfMissing(HOSPITAL_SETTINGS_TABLE, "default_consultation_language", "VARCHAR(10) NOT NULL DEFAULT 'EN'");
@@ -2042,6 +2044,36 @@ public class DatabaseMigrationRunner {
      * index is checked for shape rather than assumed. Fails (ER_DUP_ENTRY) if two active bookings
      * already share a slot -- resolve them first: docs/operations/appointment-slot-preflight.sql.
      */
+    /**
+     * V51: per-hospital counters for patient (PAT) and bill (BIL) numbers. Each existing hospital
+     * continues after its own highest plain number; INSERT IGNORE leaves an existing counter alone.
+     * A hospital missed here is seeded the same way by TenantCustomIdAllocator on first use.
+     */
+    private void ensureTenantNumberSequences() {
+        try {
+            jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS tenant_number_sequences ("
+                    + " id BIGINT NOT NULL AUTO_INCREMENT,"
+                    + " hospital_id BIGINT NOT NULL,"
+                    + " kind VARCHAR(20) NOT NULL,"
+                    + " next_value BIGINT NOT NULL,"
+                    + " updated_at DATETIME(6) NOT NULL,"
+                    + " PRIMARY KEY (id),"
+                    + " UNIQUE KEY uk_tenant_number_sequences (hospital_id, kind)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci");
+            seedNumberSequence("PATIENT", PATIENTS_TABLE, "PAT");
+            seedNumberSequence("BILLING", BILLING_TABLE, "BIL");
+        } catch (Exception e) {
+            log.warn("DB migration skipped (tenant_number_sequences): {}", e.getMessage());
+        }
+    }
+
+    private void seedNumberSequence(String kind, String table, String prefix) {
+        jdbcTemplate.execute("INSERT IGNORE INTO tenant_number_sequences (hospital_id, kind, next_value, updated_at)"
+                + " SELECT h.id, '" + kind + "', COALESCE((SELECT MAX(CAST(SUBSTRING(t.custom_id, 4) AS UNSIGNED))"
+                + " FROM " + table + " t WHERE t.hospital_id = h.id AND t.custom_id REGEXP '^" + prefix
+                + "[1-9][0-9]{0,17}$'), 0) + 1, CURRENT_TIMESTAMP(6) FROM hospitals h");
+    }
+
     /** V50: one row per act of ordering, so a retried prescription / lab order is applied once. */
     private void ensureRequestIdempotencyTable() {
         try {

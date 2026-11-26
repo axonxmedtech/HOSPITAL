@@ -2,6 +2,7 @@ package com.hms.integration;
 
 import com.hms.entity.Patient;
 import com.hms.entity.Billing;
+import com.hms.entity.TenantNumberSequence;
 import com.hms.repository.PatientRepository;
 import com.hms.service.hospital.PatientRegistrar;
 import com.hms.service.hospital.TenantCustomIdAllocator;
@@ -26,7 +27,7 @@ class TenantCustomIdConcurrencyIT {
         .withDatabaseName("synthetic_release_ids").withUsername("test").withPassword("test");
     SessionFactory factory;
     @BeforeEach void setup() {
-        factory = new Configuration().addAnnotatedClass(Patient.class).addAnnotatedClass(Billing.class)
+        factory = new Configuration().addAnnotatedClass(Patient.class).addAnnotatedClass(Billing.class).addAnnotatedClass(TenantNumberSequence.class)
             .setProperty("hibernate.connection.url", MYSQL.getJdbcUrl())
             .setProperty("hibernate.connection.username", MYSQL.getUsername())
             .setProperty("hibernate.connection.password", MYSQL.getPassword())
@@ -94,7 +95,7 @@ class TenantCustomIdConcurrencyIT {
         try(EntityManager em=factory.createEntityManager()) {
             em.getTransaction().begin();em.persist(bill("BIL1001"));em.persist(bill("ARBITRARY"));
             assertThat(allocator(em).allocateBilling(1L)).isEqualTo("BIL1002");
-            assertThat(allocator(em).allocateBilling(2L)).isEqualTo("BIL1001");em.getTransaction().rollback();
+            assertThat(allocator(em).allocateBilling(2L)).isEqualTo("BIL1");em.getTransaction().rollback();
         }
     }
     @Test void failureRollsBackBothNewRecordsAndRetainsAssignedNumber() {
@@ -115,6 +116,53 @@ class TenantCustomIdConcurrencyIT {
             assertThatThrownBy(()->allocator(em).allocate("Patient",1L,1L)).isInstanceOf(IllegalStateException.class);
             Patient max=patient("PAT"+Long.MAX_VALUE);em.persist(max);em.flush();
             assertThatThrownBy(()->allocator(em).allocate("Patient",1L,Long.MAX_VALUE)).isInstanceOf(ArithmeticException.class);
+            em.getTransaction().rollback();
+        }
+    }
+    Patient patientOf(long hospital) { Patient p=patient(null);p.setHospitalId(hospital);return p; }
+    @Test void eachHospitalCountsItsOwnPatientsFromOne() {
+        try(EntityManager em=factory.createEntityManager()) {
+            em.getTransaction().begin();var registrar=registrar(em);
+            assertThat(registrar.persistNewPatient(patientOf(1L)).getCustomId()).isEqualTo("PAT1");
+            assertThat(registrar.persistNewPatient(patientOf(1L)).getCustomId()).isEqualTo("PAT2");
+            // Hospital 1's registrations do not move hospital 2's numbers.
+            assertThat(registrar.persistNewPatient(patientOf(2L)).getCustomId()).isEqualTo("PAT1");
+            assertThat(registrar.persistNewPatient(patientOf(1L)).getCustomId()).isEqualTo("PAT3");
+            assertThat(registrar.persistNewPatient(patientOf(2L)).getCustomId()).isEqualTo("PAT2");
+            em.getTransaction().rollback();
+        }
+    }
+    @Test void anExistingHospitalContinuesAfterItsHighestNumber() {
+        try(EntityManager em=factory.createEntityManager()) {
+            em.getTransaction().begin();
+            // Numbers from the old global scheme, an import's own code, and a zero-padded one.
+            em.persist(patient("PAT12"));em.persist(patient("PAT9"));em.persist(patient("MRN-77"));em.persist(patient("PAT0400"));
+            Patient other=patientOf(2L);other.setCustomId("PAT500");em.persist(other);em.flush();
+            var registrar=registrar(em);
+            assertThat(registrar.persistNewPatient(patient(null)).getCustomId()).isEqualTo("PAT13");
+            assertThat(registrar.persistNewPatient(patient(null)).getCustomId()).isEqualTo("PAT14");
+            assertThat(registrar.persistNewPatient(patientOf(2L)).getCustomId()).isEqualTo("PAT501");
+            em.getTransaction().rollback();
+        }
+    }
+    @Test void theCounterSkipsANumberAlreadyTaken() {
+        try(EntityManager em=factory.createEntityManager()) {
+            em.getTransaction().begin();var registrar=registrar(em);
+            assertThat(registrar.persistNewPatient(patient(null)).getCustomId()).isEqualTo("PAT1");
+            // An import later supplies the number the counter would hand out next.
+            assertThat(registrar.persistNewPatient(patient("PAT2")).getCustomId()).isEqualTo("PAT2");
+            assertThat(registrar.persistNewPatient(patient(null)).getCustomId()).isEqualTo("PAT3");
+            assertThat(registrar.persistNewPatient(patient(null)).getCustomId()).isEqualTo("PAT4");
+            em.getTransaction().rollback();
+        }
+    }
+    @Test void billsAreCountedPerHospitalToo() {
+        try(EntityManager em=factory.createEntityManager()) {
+            em.getTransaction().begin();
+            String a1=allocator(em).allocateBilling(1L);em.persist(bill(a1));
+            String a2=allocator(em).allocateBilling(1L);em.persist(bill(a2));
+            assertThat(List.of(a1,a2)).containsExactly("BIL1","BIL2");
+            assertThat(allocator(em).allocateBilling(2L)).isEqualTo("BIL1");
             em.getTransaction().rollback();
         }
     }

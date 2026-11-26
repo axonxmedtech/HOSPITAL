@@ -22,8 +22,8 @@ import static org.mockito.Mockito.when;
 /**
  * Every patient leaves registration with a number.
  *
- * <p>The number is "PAT" + the auto-increment id, so it cannot be known until the row exists.
- * That forced a two-step write, and the second step lived inline in addPatient — which meant the
+ * <p>The number is "PAT" + the hospital's own next number (TenantCustomIdAllocator), given in the
+ * same transaction as the insert. It used to be the auto-increment id, which forced a two-step write, and the second step lived inline in addPatient — which meant the
  * appointment booking path, which inserted its own patients, produced patients with no number at
  * all. Those patients show a raw UUID wherever the UI prints a patient id, and nothing repairs
  * them afterwards. The insert and the number now come from one shared method so neither caller
@@ -73,17 +73,17 @@ class PatientRegistrationNumberTest {
     // ── the registration endpoint ────────────────────────────────────────────
 
     @Test
-    void aRegisteredPatientGetsPatPlusItsOwnId() {
+    void aHospitalsFirstPatientIsPat1() {
         Patient saved = patientService.addPatient(valid("9876543210"));
         em.flush();
         em.clear();
 
         assertThat(saved.getId()).isNotNull();
-        assertThat(saved.getCustomId()).isEqualTo("PAT" + saved.getId());
+        assertThat(saved.getCustomId()).isEqualTo("PAT1");
 
         // And it is on the row, not merely on the returned instance.
         Patient reloaded = patientRepository.findById(saved.getId()).orElseThrow();
-        assertThat(reloaded.getCustomId()).isEqualTo("PAT" + saved.getId());
+        assertThat(reloaded.getCustomId()).isEqualTo("PAT1");
     }
 
     // ── the shared insert, which the appointment path uses ───────────────────
@@ -100,9 +100,9 @@ class PatientRegistrationNumberTest {
 
         assertThat(saved.getCustomId())
                 .as("an appointment-booked patient is numbered like any other")
-                .isEqualTo("PAT" + saved.getId());
+                .isEqualTo("PAT1");
         assertThat(patientRepository.findById(saved.getId()).orElseThrow().getCustomId())
-                .isEqualTo("PAT" + saved.getId());
+                .isEqualTo("PAT1");
     }
 
     @Test

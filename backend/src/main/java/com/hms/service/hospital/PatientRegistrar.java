@@ -33,7 +33,7 @@ public class PatientRegistrar {
         customIdAllocator.lockTenant(patient.getHospitalId());
         Patient saved = patientRepository.saveAndFlush(patient);
         if (saved.getCustomId() == null || saved.getCustomId().isBlank()) {
-            saved.setCustomId(customIdAllocator.allocate("Patient", saved.getHospitalId(), saved.getId()));
+            saved.setCustomId(customIdAllocator.allocatePatient(saved.getHospitalId()));
         }
         // Existing supplied identifiers are preserved; the unique constraint rejects collisions.
         patientRepository.flush();

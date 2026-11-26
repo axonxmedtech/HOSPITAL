@@ -2675,6 +2675,17 @@ CREATE TABLE `request_idempotency` (
   UNIQUE KEY `uk_request_idempotency` (`hospital_id`,`scope`,`idempotency_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+-- V51: per-hospital counters for patient (PAT) and bill (BIL) numbers (TenantCustomIdAllocator).
+CREATE TABLE `tenant_number_sequences` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `hospital_id` bigint NOT NULL,
+  `kind` varchar(20) NOT NULL,
+  `next_value` bigint NOT NULL,
+  `updated_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_tenant_number_sequences` (`hospital_id`,`kind`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Indexes created by Flyway migrations (V6, V7, V11). Mirrored here so a database built from
 -- this file (dev, a fresh install, a restore drill) has the same query performance as
