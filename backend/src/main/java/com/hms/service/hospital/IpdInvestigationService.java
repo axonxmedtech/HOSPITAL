@@ -85,15 +85,8 @@ public class IpdInvestigationService {
                                            String idempotencyKey) {
         IpdAdmission a = access.requireOrderableForUpdate(ipdAdmissionId);
         String key = RequestIdempotencyService.normalise(idempotencyKey);
-        java.util.Optional<List<Long>> earlier =
-                requestIdempotency.replay(a.getHospitalId(), RequestIdempotencyService.IPD_INVESTIGATION, key);
-        if (earlier.isPresent()) {
-            List<Map<String, Object>> again = new ArrayList<>();
-            for (LabOrder o : labOrders.findAllById(earlier.get())) {
-                if (a.getHospitalId().equals(o.getHospitalId())) again.add(view(o));
-            }
-            if (!again.isEmpty()) return again;
-        }
+        List<Map<String, Object>> again = replayed(a, key);
+        if (!again.isEmpty()) return again;
         List<String> names = testNames(tests);
         String p = priority(priority);
         String note = notes == null || notes.isBlank() ? null : notes.trim();
@@ -126,6 +119,18 @@ public class IpdInvestigationService {
                         String.join(", ", names) + " ordered for " + a.getIpdNumber() + ". Collect the sample.",
                         "IPD", a.getId()));
         return out;
+    }
+
+    /** The orders an earlier request with this key created (this hospital's only); empty if none. */
+    private List<Map<String, Object>> replayed(IpdAdmission a, String key) {
+        List<Map<String, Object>> again = new ArrayList<>();
+        requestIdempotency.replay(a.getHospitalId(), RequestIdempotencyService.IPD_INVESTIGATION, key)
+                .ifPresent(ids -> {
+                    for (LabOrder o : labOrders.findAllById(ids)) {
+                        if (a.getHospitalId().equals(o.getHospitalId())) again.add(view(o));
+                    }
+                });
+        return again;
     }
 
     /** The test names given, trimmed, blanks dropped; 1 to MAX_TESTS of them. */
