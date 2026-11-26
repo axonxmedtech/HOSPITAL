@@ -402,13 +402,13 @@ class PatientDuplicatePhoneTest {
     // ── nothing else moved ───────────────────────────────────────────────────
 
     @Test
-    void registrationNumbersAreStillPatPlusId() {
+    void registrationNumbersStillCountPerHospital() {
         Patient first = patientService.addPatient(parent());
         Patient second = patientService.addPatient(child(), true);
         em.flush();
 
-        assertThat(first.getCustomId()).isEqualTo("PAT" + first.getId());
-        assertThat(second.getCustomId()).isEqualTo("PAT" + second.getId());
+        assertThat(first.getCustomId()).isEqualTo("PAT1");
+        assertThat(second.getCustomId()).isEqualTo("PAT2");
     }
 
     @Test

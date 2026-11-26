@@ -98,7 +98,7 @@ class AppointmentPatientPersistenceTest {
                 .stream().findFirst().orElseThrow();
         assertThat(stored.getCustomId())
                 .as("read back from the database, not from the instance the service returned")
-                .isEqualTo("PAT" + stored.getId());
+                .isEqualTo("PAT1");
         assertThat(stored.getHospitalId()).isEqualTo(MINE);
     }
 
@@ -196,7 +196,8 @@ class AppointmentPatientPersistenceTest {
                 .filter(p -> !p.getId().equals(seeded.getId()))
                 .findFirst().orElseThrow();
         assertThat(added.getName()).isEqualTo("Aarav Patil");
-        assertThat(added.getCustomId()).isEqualTo("PAT" + added.getId());
+        // The hospital's own series continues after the seeded patient's number.
+        assertThat(added.getCustomId()).isEqualTo("PAT" + (seeded.getId() + 1));
         assertThat(added.getDuplicatePhoneAckFor()).isEqualTo("9990003333");
         assertThat(added.getDuplicatePhoneAckBy()).isEqualTo("reception@hospital.test");
     }
