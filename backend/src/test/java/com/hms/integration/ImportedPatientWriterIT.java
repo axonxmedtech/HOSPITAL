@@ -185,7 +185,7 @@ class ImportedPatientWriterIT {
 
         assertThat(r.state()).isEqualTo(ImportRowState.CREATED);
         Patient p = reload(r.patientId());
-        assertThat(p.getCustomId()).isEqualTo("PAT" + p.getId()); // registrar
+        assertThat(p.getCustomId()).matches("PAT[1-9][0-9]*"); // registrar: hospital's own series
         assertThat(p.getPublicId()).isNotBlank().hasSize(36); // @PrePersist
         assertThat(p.getHospitalId()).isEqualTo(hospitalA);
         assertThat(p.getIsActive()).isTrue();
