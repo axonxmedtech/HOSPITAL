@@ -43,7 +43,22 @@ class MedicationAdministrationServiceTest {
     @Mock MedicationStockService medicationStock;
     @Mock com.hms.repository.StockMovementRepository stockMovementRepository;
 
+    @Mock FormAccessService formAccessService;
+
     @InjectMocks MedicationAdministrationService service;
+
+    @Test
+    void record_isRefused_whenFilesAndAccessMakesMedicationReadOnlyForTheRole() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(admission()));
+        org.mockito.Mockito.doThrow(new org.springframework.security.access.AccessDeniedException(
+                        "You do not have edit access to this form"))
+                .when(formAccessService).assertCanEdit("MEDICATION");
+
+        assertThatThrownBy(() -> service.record(req(10L, "GIVEN")))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        verify(marRepository, org.mockito.Mockito.never()).save(any());
+    }
 
     @org.junit.jupiter.api.BeforeEach
     void actAsNurse() {

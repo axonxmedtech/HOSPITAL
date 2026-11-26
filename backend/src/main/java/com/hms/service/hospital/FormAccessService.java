@@ -103,6 +103,19 @@ public class FormAccessService {
         }
     }
 
+    /**
+     * Throws 403 when this form is switched off for the hospital, whatever the caller's role.
+     * For a role that Files & Access does not assign (the OT in-charge): the per-role choice
+     * does not apply to them, but a form the hospital turned off is off for everyone.
+     */
+    public void assertEnabled(String formKey) {
+        String verdict = effectiveForRole(securityHelper.getCurrentUserRole()).get(formKey);
+        if ("HIDDEN".equals(verdict)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "This form is turned off for your hospital");
+        }
+    }
+
     private String normalizeRole(String role) {
         if (role == null) return "";
         if ("NURSE_INCHARGE".equals(role) || "NURSE".equals(role)) return "NURSE";

@@ -1,5 +1,6 @@
 package com.hms.controller.hospital;
 
+import com.hms.security.RequireModule;
 import com.hms.audit.PatientRecordAccess;
 import com.hms.exception.ResourceNotFoundException;
 
@@ -182,6 +183,7 @@ public class BillingController {
         return ResponseEntity.ok(result);
     }
 
+    @RequireModule("BILLING")
     @PutMapping("/{id}/status")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> updateStatus(
@@ -204,6 +206,7 @@ public class BillingController {
      * accepted against a total that is mid-rewrite.
      */
     @org.springframework.transaction.annotation.Transactional
+    @RequireModule("BILLING")
     @PutMapping("/{id}/items")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> updateBillItems(@PathVariable Long id, @RequestBody java.util.List<com.hms.dto.HospitalFeeDTO> items) {
@@ -443,6 +446,7 @@ public class BillingController {
      * balance, and both inserted. The patient was charged twice with no error shown.
      */
     @org.springframework.transaction.annotation.Transactional
+    @RequireModule("BILLING")
     @PostMapping("/{billingId}/pay")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> payBilling(@PathVariable Long billingId, @Valid @RequestBody PayRequest req) {
@@ -487,6 +491,7 @@ public class BillingController {
     }
 
     /** Discount / concession on a bill (any billing user; reason required and audited). */
+    @RequireModule("BILLING")
     @PostMapping("/{billingId}/discount")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> discount(@PathVariable Long billingId, @Valid @RequestBody DiscountRequest req) {
@@ -495,6 +500,7 @@ public class BillingController {
     }
 
     /** Refund money on a bill. Hospital admin only. */
+    @RequireModule("BILLING")
     @PostMapping("/{billingId}/refund")
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     public ResponseEntity<?> refund(@PathVariable Long billingId, @Valid @RequestBody RefundRequest req) {
@@ -503,6 +509,7 @@ public class BillingController {
     }
 
     /** Cancel (void) a bill, refunding anything collected. Hospital admin only. */
+    @RequireModule("BILLING")
     @PostMapping("/{billingId}/cancel")
     @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
     public ResponseEntity<?> cancel(@PathVariable Long billingId, @Valid @RequestBody CancelRequest req) {
@@ -588,6 +595,7 @@ public class BillingController {
         public BigDecimal amount;
     }
 
+    @RequireModule("BILLING")
     @PostMapping
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> createBill(@RequestBody CreateBillRequest req) {

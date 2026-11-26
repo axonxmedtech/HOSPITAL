@@ -1,5 +1,6 @@
 package com.hms.controller.hospital;
 
+import com.hms.security.RequireModule;
 import com.hms.entity.Bed;
 import com.hms.entity.IcuCleaningTask;
 import com.hms.entity.Ward;
@@ -49,6 +50,7 @@ public class IcuCleaningController {
                 org.springframework.data.domain.PageRequest.of(0, com.hms.util.Pages.MAX_SIZE)));
     }
 
+    @RequireModule("ICU")
     @PostMapping
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'NURSE_INCHARGE', 'NURSE', 'RECEPTIONIST')")
     public ResponseEntity<?> createTask(@RequestBody IcuCleaningTask task) {
@@ -92,6 +94,7 @@ public class IcuCleaningController {
     }
 
     // DOCTOR too: in Solo mode the doctor is the only one at the front desk.
+    @RequireModule("ICU")
     @PutMapping("/{id}/status")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'NURSE_INCHARGE', 'NURSE', 'RECEPTIONIST', 'DOCTOR')")
     public ResponseEntity<?> updateTaskStatus(@PathVariable Long id, @RequestBody Map<String, String> body) {
@@ -118,6 +121,7 @@ public class IcuCleaningController {
         return ResponseEntity.ok(task);
     }
 
+    @RequireModule("ICU")
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'NURSE_INCHARGE', 'NURSE', 'RECEPTIONIST')")
     public ResponseEntity<?> deleteTask(@PathVariable Long id) {

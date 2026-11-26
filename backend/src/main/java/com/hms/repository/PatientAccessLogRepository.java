@@ -54,6 +54,10 @@ public interface PatientAccessLogRepository extends JpaRepository<PatientAccessL
     @Query("SELECT b.patientId FROM Billing b WHERE b.id = :id AND b.hospitalId = :hospitalId")
     List<Long> patientOfBill(@Param("id") Long id, @Param("hospitalId") Long hospitalId);
 
+    @Query("SELECT b.patientId FROM BillingPayment p, Billing b "
+            + "WHERE p.id = :id AND b.id = p.billingId AND b.hospitalId = :hospitalId")
+    List<Long> patientOfPayment(@Param("id") Long id, @Param("hospitalId") Long hospitalId);
+
     @Query("SELECT d.patientId FROM PatientDocument d WHERE d.publicId = :ref AND d.hospitalId = :hospitalId")
     List<Long> patientOfDocument(@Param("ref") String ref, @Param("hospitalId") Long hospitalId);
 

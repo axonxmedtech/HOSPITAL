@@ -168,6 +168,7 @@ public class IpdAdmissionController {
         return ResponseEntity.ok(java.util.Map.of("paymentId", p.getId(), "amount", p.getAmount()));
     }
 
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.PAYMENT, action = PatientRecordAccess.Action.PRINT, label = "ADVANCE_RECEIPT")
     @GetMapping("/advances/{paymentId}/receipt/pdf")
     @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<org.springframework.core.io.InputStreamResource> advanceReceipt(@PathVariable("paymentId") Long paymentId) {
@@ -202,6 +203,7 @@ public class IpdAdmissionController {
     }
 
     /** The printable discharge summary (once the doctor has planned the discharge). */
+    @PatientRecordAccess(kind = PatientRecordAccess.Kind.ADMISSION, action = PatientRecordAccess.Action.PRINT, label = "DISCHARGE_SUMMARY")
     @GetMapping("/{id}/discharge-summary/pdf")
     @PreAuthorize("hasAnyRole('RECEPTIONIST', 'DOCTOR', 'HOSPITAL_ADMIN')")
     public ResponseEntity<org.springframework.core.io.InputStreamResource> dischargeSummaryPdf(@PathVariable("id") Long id) {

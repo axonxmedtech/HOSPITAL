@@ -47,6 +47,8 @@ public @interface PatientRecordAccess {
         /** Patient document public id. */
         DOCUMENT,
         /** ICU stay public id. */
-        ICU_STAY
+        ICU_STAY,
+        /** Bill payment id (numeric), e.g. an IPD advance receipt; traced through its bill. */
+        PAYMENT
     }
 }

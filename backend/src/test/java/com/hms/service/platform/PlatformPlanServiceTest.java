@@ -191,7 +191,7 @@ class PlatformPlanServiceTest {
 
         Plan result = service.createPlan(req);
 
-        assertThat(result.getModules()).containsExactly("OPD", "IPD", "ICU");
+        assertThat(result.getModules()).containsExactly("OPD", "IPD", "ICU", "BILLING"); // IPD includes BILLING
     }
 
     @Test
@@ -225,8 +225,8 @@ class PlatformPlanServiceTest {
 
         Plan result = service.updatePlan("plan-pub", req);
 
-        assertThat(result.getModules()).containsExactly("OPD", "IPD", "ICU");
-        verify(hospitalRepository).save(argThat(h -> h.getModules().contains("ICU")));
+        assertThat(result.getModules()).containsExactly("OPD", "IPD", "ICU", "BILLING"); // IPD includes BILLING
+        verify(hospitalRepository).save(argThat(h -> h.getModules().contains("ICU") && h.getModules().contains("BILLING")));
     }
 
     @Test
