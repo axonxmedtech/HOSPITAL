@@ -101,9 +101,25 @@ class EntitlementRegistryTest {
         assertThat(EntitlementRegistry.isSellable(HospitalType.PHARMACY, EntitlementRegistry.ICU)).isFalse();
 
         assertThat(EntitlementRegistry.normalizePlanModules(HospitalType.HOSPITAL, List.of("OPD", "IPD", " icu ")))
-                .containsExactly("OPD", "IPD", "ICU");
+                .containsExactly("OPD", "IPD", "ICU", "BILLING");
         assertThat(EntitlementRegistry.normalizeAppliedPlanModules(HospitalType.HOSPITAL, List.of("OPD", "IPD", "ICU")))
                 .contains("OPD", "IPD", "ICU");
+    }
+
+    @Test
+    void ipdIncludesBilling_persistedOnThePlanAndTheHospital_butOpdAloneDoesNot() {
+        assertThat(EntitlementRegistry.resolve(List.of(EntitlementRegistry.IPD)))
+                .contains(EntitlementRegistry.BILLING);
+        assertThat(EntitlementRegistry.normalizePlanModules(HospitalType.HOSPITAL, List.of("OPD", "IPD")))
+                .as("an admission is always billed, so the plan stores BILLING with IPD")
+                .contains(EntitlementRegistry.BILLING);
+        assertThat(EntitlementRegistry.normalizeAppliedPlanModules(HospitalType.HOSPITAL, List.of("OPD", "IPD")))
+                .contains(EntitlementRegistry.BILLING);
+        assertThat(EntitlementRegistry.normalizePlanModules(HospitalType.HOSPITAL, List.of("OPD")))
+                .as("an OPD-only plan may still leave billing out")
+                .doesNotContain(EntitlementRegistry.BILLING);
+        assertThat(EntitlementRegistry.normalizePlanModules(HospitalType.CLINIC, List.of("OPD")))
+                .doesNotContain(EntitlementRegistry.BILLING);
     }
 
     @Test

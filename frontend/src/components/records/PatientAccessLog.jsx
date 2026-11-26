@@ -23,6 +23,9 @@ const RECORD_LABELS = {
   ICU_STAY: 'ICU stay',
   BILLS: 'Bills',
   RECEIPT: 'Bill receipt',
+  ADVANCE_RECEIPT: 'Advance receipt',
+  DISCHARGE_SUMMARY: 'Discharge summary',
+  DISCHARGE_PACK: 'Discharge summary + bill',
   DOCUMENT_LIST: 'Documents list',
   DOCUMENT: 'Document',
 };

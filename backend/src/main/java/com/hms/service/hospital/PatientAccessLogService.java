@@ -124,6 +124,7 @@ public class PatientAccessLogService {
             case BILL -> byNumber(r, id -> repository.patientOfBill(id, hospitalId));
             case DOCUMENT -> repository.patientOfDocument(r, hospitalId);
             case ICU_STAY -> repository.patientOfIcuStay(r, hospitalId);
+            case PAYMENT -> byNumber(r, id -> repository.patientOfPayment(id, hospitalId));
         };
         return found.isEmpty() ? null : found.get(0);
     }

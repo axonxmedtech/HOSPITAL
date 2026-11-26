@@ -29,6 +29,7 @@ public class InitialAssessmentService {
     @Autowired private NurseAccessGuard nurseAccessGuard;
     @Autowired private AuditLogService auditLogService;
     @Autowired private FormAccessService formAccessService;
+    @Autowired private com.hms.security.PerformingNurseResolver performingNurseResolver;
     @Autowired private com.hms.service.RealtimeNotifier notifier;
 
     public InitialAssessment getOrDraft(Long ipdAdmissionId) {
@@ -53,6 +54,7 @@ public class InitialAssessmentService {
         InitialAssessment a = repository.findByIpdAdmissionId(ipdAdmissionId).orElseGet(InitialAssessment::new);
         a.setHospitalId(hospitalId);
         a.setIpdAdmissionId(ipdAdmissionId);
+        a.setPerformedByNurseId(performingNurseResolver.resolve(incoming.getPerformedByNurseId()));
         a.setChiefComplaints(incoming.getChiefComplaints());
         a.setAssociatedIllness(incoming.getAssociatedIllness());
         a.setRelevantInvestigations(incoming.getRelevantInvestigations());
