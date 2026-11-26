@@ -217,6 +217,9 @@ public final class TenantTables {
         purge(27, "help_feedback", BY_HOSPITAL);
         // Which sidebar tabs each role sees -- a display preference only.
         purge(28, "hospital_sidebar_settings", BY_HOSPITAL);
+        // Request bookkeeping for clinical orders (which prescription / lab-order keys were already
+        // applied), like opd_idempotency: no clinical content, meaningless once the facility is gone.
+        purge(29, "request_idempotency", BY_HOSPITAL);
 
         // An ICU episode and everything charted during it is clinical record. The stay itself carries
         // the admission and discharge times a later review depends on; the rest is what was

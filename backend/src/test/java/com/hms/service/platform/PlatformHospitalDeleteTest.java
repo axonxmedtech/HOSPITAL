@@ -249,4 +249,18 @@ class PlatformHospitalDeleteTest {
                 "SELECT COUNT(*) FROM audit_logs WHERE action = 'HOSPITAL_DELETED_PERMANENTLY' AND details LIKE ?",
                 Long.class, "%" + h.getName() + "%")).as("audited").isEqualTo(1);
     }
+
+    /** The facility's own audit trail outlives it: retention, not tidiness, decides. */
+    @Test
+    void aPurgeKeepsTheFacilitysAuditTrail() {
+        Hospital h = newFacility(HospitalType.HOSPITAL);
+        jdbc.update("INSERT INTO audit_logs (public_id, action, details, performed_by, hospital_id, timestamp) "
+                + "VALUES (?, 'BILL_DISCOUNTED', 'Discount 50 on BIL1', 'desk@h.test', ?, CURRENT_TIMESTAMP)",
+                java.util.UUID.randomUUID().toString(), h.getId());
+
+        service.deleteHospital(h.getPublicId());
+
+        assertFacilityFullyRemoved(h);
+        assertThat(countIn("audit_logs", h.getId())).as("the facility's audit rows are retained").isEqualTo(1);
+    }
 }

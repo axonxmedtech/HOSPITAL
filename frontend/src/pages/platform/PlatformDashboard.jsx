@@ -24,11 +24,11 @@ import authService from '../../services/authService';
 import platformService from '../../services/platformService';
 import statsCache from '../../services/platformStatsCache';
 import { extractApiError } from '../../utils/apiError';
+import { formatDay } from '../../utils/date';
 import { backdropProps } from '../../utils/modalA11y';
+import { humanizeCode } from '../../utils/text';
 import { validateForm } from '../../utils/validation';
 
-import { formatDay } from '../../utils/date';
-import { humanizeCode } from '../../utils/text';
 /**
  * PlatformDashboard - Super Admin dashboard
  *
@@ -207,7 +207,6 @@ const PlatformDashboard = () => {
   const [errors, setErrors] = useState({}); // Field-level errors
 
   // Audit Logs State
-  const [auditLogs, setAuditLogs] = useState([]);
 
   // Sidebar collapse state
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -271,7 +270,6 @@ const PlatformDashboard = () => {
   // BUG-014: AbortController refs so stale in-flight requests are cancelled
   // when the user switches tabs quickly.
   const hospitalsAbortRef = useRef(null);
-  const auditAbortRef = useRef(null);
 
   // Load data based on active tab
   useEffect(() => {
@@ -284,8 +282,6 @@ const PlatformDashboard = () => {
     } else if (subtab === 'hospitals' || subtab === 'clinics' || subtab === 'pharmacies') {
       // BUG-015: use PLATFORM_PAGE_SIZE constant instead of hard-coded 10
       loadHospitals(0, PLATFORM_PAGE_SIZE, getEntityType(activeTab));
-    } else if (subtab === 'audit_logs') {
-      loadAuditLogs();
     } else if (subtab === 'tickets') {
       loadTickets();
     } else if (subtab === 'faqs') {
@@ -331,25 +327,6 @@ const PlatformDashboard = () => {
   };
 
   // BUG-014: AbortController cancels in-flight audit request on re-invocation
-  const loadAuditLogs = async () => {
-    if (auditAbortRef.current) {
-      auditAbortRef.current.abort();
-    }
-    const controller = new AbortController();
-    auditAbortRef.current = controller;
-
-    try {
-      setLoading(true);
-      const data = await platformService.getAuditLogs({ signal: controller.signal });
-      setAuditLogs(data);
-    } catch (err) {
-      if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') return;
-      // BUG-013: use extractError
-      setError(extractError(err, 'Failed to load audit logs'));
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // BUG-027: Cache hospital stats for 60 seconds to avoid redundant fetches
   // on every dashboard-tab visit.
@@ -1109,8 +1086,8 @@ const PlatformDashboard = () => {
             const parsed = parseTab(activeTab);
             const subtab = parsed.isTopLevel ? parsed.tab : activeTab.split(':')[1];
 
-            // The global `loading` flag is set ONLY by loadHospitals() and
-            // loadAuditLogs(), and it starts as `true`. So it must gate only the
+            // The global `loading` flag is set ONLY by loadHospitals(), and it starts as
+            // `true` (the audit table pages itself and has its own loading). So it must gate only the
             // subtabs those two fetch for. Every other subtab (plans, tickets,
             // faqs, medicines, inventory_items, …) owns its own loading state and
             // renders its own skeleton — gating them on the global flag pinned a
@@ -1121,8 +1098,7 @@ const PlatformDashboard = () => {
               subtab === 'dashboard' ||
               subtab === 'hospitals' ||
               subtab === 'clinics' ||
-              subtab === 'pharmacies' ||
-              subtab === 'audit_logs';
+              subtab === 'pharmacies';
 
             if (loading && usesGlobalLoading) {
               return <SkeletonDashboard statCount={3} tableRows={6} tableCols={7} />;
@@ -1148,16 +1124,8 @@ const PlatformDashboard = () => {
             if (subtab === 'audit_logs') {
               return (
                 <div className="bg-white border border-gray-200">
-                  {auditLogs.length > 0 ? (
-                    <AuditLogsTable auditLogs={auditLogs} />
-                  ) : (
-                    <div className="p-12 text-center">
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">No audit logs yet</h3>
-                      <p className="text-gray-600">
-                        System activities will appear here once actions are performed
-                      </p>
-                    </div>
-                  )}
+                  {/* The table pages the whole history on the server. */}
+                  <AuditLogsTable />
                 </div>
               );
             }
@@ -3175,10 +3143,16 @@ const HospitalsTable = ({
 };
 
 // AuditLogsTable Component (Standardized)
-const AuditLogsTable = ({ auditLogs }) => {
+// Pages the platform's activity on the server: any period, filtered in the database (it used to
+// filter whatever list the dashboard had loaded, in the browser).
+const AuditLogsTable = () => {
   const columnHelper = createColumnHelper();
   const [page, setPage] = useState(0);
   const pageSize = 10;
+  const [auditLogs, setRows] = useState([]);
+  const [totalElements, setTotalElements] = useState(0);
+  const [totalPages, setTotalPagesState] = useState(0);
+  const [uniqueActions, setUniqueActions] = useState([]);
 
   // Filter state
   const [actionFilter, setActionFilter] = useState('');
@@ -3229,17 +3203,37 @@ const AuditLogsTable = ({ auditLogs }) => {
     return 'bg-gray-100 text-gray-600 border-gray-200';
   };
 
-  // Unique actions for dropdown (built from actual log data)
-  const uniqueActions = [...new Set(auditLogs.map((l) => l.action).filter(Boolean))].sort();
+  // Every action the platform has recorded, for the filter (not just those on this page).
+  useEffect(() => {
+    platformService
+      .getAuditActions()
+      .then((a) => setUniqueActions(Array.isArray(a) ? a : []))
+      .catch(() => setUniqueActions([]));
+  }, []);
 
-  // Client-side filter logic
-  const filteredLogs = auditLogs.filter((log) => {
-    const logDate = new Date(log.timestamp || log.createdAt);
-    const matchAction = !actionFilter || log.action === actionFilter;
-    const matchFrom = !fromDate || logDate >= new Date(fromDate);
-    const matchTo = !toDate || logDate <= new Date(toDate + 'T23:59:59');
-    return matchAction && matchFrom && matchTo;
-  });
+  // One server page for the current filters.
+  useEffect(() => {
+    const controller = new AbortController();
+    platformService
+      .getAuditLogsPage(
+        page,
+        pageSize,
+        { action: actionFilter, from: fromDate, to: toDate },
+        { signal: controller.signal }
+      )
+      .then((data) => {
+        setRows(data?.content || []);
+        setTotalElements(data?.totalElements || 0);
+        setTotalPagesState(data?.totalPages || 0);
+      })
+      .catch((err) => {
+        if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') return;
+        setRows([]);
+      });
+    return () => controller.abort();
+  }, [page, actionFilter, fromDate, toDate]);
+
+  const filteredLogs = auditLogs; // already filtered and paged by the server
 
   const handleFilterChange = (setter, value) => {
     setter(value);
@@ -3304,14 +3298,12 @@ const AuditLogsTable = ({ auditLogs }) => {
     }),
   ];
 
-  // Paginate the filtered results
-  const totalPages = Math.ceil(filteredLogs.length / pageSize);
-  const paginatedLogs = filteredLogs.slice(page * pageSize, (page + 1) * pageSize);
+  const paginatedLogs = auditLogs;
 
   const pagination = {
     pageIndex: page,
     pageSize: pageSize,
-    totalItems: filteredLogs.length,
+    totalItems: totalElements,
     pageCount: totalPages,
     onPageChange: (newPage) => setPage(newPage),
   };
@@ -3376,9 +3368,7 @@ const AuditLogsTable = ({ auditLogs }) => {
                 </button>
               </div>
               <div className="ml-auto flex items-end pb-0.5">
-                <span className="text-xs text-gray-400">
-                  {filteredLogs.length} of {auditLogs.length} results
-                </span>
+                <span className="text-xs text-gray-400">{totalElements} results</span>
               </div>
             </>
           )}

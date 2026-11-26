@@ -40,6 +40,7 @@ public class IpdAdmissionService {
     /** Admissions whose patient is still in a bed. */
     static final java.util.List<String> IN_HOSPITAL = java.util.List.of(STATUS_ADMITTED, STATUS_DISCHARGE_PLANNED);
 
+    @Autowired private RequestIdempotencyService requestIdempotency;
     @Autowired
     private IpdAdmissionRepository ipdAdmissionRepository;
 
@@ -1043,6 +1044,16 @@ public class IpdAdmissionService {
         }
 
         Long hospitalId = securityHelper.getCurrentHospitalId();
+        // A retry of this same act of prescribing (same key) returns the prescription it already
+        // made. Checked under the admission lock taken above, so two copies run one at a time.
+        String idemKey = RequestIdempotencyService.normalise(req.getIdempotencyKey());
+        java.util.Optional<java.util.List<Long>> earlier = requestIdempotency == null ? java.util.Optional.empty()
+                : requestIdempotency.replay(hospitalId, RequestIdempotencyService.IPD_PRESCRIPTION, idemKey);
+        if (earlier.isPresent() && !earlier.get().isEmpty()) {
+            java.util.Optional<com.hms.entity.Prescription> already =
+                    prescriptionRepository.findByIdAndHospitalId(earlier.get().get(0), hospitalId);
+            if (already.isPresent()) return already.get();
+        }
         if (hospitalId == null) throw new UnauthorizedException("Hospital ID not found in context");
 
         // Resolve latest medical record for this IPD
@@ -1148,6 +1159,10 @@ public class IpdAdmissionService {
         p.setStatus("ACTIVE");
 
         com.hms.entity.Prescription saved = prescriptionRepository.save(p);
+        if (requestIdempotency != null) {
+            requestIdempotency.record(hospitalId, RequestIdempotencyService.IPD_PRESCRIPTION, idemKey,
+                    java.util.List.of(saved.getId()));
+        }
 
         // Trigger notification to the assigned nurse, if any
         try {

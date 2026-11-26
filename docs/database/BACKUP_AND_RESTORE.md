@@ -28,8 +28,8 @@ them trustworthy.
 - **Self-verifying** — gzip integrity + minimum-size + "Dump completed" footer; a bad dump is
   removed and the job fails.
 - **Full backups** of the logical database (schema + data + routines/triggers/events). MySQL logical
-  dumps are inherently full; **incremental** backups (binlog shipping / PITR) are noted under
-  "future" — they need binlog + infra beyond this phase.
+  dumps are inherently full; the changes in between are covered by **binlog shipping (PITR)** —
+  [POINT_IN_TIME_RECOVERY.md](POINT_IN_TIME_RECOVERY.md).
 
 ### Backup workflow
 
@@ -136,7 +136,9 @@ forward-fix (a new `V(n+1)` migration) rather than a DB restore.
   required reviewers would stall every unattended backup waiting for approval — so it cannot read
   the environment-scoped `vars.HOST` that `_deploy.yml` uses.
 
-## Future (out of scope for this phase)
+## Point-in-time recovery
 
-Point-in-time recovery via binlog (would shrink the worst-case loss below one day) — needs
-infrastructure work beyond this phase.
+Built (Nov 2026): binlogs shipped off-site every 5 minutes, nightly dumps record their binlog
+position (`PITR=1`), and `pitr-restore.sh` replays to any second — worst-case loss ~5 minutes
+instead of a day. Setup, restore and drill: [POINT_IN_TIME_RECOVERY.md](POINT_IN_TIME_RECOVERY.md).
+A weekly automated restore drill checks the nightly dump: `.github/workflows/db-restore-drill.yml`.

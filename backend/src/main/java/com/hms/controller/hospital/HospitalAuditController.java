@@ -31,10 +31,16 @@ public class HospitalAuditController {
      * Get all recent activity for the current hospital.
      */
     @GetMapping
-    public ResponseEntity<List<AuditLog>> getRecentActivity(
+    public ResponseEntity<?> getRecentActivity(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String role,
-            @RequestParam(required = false) Integer limit) {
+            @RequestParam(required = false) Integer limit,
+            // With `page`: one page of any period (from/to dates), with totals -- the Audit tab.
+            // Without it: the newest entries as a plain list -- the activity feed.
+            @RequestParam(required = false) Integer page,
+            @RequestParam(defaultValue = "25") int size,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate from,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate to) {
         try {
             Long hospitalId = securityHelper.getCurrentHospitalId();
 
@@ -46,6 +52,10 @@ public class HospitalAuditController {
             String mappedRole = null;
             if (role != null && !role.trim().isEmpty() && !"ALL".equalsIgnoreCase(role)) {
                 mappedRole = role.trim();
+            }
+            if (page != null) {
+                return ResponseEntity.ok(AuditLogService.pageBody(
+                        auditLogService.pageHospitalLogs(hospitalId, search, mappedRole, from, to, page, size)));
             }
 
             // The limit is applied in the query (newest first, capped), not after loading them all.
@@ -81,9 +91,13 @@ public class HospitalAuditController {
      * Filters by role based on pharmacy plan type (SINGLE_PHARMACIST_ADMIN, SINGLE_PHARMACY, MULTI_PHARMACY).
      */
     @GetMapping("/pharmacy")
-    public ResponseEntity<List<AuditLog>> getPharmacyLogs(
+    public ResponseEntity<?> getPharmacyLogs(
             @RequestParam(required = false) String search,
-            @RequestParam(required = false) String role) {
+            @RequestParam(required = false) String role,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(defaultValue = "25") int size,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate from,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate to) {
         try {
             Long hospitalId = securityHelper.getCurrentHospitalId();
             Long branchId = securityHelper.getCurrentBranchId();
@@ -97,6 +111,10 @@ public class HospitalAuditController {
                 mappedRole = role.trim();
             }
 
+            if (page != null) {
+                return ResponseEntity.ok(AuditLogService.pageBody(auditLogService.pagePharmacyLogs(
+                        hospitalId, branchId, mappedRole, search, from, to, page, size)));
+            }
             List<AuditLog> logs = auditLogService.getPharmacyLogs(hospitalId, branchId, mappedRole, search);
             return ResponseEntity.ok(logs);
         } catch (Exception e) {
