@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import LoadingSpinner from '../../../components/LoadingSpinner';
+import PerformedByNurseSelect from '../../../components/nurse/PerformedByNurseSelect';
 import { useToast } from '../../../context/ToastContext';
+import usePerformingNurse from '../../../hooks/usePerformingNurse';
 import authService from '../../../services/authService';
 import nurseService from '../../../services/nurseService';
 import { extractApiError } from '../../../utils/apiError';
@@ -270,6 +272,7 @@ const InitialAssessmentPanel = ({ admissionId, readOnly = false }) => {
   const [family, setFamily] = useState({});
   const [personal, setPersonal] = useState({});
   const [painScore, setPainScore] = useState(null);
+  const performing = usePerformingNurse(f.wardId, a.performedByNurseId);
 
   useEffect(() => {
     let active = true;
@@ -307,6 +310,10 @@ const InitialAssessmentPanel = ({ admissionId, readOnly = false }) => {
     setPersonal((p) => ({ ...p, [k]: { ...(p[k] || {}), ...patch } }));
 
   const handleSave = async () => {
+    if (!performing.ready) {
+      toastError('Select the nurse who performed this assessment');
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -315,6 +322,7 @@ const InitialAssessmentPanel = ({ admissionId, readOnly = false }) => {
         familyHistory: JSON.stringify(family),
         personalHistory: JSON.stringify(personal),
         painScore,
+        ...performing.payload,
       };
       const saved = await nurseService.saveInitialAssessment(admissionId, payload);
       setA(saved || payload);
@@ -366,7 +374,8 @@ const InitialAssessmentPanel = ({ admissionId, readOnly = false }) => {
           <h3 className="font-bold text-gray-800 text-sm">
             Admission History &amp; Initial Assessment
           </h3>
-          <div className="flex gap-2">
+          <div className="flex items-end gap-2">
+            <PerformedByNurseSelect id="ia-performed-by" performing={performing} />
             <button
               onClick={handleSave}
               disabled={saving}

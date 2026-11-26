@@ -90,6 +90,14 @@ public class InitialAssessment {
     @Column(name = "pain_score")
     private Integer painScore;
 
+    /**
+     * NurseProfile credited with this assessment (PerformingNurseResolver): the logged-in nurse
+     * with Separate Nurse Login ON, the in-charge's "Performed By" choice with it OFF, null for a
+     * doctor or admin entry. Re-saving the assessment re-credits it to whoever saved last.
+     */
+    @Column(name = "performed_by_nurse_id")
+    private Long performedByNurseId;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
