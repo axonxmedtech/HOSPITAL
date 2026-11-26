@@ -3,11 +3,24 @@ import { useToast } from '../context/ToastContext';
 import platformService from '../services/platformService';
 import { extractApiError } from '../utils/apiError';
 
+/**
+ * Modules another selected module brings with it, mirroring EntitlementRegistry.IMPLIED_BY on the
+ * server: booking needs the OPD workflow, and an admission is always billed and settled at
+ * discharge, so IPD needs Billing. A required module is locked on while its dependant is selected.
+ */
+const IMPLIES = { APPOINTMENTS: ['OPD'], IPD: ['BILLING'] };
+
 export const normalizePlanModules = (modules) => {
   const normalized = new Set(modules);
-  if (normalized.has('APPOINTMENTS')) normalized.add('OPD');
+  Object.entries(IMPLIES).forEach(([mod, implied]) => {
+    if (normalized.has(mod)) implied.forEach((m) => normalized.add(m));
+  });
   return [...normalized];
 };
+
+/** The selected module that keeps `mod` switched on, if any. */
+export const lockedBy = (mod, modules) =>
+  Object.keys(IMPLIES).find((dep) => modules.includes(dep) && IMPLIES[dep].includes(mod)) || null;
 /** Capacity a plan can cap (PlanLimit on the server). Blank = unlimited, 0 = not included. */
 export const PLAN_LIMITS = [
   { key: 'BEDS', label: 'Beds', short: 'beds' },
@@ -117,7 +130,7 @@ export default function PlansTab({ hospitalType = null }) {
 
   const handleModuleToggle = (mod) => {
     setForm((prev) => {
-      if (mod === 'OPD' && prev.modules.includes('APPOINTMENTS')) return prev;
+      if (lockedBy(mod, prev.modules)) return prev;
       const modules = prev.modules.includes(mod)
         ? prev.modules.filter((m) => m !== mod)
         : [...prev.modules, mod];
@@ -401,7 +414,12 @@ export default function PlansTab({ hospitalType = null }) {
                         type="button"
                         key={mod}
                         onClick={() => handleModuleToggle(mod)}
-                        disabled={mod === 'OPD' && form.modules.includes('APPOINTMENTS')}
+                        disabled={Boolean(lockedBy(mod, form.modules))}
+                        title={
+                          lockedBy(mod, form.modules)
+                            ? `Included with ${lockedBy(mod, form.modules)}`
+                            : undefined
+                        }
                         className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
                           form.modules.includes(mod)
                             ? 'bg-gray-900 text-white border-gray-900'

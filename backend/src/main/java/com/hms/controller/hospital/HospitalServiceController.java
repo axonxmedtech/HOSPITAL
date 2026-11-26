@@ -1,5 +1,6 @@
 package com.hms.controller.hospital;
 
+import com.hms.security.RequireModule;
 import jakarta.validation.Valid;
 
 import com.hms.dto.HospitalServiceDTO;
@@ -76,6 +77,7 @@ public class HospitalServiceController {
         return ResponseEntity.ok(dtos);
     }
 
+    @RequireModule("HOSPITAL_INVENTORY")
     @PostMapping("/services")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> createService(@Valid @RequestBody HospitalServiceDTO dto) {
@@ -87,6 +89,7 @@ public class HospitalServiceController {
         }
     }
 
+    @RequireModule("HOSPITAL_INVENTORY")
     @PutMapping("/services/{id}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> updateService(@PathVariable Long id, @Valid @RequestBody HospitalServiceDTO dto) {
@@ -100,6 +103,7 @@ public class HospitalServiceController {
         }
     }
 
+    @RequireModule("HOSPITAL_INVENTORY")
     @DeleteMapping("/services/{id}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> deleteService(@PathVariable Long id) {

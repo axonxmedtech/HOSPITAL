@@ -279,6 +279,7 @@ public class DatabaseMigrationRunner {
         backfillPrintPaymentDefaults();
         widenVitalsDecimalColumns();
         backfillStrandedOpdStatuses();
+        backfillBillingForIpd(); // V46 — IPD includes BILLING
         reconcileOtPermissionOrphanDefaults(); // OT-P0A — v2 defaults for already-configured hospitals
         ensureRecoveryBaysTable(); // OT-P0B — recovery admission needs a tenant-owned location
         addColumnIfMissing("ot_recovery_episodes", "recovery_bay_id", BIGINT_NULL);
@@ -421,6 +422,32 @@ public class DatabaseMigrationRunner {
      * to the intended defaults (all pages on, LAST). Idempotent: only touches rows that were
      * never set intentionally — a brand-new install writes 1s directly and skips this.
      */
+    /**
+     * V46: IPD includes BILLING. Plans and hospitals saved before that rule may hold IPD without
+     * BILLING, which would leave them unable to settle a bill at discharge once billing changes
+     * are module-gated. Idempotent: adds BILLING only where IPD is present and BILLING is not.
+     */
+    private void backfillBillingForIpd() {
+        try {
+            int plans = jdbcTemplate.update(
+                    "INSERT INTO plan_modules (plan_id, module_name) SELECT ipd.plan_id, 'BILLING' "
+                    + "FROM (SELECT DISTINCT plan_id FROM plan_modules WHERE module_name = 'IPD') ipd "
+                    + "WHERE NOT EXISTS (SELECT 1 FROM (SELECT plan_id FROM plan_modules "
+                    + "WHERE module_name = 'BILLING') b WHERE b.plan_id = ipd.plan_id)");
+            int hospitals = jdbcTemplate.update(
+                    "INSERT INTO hospital_modules (hospital_id, module_name) SELECT ipd.hospital_id, 'BILLING' "
+                    + "FROM (SELECT DISTINCT hospital_id FROM hospital_modules WHERE module_name = 'IPD') ipd "
+                    + "WHERE NOT EXISTS (SELECT 1 FROM (SELECT hospital_id FROM hospital_modules "
+                    + "WHERE module_name = 'BILLING') b WHERE b.hospital_id = ipd.hospital_id)");
+            if (plans > 0 || hospitals > 0) {
+                log.info("DB migration applied: IPD includes BILLING — added to {} plan(s), {} hospital(s)",
+                        plans, hospitals);
+            }
+        } catch (Exception e) {
+            log.warn("Could not backfill BILLING for IPD plans/hospitals: {}", e.getMessage());
+        }
+    }
+
     private void backfillPrintPaymentDefaults() {
         try {
             // An invalid bill_payment_timing ('' / NULL) is the definitive signature of a row the
