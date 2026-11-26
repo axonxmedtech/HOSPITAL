@@ -53,6 +53,7 @@ class SurgeryFormServiceProcedureScopeTest {
     @org.mockito.Spy ObjectMapper objectMapper = new ObjectMapper();
 
     @Mock com.hms.service.RealtimeNotifier notifier;
+    @Mock FormAccessService formAccessService;
 
     @InjectMocks SurgeryFormService service;
 

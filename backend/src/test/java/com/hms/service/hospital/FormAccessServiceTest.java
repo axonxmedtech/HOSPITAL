@@ -127,4 +127,21 @@ class FormAccessServiceTest {
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.assertCanEdit("VITALS"))
                 .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
     }
+
+    @Test void assertEnabled_ignoresTheRoleChoice_butRefusesAFormThatIsOff() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        when(securityHelper.getCurrentUserRole()).thenReturn("OT_INCHARGE");
+        HospitalFormAccess nurseOnly = new HospitalFormAccess();
+        nurseOnly.setHospitalId(7L); nurseOnly.setFormKey("WHO_CHECKLIST"); nurseOnly.setEnabled(true); nurseOnly.setAccessRole("NURSE");
+        HospitalFormAccess off = new HospitalFormAccess();
+        off.setHospitalId(7L); off.setFormKey("GA_CONSENT"); off.setEnabled(false); off.setAccessRole("BOTH");
+        when(repository.findByHospitalId(7L)).thenReturn(List.of(nurseOnly, off));
+
+        org.assertj.core.api.Assertions.assertThatCode(() -> service.assertEnabled("WHO_CHECKLIST"))
+                .as("a nurse-only form is still On, so a role outside Files & Access may use it")
+                .doesNotThrowAnyException();
+        assertThatThrownBy(() -> service.assertEnabled("GA_CONSENT"))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class)
+                .hasMessageContaining("turned off");
+    }
 }

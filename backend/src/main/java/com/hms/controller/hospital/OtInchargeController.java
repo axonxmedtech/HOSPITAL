@@ -1,5 +1,6 @@
 package com.hms.controller.hospital;
 
+import com.hms.security.RequireModule;
 import com.hms.entity.HospitalType;
 import com.hms.entity.User;
 import com.hms.security.TenantType;
@@ -26,6 +27,7 @@ public class OtInchargeController {
     @Autowired
     private OtInchargeService otInchargeService;
 
+    @RequireModule("OT")
     @PostMapping
     public ResponseEntity<?> createOtIncharge(@RequestBody Map<String, String> payload) {
         String name = payload.get("name");
@@ -49,6 +51,7 @@ public class OtInchargeController {
         return ResponseEntity.ok(otInchargeService.getAllOtIncharges(search, pageable));
     }
 
+    @RequireModule("OT")
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteOtIncharge(@PathVariable String id,
             @RequestParam(required = false) String reason) {
@@ -62,6 +65,7 @@ public class OtInchargeController {
         return ResponseEntity.ok(otIncharge);
     }
 
+    @RequireModule("OT")
     @PutMapping("/{id}")
     public ResponseEntity<?> updateOtIncharge(@PathVariable String id, @RequestBody Map<String, String> payload) {
         String name = payload.get("name");
@@ -72,6 +76,7 @@ public class OtInchargeController {
         return ResponseEntity.ok(updated);
     }
 
+    @RequireModule("OT")
     @PostMapping("/{id}/reset-password")
     public ResponseEntity<?> resetOtInchargePassword(@PathVariable String id, @RequestBody java.util.Map<String, String> body) {
         String newPassword = body.get("newPassword");
