@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useToast } from '../../context/ToastContext';
 import hospitalService from '../../services/hospitalService';
 import { extractApiError } from '../../utils/apiError';
+import { keyForAct, newIdempotencyKey } from '../../utils/idempotencyKey';
 
 const STATUS = {
   ORDERED: { label: 'Ordered', cls: 'bg-amber-50 text-amber-800' },
@@ -28,6 +29,8 @@ export default function InvestigationsPanel({ admissionId, canOrder = false, can
   const { success, error: toastError } = useToast();
   const [list, setList] = useState(null);
   const [form, setForm] = useState({ tests: '', priority: 'ROUTINE', notes: '' });
+  // One nonce per order being written; renewed after it is placed (see keyForAct).
+  const orderNonce = useRef(newIdempotencyKey('lab'));
   const [saving, setSaving] = useState(false);
   const [resultFor, setResultFor] = useState(null); // { publicId, testName, text }
   const [cancelFor, setCancelFor] = useState(null); // { publicId, testName, reason }
@@ -72,10 +75,15 @@ export default function InvestigationsPanel({ admissionId, canOrder = false, can
           tests,
           priority: form.priority,
           notes: form.notes.trim() || null,
+          // Same tests resent -> same key -> ordered once; an edited order -> a new key.
+          idempotencyKey: keyForAct(orderNonce.current, [tests, form.priority, form.notes.trim()]),
         }),
       `${tests.length} test${tests.length === 1 ? '' : 's'} ordered`
     );
-    if (ok) setForm({ tests: '', priority: 'ROUTINE', notes: '' });
+    if (ok) {
+      setForm({ tests: '', priority: 'ROUTINE', notes: '' });
+      orderNonce.current = newIdempotencyKey('lab');
+    }
   };
 
   return (

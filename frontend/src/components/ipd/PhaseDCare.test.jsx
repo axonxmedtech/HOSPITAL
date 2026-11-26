@@ -70,6 +70,8 @@ describe('InvestigationsPanel', () => {
         tests: ['CBC', 'LFT', 'Urine routine'],
         priority: 'URGENT',
         notes: null,
+        // One key per order, so a resent order is placed once.
+        idempotencyKey: expect.stringMatching(/^lab-[A-Za-z0-9_-]+$/),
       })
     );
   });

@@ -1,0 +1,11 @@
+# Every 5 minutes: the most data a lost server can cost once PITR is on.
+[Unit]
+Description=HMS: ship MySQL binary logs every 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -59,7 +59,8 @@ public class IpdCareController {
     public ResponseEntity<List<Map<String, Object>>> order(@PathVariable("id") Long id, @RequestBody Map<String, Object> body) {
         Object tests = body.get("tests");
         List<String> names = tests instanceof List<?> l ? l.stream().map(String::valueOf).toList() : List.of();
-        return ResponseEntity.ok(investigationService.order(id, names, (String) body.get("priority"), (String) body.get("notes")));
+        return ResponseEntity.ok(investigationService.order(id, names, (String) body.get("priority"), (String) body.get("notes"),
+                body.get("idempotencyKey") == null ? null : String.valueOf(body.get("idempotencyKey"))));
     }
 
     @PostMapping("/investigations/{publicId}/sample")

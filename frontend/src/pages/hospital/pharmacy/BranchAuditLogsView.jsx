@@ -9,6 +9,8 @@ const BranchAuditLogsView = ({ refreshKey = 0 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
   const pageSize = 10;
 
   const debouncedSearch = useDebounce(searchTerm, 300);
@@ -17,24 +19,37 @@ const BranchAuditLogsView = ({ refreshKey = 0 }) => {
     setLoading(true);
     try {
       const mappedRole = roleFilter === 'ALL' ? null : roleFilter;
-      const data = await hospitalService.getPharmacyAuditLogs(debouncedSearch, mappedRole);
-      setLogs(Array.isArray(data) ? data : []);
-      setPage(0); // Reset page on new search/filter
+      // One server page of the whole trail, not the newest 1000 paged in the browser.
+      const data = await hospitalService.getPharmacyAuditLogsPage(
+        debouncedSearch,
+        mappedRole,
+        page,
+        pageSize
+      );
+      setLogs(data?.content || []);
+      setTotalPages(data?.totalPages || 0);
+      setTotalElements(data?.totalElements || 0);
     } catch (err) {
       console.error('Failed to load pharmacy audit logs:', err);
       setLogs([]);
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, roleFilter, refreshKey]);
+  }, [debouncedSearch, roleFilter, refreshKey, page]);
+
+  // A new search or role starts again from the first page.
+  useEffect(() => {
+    setPage(0);
+  }, [debouncedSearch, roleFilter]);
 
   useEffect(() => {
     loadLogs();
   }, [loadLogs]);
 
-  // Client-side pagination
-  const totalPages = Math.ceil(logs.length / pageSize);
-  const paginatedLogs = logs.slice(page * pageSize, (page + 1) * pageSize);
+  const paginatedLogs = logs; // already one server page
+  // At most 7 page buttons around the current page: the whole history can be hundreds of pages.
+  const firstButton = Math.max(0, Math.min(page - 3, totalPages - 7));
+  const pageButtons = Array.from({ length: Math.min(7, totalPages) }, (_, i) => firstButton + i);
 
   const formatDate = (timestamp) => {
     return new Date(timestamp).toLocaleDateString('en-IN', {
@@ -188,8 +203,8 @@ const BranchAuditLogsView = ({ refreshKey = 0 }) => {
       {totalPages > 1 && (
         <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between">
           <span className="text-xs text-gray-500 font-semibold">
-            Showing {page * pageSize + 1} - {Math.min((page + 1) * pageSize, logs.length)} of{' '}
-            {logs.length} trails
+            Showing {page * pageSize + 1} - {Math.min((page + 1) * pageSize, totalElements)} of{' '}
+            {totalElements} trails
           </span>
           <div className="flex items-center gap-1">
             <button
@@ -211,7 +226,7 @@ const BranchAuditLogsView = ({ refreshKey = 0 }) => {
                 />
               </svg>
             </button>
-            {Array.from({ length: totalPages }).map((_, i) => (
+            {pageButtons.map((i) => (
               <button
                 key={i}
                 onClick={() => setPage(i)}

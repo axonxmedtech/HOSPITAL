@@ -555,7 +555,7 @@ public class PlatformHospitalService {
             throw new IllegalArgumentException("Give a reason for deleting this facility permanently.");
         }
         // Mandatory, unlike the best-effort logAction: if this record can't be written, nothing is
-        // deleted. Kept with no hospital_id so the purge below does not remove it.
+        // deleted. No hospital_id, so it shows in the platform's own audit view.
         org.springframework.security.core.Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         AuditLog log = new AuditLog();
         log.setAction("HOSPITAL_DELETED_PERMANENTLY");
@@ -672,7 +672,9 @@ public class PlatformHospitalService {
 
         // Users & audit data
         jdbcTemplate.update("DELETE FROM users WHERE hospital_id = ?", id);
-        jdbcTemplate.update("DELETE FROM audit_logs WHERE hospital_id = ?", id);
+        // audit_logs are deliberately KEPT (owner decision, Nov 2026): who changed what, and every
+        // billing adjustment, must outlive the facility for medical-records and tax retention --
+        // like patient_access_logs. The rows hold no clinical content.
         jdbcTemplate.update("DELETE FROM support_tickets WHERE hospital_id = ?", id);
 
         // The facility row last: tenant tables created by the migration runner declare

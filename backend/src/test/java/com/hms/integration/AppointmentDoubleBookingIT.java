@@ -107,6 +107,37 @@ class AppointmentDoubleBookingIT {
         return patientRepository.save(p).getId();
     }
 
+    private Appointment raw(Long patientId, LocalDate day, LocalTime slot, String status) {
+        Appointment a = new Appointment();
+        a.setHospitalId(hospitalId);
+        a.setPatientId(patientId);
+        a.setDoctorId(doctorId);
+        a.setAppointmentDate(day);
+        a.setAppointmentTime(slot);
+        a.setStatus(status);
+        a.setIsActive(true);
+        return a;
+    }
+
+    /**
+     * V49: even a write path that skipped the application's lock cannot double-book -- the
+     * database refuses the second active booking. A cancelled booking has released the slot.
+     */
+    @Test
+    void theDatabaseItselfRefusesASecondActiveBookingInTheSlot() {
+        LocalDate day = LocalDate.now().plusDays(5);
+        LocalTime slot = LocalTime.of(9, 0);
+        appointmentRepository.saveAndFlush(raw(patientA, day, slot, "SCHEDULED"));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> appointmentRepository.saveAndFlush(raw(patientB, day, slot, "SCHEDULED")))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+
+        LocalTime other = LocalTime.of(9, 30);
+        appointmentRepository.saveAndFlush(raw(patientA, day, other, "CANCELLED"));
+        appointmentRepository.saveAndFlush(raw(patientB, day, other, "SCHEDULED")); // slot was released
+    }
+
     @Test
     void twoDesksBookingTheSameSlotAtOnce_exactlyOneWins() throws Exception {
         LocalDate day = LocalDate.now().plusDays(3);

@@ -87,6 +87,10 @@ jobs:
           # is missing or fails. Set the repository variable DB_BACKUP_OFFSITE=auto only while the
           # bucket is being set up.
           OFFSITE: ${{ vars.DB_BACKUP_OFFSITE || 'required' }}
+          # 1 = record the binlog position in the dump for point-in-time recovery. Set the
+          # repository variable DB_BACKUP_PITR=1 once binlogs + privileges are in place
+          # (docs/database/POINT_IN_TIME_RECOVERY.md); 0 until then.
+          PITR: ${{ vars.DB_BACKUP_PITR || '0' }}
         run: |
           # pipefail: without it the pipeline's status is tee's (always 0) and a failed
           # backup would report success. The gate must actually gate.
@@ -102,7 +106,7 @@ jobs:
             -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
             "cd '$REPO' && \
              ENV_LABEL='$ENV_LABEL' RETENTION_DAYS='${{ vars.DB_BACKUP_RETENTION_DAYS || 30 }}' \
-             OFFSITE='$OFFSITE' bash scripts/db/backup.sh" \
+             OFFSITE='$OFFSITE' PITR='$PITR' bash scripts/db/backup.sh" \
             2>&1 | tee backup-logs/backup.txt
           rc=$?
           rm -f /tmp/deploy_key

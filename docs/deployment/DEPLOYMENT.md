@@ -278,6 +278,7 @@ manifest) for 90 days. On failure the logs indicate **what** ran, **which** step
 
 ## Related
 
+[SINGLE_SERVER.md](SINGLE_SERVER.md) (one backend instance by design) ·
 [docs/ci/CI_ARCHITECTURE.md](../ci/CI_ARCHITECTURE.md) ·
 [docs/release/RELEASE_ENGINEERING.md](../release/RELEASE_ENGINEERING.md) ·
 [docs/governance/BRANCHING_AND_RELEASE_STRATEGY.md](../governance/BRANCHING_AND_RELEASE_STRATEGY.md)

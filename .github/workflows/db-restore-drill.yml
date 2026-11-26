@@ -1,0 +1,111 @@
+name: Database Restore Drill
+
+# Weekly proof that the newest nightly backup can be restored (decided before launch, Nov 2026).
+# Runs scripts/db/restore-drill.sh ON THE VPS: it restores the newest backup into a scratch
+# database, compares it with live, records the result in /var/backups/hms/restore-drills.log and
+# drops the scratch copy. The dump never leaves the server; only metadata comes back. A failure
+# fails this run, and GitHub emails it. See docs/database/BACKUP_AND_RESTORE.md.
+
+on:
+  schedule:
+    # Sundays 20:30 UTC = Monday 02:00 IST, two hours after the nightly backup.
+    - cron: '30 20 * * 0'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to drill
+        required: true
+        type: choice
+        options: [Production, Staging]
+
+permissions:
+  contents: read
+
+concurrency:
+  # Never overlap the drill with a backup of the same environment.
+  group: db-backup-${{ github.event.inputs.environment || 'Production' }}
+  cancel-in-progress: false
+
+jobs:
+  drill:
+    name: Restore drill ${{ github.event.inputs.environment || 'Production' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Same environment and key as db-backup.yml ("Production Backups": no reviewers, main only).
+    environment:
+      name: ${{ github.event.inputs.environment == 'Staging' && 'Staging' || 'Production Backups' }}
+    steps:
+      # Pin to SHA in production: https://github.com/actions/checkout/releases
+      - uses: actions/checkout@v4
+
+      - name: Check the run may act on this environment
+        env:
+          ENV_NAME: ${{ github.event.inputs.environment || 'Production' }}
+        run: bash scripts/deploy/check-deploy-ref.sh "$ENV_NAME" "$GITHUB_REF"
+
+      - name: Resolve environment
+        id: env
+        run: |
+          ENV="${{ github.event.inputs.environment || 'Production' }}"
+          if [ "$ENV" = "Staging" ]; then
+            {
+              echo "label=staging"
+              echo "repo_path=${{ vars.STAGING_DEPLOY_PATH || '/var/www/hms/staging/repo_stage' }}"
+              echo "host=${{ vars.STAGING_SSH_HOST || vars.HOST || vars.SSH_HOST }}"
+              echo "port=${{ vars.STAGING_SSH_PORT || vars.SSH_PORT || '22' }}"
+            } >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo "label=production"
+              echo "repo_path=${{ vars.PRODUCTION_DEPLOY_PATH || '/var/www/hms/production/repo_prod' }}"
+              echo "host=${{ vars.PRODUCTION_SSH_HOST || vars.HOST || vars.SSH_HOST }}"
+              echo "port=${{ vars.PRODUCTION_SSH_PORT || vars.SSH_PORT || '22' }}"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate configuration
+        env:
+          HMS_HOST: ${{ steps.env.outputs.host }}
+          HMS_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/deploy/validate-config.sh HMS_HOST HMS_KEY:multiline
+
+      - name: Run restore drill on VPS (dump stays on server)
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_HOST: ${{ steps.env.outputs.host }}
+          SSH_PORT: ${{ steps.env.outputs.port }}
+          SSH_USER: ${{ secrets.DEPLOY_SSH_USER || 'deploy' }}
+          REPO: ${{ steps.env.outputs.repo_path }}
+          ENV_LABEL: ${{ steps.env.outputs.label }}
+        run: |
+          set -o pipefail
+          mkdir -p drill-logs
+          echo "$SSH_KEY" > /tmp/deploy_key && chmod 600 /tmp/deploy_key
+          ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=20 \
+            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            "cd '$REPO' && ENV_LABEL='$ENV_LABEL' bash scripts/db/restore-drill.sh" \
+            2>&1 | tee drill-logs/drill.txt
+          rc=$?
+          rm -f /tmp/deploy_key
+          exit $rc
+
+      - name: Drill summary
+        if: always()
+        run: |
+          {
+            echo "## 🧪 Restore drill — ${{ github.event.inputs.environment || 'Production' }}"
+            echo ""
+            echo '```'
+            grep -E '^\[drill\]|^\[restore\]|ERROR|WARNING' drill-logs/drill.txt 2>/dev/null | tail -25 || echo "(no output)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload drill log (no PHI)
+        if: always()
+        # Pin to SHA in production: https://github.com/actions/upload-artifact/releases
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-restore-drill-log-${{ github.run_id }}
+          path: drill-logs/
+          retention-days: 180
+          if-no-files-found: warn

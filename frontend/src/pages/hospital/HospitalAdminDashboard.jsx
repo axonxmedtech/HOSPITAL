@@ -226,6 +226,7 @@ const HospitalAdminDashboard = () => {
   const [billingStatus, setBillingStatus] = useState('PENDING');
   const [billingCategory, setBillingCategory] = useState(''); // '' = all, 'OPD', 'IPD'
   const [billingRange, setBillingRange] = useState(() => rangeFor('all')); // bill date window
+  const [auditRange, setAuditRange] = useState(() => rangeFor('all')); // audit entry date window
   const [auditLogs, setAuditLogs] = useState([]);
   const [stats, setStats] = useState({ today: 0, pending: 0, total: 0 });
   const [loading, setLoading] = useState(false);
@@ -695,6 +696,7 @@ const HospitalAdminDashboard = () => {
     billingStatus,
     billingCategory,
     billingRange,
+    auditRange,
     auditLogRoleFilter,
     patientTabView,
     patientDateFilter,
@@ -1586,14 +1588,21 @@ const HospitalAdminDashboard = () => {
             setLoadError(safeLoadMessage(err, "Couldn't load OPD cases."));
           }
         } else if (activeTab === 'audit-logs') {
+          // Server-side pages over the whole history (any period), not the newest 1000 in memory.
+          const role = auditLogRoleFilter === 'ALL' ? null : auditLogRoleFilter;
+          const range = rangeParams(auditRange);
           const data = isPharmacyTenant
-            ? await hospitalService.getPharmacyAuditLogs(
+            ? await hospitalService.getPharmacyAuditLogsPage(
                 searchTerm,
-                auditLogRoleFilter === 'ALL' ? null : auditLogRoleFilter
+                role,
+                page,
+                pageSize,
+                range
               )
-            : await hospitalService.getAuditLogs(searchTerm, auditLogRoleFilter);
-          setAuditLogs(data);
-          setTotalPages(1); // Audit logs don't have pagination yet
+            : await hospitalService.getAuditLogsPage(searchTerm, role, page, pageSize, range);
+          setAuditLogs(data?.content || []);
+          setTotalPages(data?.totalPages || 1);
+          setTotalElements(data?.totalElements || 0);
         } else if (activeTab === 'analytics') {
           const data = await hospitalService.getAnalyticsStats();
           setAnalyticsData(data);
@@ -3358,7 +3367,10 @@ const HospitalAdminDashboard = () => {
                       ).map((item) => (
                         <button
                           key={item.id}
-                          onClick={() => setAuditLogRoleFilter(item.id)}
+                          onClick={() => {
+                            setAuditLogRoleFilter(item.id);
+                            setPage(0);
+                          }}
                           className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
                             auditLogRoleFilter === item.id
                               ? 'bg-white text-blue-600 shadow-sm border border-gray-100 font-semibold'
@@ -3368,6 +3380,14 @@ const HospitalAdminDashboard = () => {
                           {item.label}
                         </button>
                       ))}
+                      <DateRangeFilter
+                        range={auditRange}
+                        label="Entry date"
+                        onChange={(r) => {
+                          setAuditRange(r);
+                          setPage(0);
+                        }}
+                      />
                     </div>
                   ) : null
                 }
@@ -5693,7 +5713,7 @@ const HospitalAdminDashboard = () => {
                 <div className="space-y-6">
                   {renderBranchFilterBar()}
                   {auditLogs.length > 0 ? (
-                    <AuditLogsTable auditLogs={auditLogs} />
+                    <AuditLogsTable auditLogs={auditLogs} serverPagination={pagination} />
                   ) : (
                     <EmptyState
                       icon={null}
@@ -10047,7 +10067,9 @@ const CreateNurseTaskModal = ({ nurseOptions, activeAdmissions, onSubmit, onClos
 };
 
 // AuditLogsTable Component
-const AuditLogsTable = ({ auditLogs, startIndex = 0 }) => {
+// `serverPagination`: the rows are already one server page (the Audit tab); otherwise the table
+// pages the list it was given in the browser.
+const AuditLogsTable = ({ auditLogs, startIndex = 0, serverPagination }) => {
   const columnHelper = createColumnHelper();
   const [page, setPage] = useState(0);
   const pageSize = 10;
@@ -10082,7 +10104,12 @@ const AuditLogsTable = ({ auditLogs, startIndex = 0 }) => {
     columnHelper.display({
       id: 'sno',
       header: 'S.NO.',
-      cell: (info) => page * pageSize + info.row.index + 1,
+      cell: (info) =>
+        (serverPagination
+          ? serverPagination.pageIndex * serverPagination.pageSize
+          : page * pageSize) +
+        info.row.index +
+        1,
     }),
     columnHelper.accessor('timestamp', {
       header: 'TIMESTAMP',
@@ -10138,6 +10165,9 @@ const AuditLogsTable = ({ auditLogs, startIndex = 0 }) => {
     onPageChange: (newPage) => setPage(newPage),
   };
 
+  if (serverPagination) {
+    return <DataTable data={auditLogs} columns={columns} pagination={serverPagination} />;
+  }
   return <DataTable data={paginatedLogs} columns={columns} pagination={pagination} />;
 };
 

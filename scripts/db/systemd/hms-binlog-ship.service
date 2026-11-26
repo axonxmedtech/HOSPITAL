@@ -1,0 +1,15 @@
+# Ships closed MySQL binlogs off-site, encrypted (point-in-time recovery).
+# Install: docs/database/POINT_IN_TIME_RECOVERY.md (copy to /etc/systemd/system/).
+[Unit]
+Description=HMS: ship MySQL binary logs off-site (PITR)
+After=mysql.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Root: the binlogs live in MySQL's datadir. The MySQL login comes from the app env file.
+User=root
+Environment=ENV_LABEL=production
+Environment=ENV_FILE=/var/www/hms/production/repo_prod/backend/.env
+ExecStart=/var/www/hms/production/repo_prod/scripts/db/binlog-ship.sh
+Nice=10

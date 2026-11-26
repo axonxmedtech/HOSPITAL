@@ -1258,6 +1258,31 @@ const hospitalService = {
     return response.data;
   },
 
+  /**
+   * One page of the audit trail, any period: { content, page, size, totalPages, totalElements }.
+   * `range` is { from, to } (YYYY-MM-DD, both optional, the "to" day included).
+   */
+  getAuditLogsPage: async (searchTerm, role, page, size, range = {}) => {
+    const params = { page, size };
+    if (searchTerm) params.search = searchTerm;
+    if (role && role !== 'ALL') params.role = role;
+    if (range.from) params.from = range.from;
+    if (range.to) params.to = range.to;
+    const response = await apiClient.get('/hospital/audit-logs', { params });
+    return response.data;
+  },
+
+  /** Paged pharmacy audit trail, same shape and filters as getAuditLogsPage. */
+  getPharmacyAuditLogsPage: async (searchTerm, role, page, size, range = {}) => {
+    const params = { page, size };
+    if (searchTerm) params.search = searchTerm;
+    if (role && role !== 'ALL') params.role = role;
+    if (range.from) params.from = range.from;
+    if (range.to) params.to = range.to;
+    const response = await apiClient.get('/hospital/audit-logs/pharmacy', { params });
+    return response.data;
+  },
+
   // Pharmacy-specific audit logs (SUPPLIER, MEDICINE_BATCH, PURCHASE_INVOICE, PHARMACY_SALE)
   getPharmacyAuditLogs: async (searchTerm, role) => {
     let url = '/hospital/audit-logs/pharmacy';

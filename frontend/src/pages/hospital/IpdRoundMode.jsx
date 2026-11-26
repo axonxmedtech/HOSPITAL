@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import DietCard from '../../components/ipd/DietCard';
 import DischargeSummaryModal from '../../components/ipd/DischargeSummaryModal';
@@ -15,6 +15,7 @@ import { useToast } from '../../context/ToastContext';
 import hospitalService from '../../services/hospitalService';
 import nurseService from '../../services/nurseService';
 import { extractApiError } from '../../utils/apiError';
+import { keyForAct, newIdempotencyKey } from '../../utils/idempotencyKey';
 
 const today = () => new Date().toLocaleDateString('en-CA');
 const isToday = (at) => !!at && new Date(at).toLocaleDateString('en-CA') === today();
@@ -81,6 +82,13 @@ export default function IpdRoundMode() {
   const [diagnosis, setDiagnosis] = useState('');
   const [notes, setNotes] = useState('');
   const [drafts, setDrafts] = useState([]);
+  // One nonce per medicine draft: a refused draft stays on screen as the same object, so its
+  // resend reuses the key and is prescribed once even if the first attempt's reply was lost.
+  const draftNonces = useRef(new WeakMap());
+  const nonceFor = (d) => {
+    if (!draftNonces.current.has(d)) draftNonces.current.set(d, newIdempotencyKey('rx'));
+    return draftNonces.current.get(d);
+  };
   const [presets, setPresets] = useState([]);
   const [saving, setSaving] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
@@ -116,7 +124,8 @@ export default function IpdRoundMode() {
       const readings = Array.isArray(v) ? v : [];
       setVitals(
         readings.reduce(
-          (latest, r) => (!latest || new Date(r.recordedAt) > new Date(latest.recordedAt) ? r : latest),
+          (latest, r) =>
+            !latest || new Date(r.recordedAt) > new Date(latest.recordedAt) ? r : latest,
           null
         )
       );
@@ -193,7 +202,11 @@ export default function IpdRoundMode() {
     const left = [];
     for (const d of drafts) {
       try {
-        await hospitalService.addIpdPrescription(id, draftToPayload(d));
+        const payload = draftToPayload(d);
+        await hospitalService.addIpdPrescription(id, {
+          ...payload,
+          idempotencyKey: keyForAct(nonceFor(d), payload),
+        });
       } catch (err) {
         left.push(d);
         toastError(`${d.medicineName}: ${extractApiError(err, 'not prescribed')}`);
@@ -206,7 +219,11 @@ export default function IpdRoundMode() {
     setRoundedToday(true);
     setRefreshKey((k) => k + 1);
     const ordered = drafts.length - left.length;
-    success(ordered ? `Round saved · ${ordered} medicine${ordered === 1 ? '' : 's'} ordered` : 'Round saved');
+    success(
+      ordered
+        ? `Round saved · ${ordered} medicine${ordered === 1 ? '' : 's'} ordered`
+        : 'Round saved'
+    );
     if (thenNext && next && left.length === 0) goTo(next);
     else loadPatient();
   };
@@ -285,7 +302,10 @@ export default function IpdRoundMode() {
       </header>
 
       {strip.length > 1 && (
-        <nav aria-label="Patients on this round" className="px-4 py-2 flex gap-2 overflow-x-auto bg-white border-b">
+        <nav
+          aria-label="Patients on this round"
+          className="px-4 py-2 flex gap-2 overflow-x-auto bg-white border-b"
+        >
           {strip.map((r) => (
             <button
               key={r.ipdId}
@@ -317,13 +337,18 @@ export default function IpdRoundMode() {
               <h1 className="text-lg font-bold text-gray-900">
                 {data.patient?.name}
                 <span className="ml-2 text-sm font-normal text-gray-500">
-                  {[data.patient?.age ? `${data.patient.age}y` : null, data.patient?.gender, data.ipdNumber]
+                  {[
+                    data.patient?.age ? `${data.patient.age}y` : null,
+                    data.patient?.gender,
+                    data.ipdNumber,
+                  ]
                     .filter(Boolean)
                     .join(' · ')}
                 </span>
               </h1>
               <p className="text-sm text-gray-600">
-                {data.admission?.ward} / {data.admission?.bed} · {data.admission?.primaryDiagnosis || 'No diagnosis'}
+                {data.admission?.ward} / {data.admission?.bed} ·{' '}
+                {data.admission?.primaryDiagnosis || 'No diagnosis'}
               </p>
             </div>
             <div className="flex flex-wrap gap-2 items-center ml-auto">
@@ -376,12 +401,21 @@ export default function IpdRoundMode() {
               ) : (
                 <ul className="divide-y">
                   {data.activePrescriptions.map((rx) => (
-                    <li key={rx.id} className="py-1.5 flex items-center justify-between gap-2 text-sm">
+                    <li
+                      key={rx.id}
+                      className="py-1.5 flex items-center justify-between gap-2 text-sm"
+                    >
                       <span>
                         <span className="font-medium">{rx.name}</span>
                         <span className="text-gray-500">
                           {' '}
-                          · {[rx.dosage, rx.frequency, rx.route, rx.durationDays ? `${rx.durationDays} d` : null]
+                          ·{' '}
+                          {[
+                            rx.dosage,
+                            rx.frequency,
+                            rx.route,
+                            rx.durationDays ? `${rx.durationDays} d` : null,
+                          ]
                             .filter(Boolean)
                             .join(' · ')}
                         </span>
@@ -403,7 +437,12 @@ export default function IpdRoundMode() {
 
             <section className="bg-white border border-slate-200 rounded-2xl p-4">
               <h2 className="font-semibold text-slate-900 mb-2">Tests</h2>
-              <InvestigationsPanel key={`inv-${id}-${refreshKey}`} admissionId={Number(id)} canOrder={active} canWork={active} />
+              <InvestigationsPanel
+                key={`inv-${id}-${refreshKey}`}
+                admissionId={Number(id)}
+                canOrder={active}
+                canWork={active}
+              />
             </section>
 
             <section className="bg-white border border-slate-200 rounded-2xl p-4">
@@ -427,7 +466,10 @@ export default function IpdRoundMode() {
                 />
               </div>
               <div>
-                <label htmlFor="round-notes" className="block text-xs font-medium text-gray-600 mb-1">
+                <label
+                  htmlFor="round-notes"
+                  className="block text-xs font-medium text-gray-600 mb-1"
+                >
                   Round note
                 </label>
                 <textarea
@@ -477,7 +519,9 @@ export default function IpdRoundMode() {
                       key={d.key}
                       index={i}
                       draft={d}
-                      onChange={(nd) => setDrafts((ds) => ds.map((x) => (x.key === d.key ? nd : x)))}
+                      onChange={(nd) =>
+                        setDrafts((ds) => ds.map((x) => (x.key === d.key ? nd : x)))
+                      }
                       onRemove={() => setDrafts((ds) => ds.filter((x) => x.key !== d.key))}
                     />
                   ))}
@@ -504,7 +548,9 @@ export default function IpdRoundMode() {
                   </button>
                 </div>
               ) : (
-                <p className="text-sm text-gray-500">This admission is closed; nothing can be added.</p>
+                <p className="text-sm text-gray-500">
+                  This admission is closed; nothing can be added.
+                </p>
               )}
             </section>
 

@@ -104,6 +104,25 @@ const platformService = {
   },
 
   /**
+   * One page of platform activity, any period: { content, page, size, totalPages, totalElements }.
+   * `filters`: { action, from, to } (dates YYYY-MM-DD, the "to" day included), all optional.
+   */
+  getAuditLogsPage: async (page, size, filters = {}, config = {}) => {
+    const params = { page, size };
+    if (filters.action) params.action = filters.action;
+    if (filters.from) params.from = filters.from;
+    if (filters.to) params.to = filters.to;
+    const response = await apiClient.get('/platform/audit-logs', { ...config, params });
+    return response.data;
+  },
+
+  /** The distinct platform audit actions, for the action filter. */
+  getAuditActions: async () => {
+    const response = await apiClient.get('/platform/audit-logs/actions');
+    return response.data;
+  },
+
+  /**
    * Get hospital statistics for Super Admin Overview dashboard
    * Returns total, active, and inactive hospital counts
    */
