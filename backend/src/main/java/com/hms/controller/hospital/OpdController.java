@@ -314,7 +314,7 @@ public class OpdController {
             @RequestParam(required = false) com.hms.entity.Opd.Status status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, com.hms.util.Pages.cap(size));
         var result = opdService.getOpds(search, date, status, pageable);
         return ResponseEntity.ok(withBillSummaries(result));
     }
@@ -376,7 +376,7 @@ public class OpdController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         org.springframework.data.domain.Pageable pageable =
-                org.springframework.data.domain.PageRequest.of(page, size);
+                org.springframework.data.domain.PageRequest.of(page, com.hms.util.Pages.cap(size));
         return ResponseEntity.ok(opdService.getPendingIpdRequests(pageable));
     }
 

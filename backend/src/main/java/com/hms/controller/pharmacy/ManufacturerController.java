@@ -31,7 +31,7 @@ public class ManufacturerController {
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(page, com.hms.util.Pages.cap(size));
         return ResponseEntity.ok(service.getAll(search, pageable));
     }
 

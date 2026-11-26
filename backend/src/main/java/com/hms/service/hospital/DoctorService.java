@@ -337,6 +337,9 @@ public class DoctorService {
     @Autowired
     private com.hms.repository.IpdAdmissionRepository ipdAdmissionRepositoryForDelete;
 
+    // Two writes (the doctor, then their login): one transaction, so a failure cannot leave a
+    // "deleted" doctor whose login still works.
+    @Transactional
     public void deleteDoctor(String publicId, String reason) {
         // Check if doctor exists and belongs to this hospital
         Doctor doctor = getDoctorByPublicId(publicId);

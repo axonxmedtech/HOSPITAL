@@ -5,9 +5,9 @@ import inventoryApi from '../../../services/pharmacy/inventoryApi';
 import salesApi from '../../../services/pharmacy/salesApi';
 import suppliersApi from '../../../services/pharmacy/suppliersApi';
 import { extractApiError } from '../../../utils/apiError';
+import { formatWhen } from '../../../utils/date';
 import { paidPerUnit, roundMoney } from '../../../utils/pharmacyMoney';
 
-import { formatWhen } from '../../../utils/date';
 const ReturnsView = () => {
   const { success, error: toastError } = useToast();
 
@@ -70,7 +70,7 @@ const ReturnsView = () => {
   useEffect(() => {
     const fetchSuppliers = async () => {
       try {
-        const res = await suppliersApi.getAll('', 0, 100);
+        const res = await suppliersApi.getAll('', 0, 1000);
         if (res && res.content) {
           setSuppliers(res.content);
         } else {

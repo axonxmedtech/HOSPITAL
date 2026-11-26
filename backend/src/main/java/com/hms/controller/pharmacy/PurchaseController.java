@@ -31,7 +31,7 @@ public class PurchaseController {
     public ResponseEntity<Page<PurchaseInvoice>> list(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        return ResponseEntity.ok(purchaseService.listInvoices(PageRequest.of(page, size)));
+        return ResponseEntity.ok(purchaseService.listInvoices(PageRequest.of(page, com.hms.util.Pages.cap(size))));
     }
 
     @GetMapping("/{id}")

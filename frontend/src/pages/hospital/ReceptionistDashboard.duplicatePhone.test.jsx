@@ -92,7 +92,8 @@ const renderDashboard = async () => {
       <ReceptionistDashboard />
     </MemoryRouter>
   );
-  await waitFor(() => expect(hospitalService.getPatients).toHaveBeenCalled());
+  // The desk's load always fetches doctors (patients are searched on demand, not preloaded).
+  await waitFor(() => expect(hospitalService.getDoctors).toHaveBeenCalled());
 };
 
 const openOpdModal = async (user) => {

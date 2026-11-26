@@ -23,6 +23,9 @@ import java.util.List;
 
 @Service
 public class PatientService {
+
+    /** Most results a patient name/phone search returns (newest first). */
+    static final int SEARCH_LIMIT = 100;
     private static final String HOSPITAL_NOT_FOUND = "Hospital not found";
 
     /**
@@ -550,7 +553,10 @@ public class PatientService {
             return getAllPatients();
         }
 
-        List<Patient> patients = patientRepository.searchActiveByNameOrPhone(hospitalId, query.trim());
+        // Newest matches first, at most SEARCH_LIMIT: a one-letter search must not load every
+        // patient in the hospital (and their latest bills) in one call.
+        List<Patient> patients = patientRepository.searchActiveByNameOrPhone(hospitalId, query.trim(),
+                org.springframework.data.domain.PageRequest.of(0, SEARCH_LIMIT));
 
         // Populate latest bill
         populateLatestBills(patients);
@@ -887,9 +893,10 @@ public class PatientService {
         }
         response.put("opdHistory", opdHistoryList);
 
-        // Fetch beds & wards to construct O(1) maps for resolving names
-        java.util.List<com.hms.entity.Bed> allBeds = bedRepository.findAll();
-        java.util.List<com.hms.entity.Ward> allWards = wardRepository.findAll();
+        // This hospital's beds & wards, to resolve names in the bed history. (It used to be
+        // findAll(): every bed and ward of every hospital on the platform, on each open.)
+        java.util.List<com.hms.entity.Bed> allBeds = bedRepository.findByHospitalId(hospitalId);
+        java.util.List<com.hms.entity.Ward> allWards = wardRepository.findByHospitalId(hospitalId);
         java.util.Map<Long, String> bedCodeMap = new java.util.HashMap<>();
         for (com.hms.entity.Bed b : allBeds) {
             bedCodeMap.put(b.getBedId(), b.getBedCode());

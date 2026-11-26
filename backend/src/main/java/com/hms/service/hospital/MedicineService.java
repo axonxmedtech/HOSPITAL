@@ -170,7 +170,8 @@ public class MedicineService {
         if (hospitalId == null) {
             throw new UnauthorizedException("Hospital ID not found in context");
         }
-        return medicinePurchaseRepository.findByHospitalIdOrderByPurchaseDateDesc(hospitalId);
+        return medicinePurchaseRepository.findByHospitalIdOrderByPurchaseDateDesc(hospitalId,
+                org.springframework.data.domain.PageRequest.of(0, com.hms.util.Pages.MAX_SIZE)); // newest page, not the whole history
     }
 
     @Transactional
@@ -193,6 +194,9 @@ public class MedicineService {
             throw new IllegalArgumentException("Expiry date cannot be in the past");
         }
  
+        // The body is the entity itself: a create never updates. A client-sent id would make
+        // save() merge into an existing purchase -- another hospital's included.
+        purchase.setId(null);
         purchase.setHospitalId(hospitalId);
         com.hms.entity.MedicinePurchase savedPurchase = medicinePurchaseRepository.save(purchase);
 
@@ -329,6 +333,9 @@ public class MedicineService {
             medicineListRepository.save(newCatalog);
         }
 
+        // A create never updates: a client-sent id would overwrite an existing stock row (another
+        // hospital's included) and move it here.
+        medicine.setId(null);
         medicine.setHospitalId(hospitalId);
         Medicine saved = medicineRepository.save(medicine);
 

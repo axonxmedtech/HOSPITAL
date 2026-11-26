@@ -22,6 +22,15 @@ import java.util.Optional;
 public interface DoctorRepository extends JpaRepository<Doctor, Long> {
 
     /**
+     * Locks the doctor's row for the rest of the transaction. Every path that books a slot takes
+     * this first, so two bookings for the same doctor run one after the other and the second
+     * sees the first's appointment (see AppointmentRepository.lockActiveForDoctorOnDate).
+     */
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT d FROM Doctor d WHERE d.id = :id")
+    Optional<Doctor> lockById(@Param("id") Long id);
+
+    /**
      * Find all doctors belonging to a specific hospital
      * Used to list doctors for a hospital (multi-tenant filtering)
      * 

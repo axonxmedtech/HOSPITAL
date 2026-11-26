@@ -42,5 +42,14 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
         @org.springframework.data.repository.query.Param("hid") Long hospitalId,
         @org.springframework.data.repository.query.Param("branchId") Long branchId,
         @org.springframework.data.repository.query.Param("role") String role,
-        @org.springframework.data.repository.query.Param("search") String search);
+        @org.springframework.data.repository.query.Param("search") String search,
+        org.springframework.data.domain.Pageable limit);
+
+    // Limited reads for the audit screens: newest first, at most the page asked for. The
+    // unlimited versions above loaded a tenant's entire audit history on every open.
+    List<AuditLog> findByHospitalIdOrderByTimestampDesc(Long hospitalId, org.springframework.data.domain.Pageable limit);
+    List<AuditLog> findByHospitalIdAndActionContainingIgnoreCaseOrderByTimestampDesc(Long hospitalId, String action, org.springframework.data.domain.Pageable limit);
+    List<AuditLog> findByHospitalIdAndPerformedByRoleOrderByTimestampDesc(Long hospitalId, String performedByRole, org.springframework.data.domain.Pageable limit);
+    List<AuditLog> findByHospitalIdAndPerformedByRoleAndActionContainingIgnoreCaseOrderByTimestampDesc(Long hospitalId, String performedByRole, String action, org.springframework.data.domain.Pageable limit);
+    List<AuditLog> findByHospitalIdIsNullOrderByTimestampDesc(org.springframework.data.domain.Pageable limit);
 }

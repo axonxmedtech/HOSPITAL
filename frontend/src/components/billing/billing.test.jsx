@@ -82,6 +82,8 @@ describe('CollectPaymentModal', () => {
         amount: 200,
         mode: 'CARD',
         reference: null,
+        // One key per act of collecting, so a retried request is taken once.
+        idempotencyKey: expect.stringMatching(/^pay-[A-Za-z0-9-]+$/),
       })
     );
     expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ collected: 200, mode: 'CARD' }));

@@ -85,7 +85,7 @@ public class PatientController {
         if (search != null && !search.trim().isEmpty()) {
             return ResponseEntity.ok(patientService.searchPatients(search));
         }
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(page, com.hms.util.Pages.cap(size));
         return ResponseEntity.ok(patientService.getAllPatients(null, view, date, pageable));
     }
 

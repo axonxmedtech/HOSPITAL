@@ -232,9 +232,8 @@ public class AppointmentService {
 
         // Strict 30-minute slot enforcement logic
         // Fetches all active appointments for this doctor on this date
-        List<Appointment> existingAppointments = appointmentRepository
-                .findByDoctorIdAndAppointmentDateAndIsActiveTrue(appointment.getDoctorId(),
-                        appointment.getAppointmentDate());
+        List<Appointment> existingAppointments = lockedDaySchedule(appointment.getDoctorId(),
+                appointment.getAppointmentDate());
 
         for (Appointment existing : existingAppointments) {
             // Check for exact time match (assuming strict 30 min slots) for non-cancelled appointments
@@ -304,6 +303,19 @@ public class AppointmentService {
      * another patient's slot is refused rather than double-booking the doctor. The appointment's
      * own slot is excluded from that check so re-saving it unchanged is not a clash with itself.
      */
+    /**
+     * The doctor's active appointments on a day, for a slot check that is safe under concurrency:
+     * lock the doctor's row (bookings for this doctor now run one at a time), then read the day
+     * with a locking read so a booking another desk just committed is seen. Without this, two
+     * desks could both find a slot free and both book it. Must run inside a transaction.
+     */
+    private List<Appointment> lockedDaySchedule(Long doctorId, java.time.LocalDate date) {
+        if (doctorId != null) {
+            doctorRepository.lockById(doctorId);
+        }
+        return appointmentRepository.lockActiveForDoctorOnDate(doctorId, date);
+    }
+
     private void reschedule(Appointment appointment, java.time.LocalDate newDate,
             java.time.LocalTime newTime, Long hospitalId) {
         if (newDate == null && newTime == null) {
@@ -315,8 +327,7 @@ public class AppointmentService {
             return;
         }
 
-        for (Appointment existing : appointmentRepository
-                .findByDoctorIdAndAppointmentDateAndIsActiveTrue(appointment.getDoctorId(), date)) {
+        for (Appointment existing : lockedDaySchedule(appointment.getDoctorId(), date)) {
             if (existing.getId().equals(appointment.getId())) continue;
             if (STATUS_CANCELLED.equals(existing.getStatus())) continue;
             if (time.equals(existing.getAppointmentTime())) {
@@ -470,6 +481,16 @@ public class AppointmentService {
      */
     @Transactional(readOnly = true)
     public List<Appointment> getAppointmentsByDoctor(Long doctorId, String view) {
+        return getAppointmentsByDoctor(doctorId, view, null);
+    }
+
+    /**
+     * As above; {@code view=date} with a {@code date} returns just that day's active appointments,
+     * which is what the booking form needs to grey out taken slots. Without it the form loaded the
+     * doctor's entire appointment history on every doctor/date change.
+     */
+    @Transactional(readOnly = true)
+    public List<Appointment> getAppointmentsByDoctor(Long doctorId, String view, java.time.LocalDate date) {
         Long hospitalId = securityHelper.getCurrentHospitalId();
 
         if (hospitalId == null) {
@@ -483,7 +504,9 @@ public class AppointmentService {
         List<Appointment> appointments;
         java.time.LocalDate today = java.time.LocalDate.now();
 
-        if (view == null || view.isEmpty()) {
+        if ("date".equalsIgnoreCase(view) && date != null) {
+            appointments = appointmentRepository.findByDoctorIdAndAppointmentDateAndIsActiveTrue(doctorId, date);
+        } else if (view == null || view.isEmpty()) {
             // Default: All active appointments sorted by date desc
             appointments = appointmentRepository
                     .findByDoctorIdAndHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(doctorId, hospitalId);
@@ -739,6 +762,7 @@ public class AppointmentService {
      * @param notes  New Notes
      * @return Updated Appointment
      */
+    @Transactional // a reschedule takes the doctor's schedule lock, which needs a transaction
     public Appointment updateDetails(String publicId, String status, String notes,
             java.time.LocalDate newDate, java.time.LocalTime newTime) {
         Long hospitalId = securityHelper.getCurrentHospitalId();

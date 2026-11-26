@@ -8,7 +8,14 @@ import { extractApiError } from '../utils/apiError';
 /**
  * `initialBed` ({ wardId, bedId }) pre-selects a free bed: "Admit here" on the reception Beds board.
  */
-const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis, initialBed = null }) => {
+const IpdAdmitModal = ({
+  isOpen,
+  onClose,
+  opd,
+  onSuccess,
+  initialDiagnosis,
+  initialBed = null,
+}) => {
   const formId = useId();
   const [wards, setWards] = useState([]);
   const [selectedWard, setSelectedWard] = useState(null);
@@ -84,7 +91,7 @@ const IpdAdmitModal = ({ isOpen, onClose, opd, onSuccess, initialDiagnosis, init
           setActivePatientIds(activePatientIds);
           setPatients(patList.filter((p) => !activePatientIds.has(Number(p.id))));
 
-          const docRes = await hospitalService.getDoctors('', 0, 200);
+          const docRes = await hospitalService.getDoctors('', 0, 1000);
           const docList = (docRes?.content || docRes || []).filter((d) => d.isActive !== false);
           setDoctors(docList);
           if (docList.length === 1) setSelectedDoctorId(Number(docList[0].id));

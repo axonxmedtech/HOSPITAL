@@ -280,6 +280,7 @@ public class DatabaseMigrationRunner {
         widenVitalsDecimalColumns();
         backfillStrandedOpdStatuses();
         backfillBillingForIpd(); // V46 — IPD includes BILLING
+        ensureLaunchReadinessColumns(); // V48 — payment idempotency key, audit client IP
         reconcileOtPermissionOrphanDefaults(); // OT-P0A — v2 defaults for already-configured hospitals
         ensureRecoveryBaysTable(); // OT-P0B — recovery admission needs a tenant-owned location
         addColumnIfMissing("ot_recovery_episodes", "recovery_bay_id", BIGINT_NULL);
@@ -2389,6 +2390,14 @@ public class DatabaseMigrationRunner {
                 "initial_assessments","vulnerability_assessments"}) {
             addColumnIfMissing(t, "performed_by_nurse_id", BIGINT_NULL);
         }
+    }
+
+    /** V48: payment idempotency key (unique per bill) and the audit trail's client IP / role. */
+    private void ensureLaunchReadinessColumns() {
+        addColumnIfMissing(BILLING_PAYMENTS_TABLE, "idempotency_key", "VARCHAR(64) NULL");
+        addUniqueIndexIfMissing(BILLING_PAYMENTS_TABLE, "uk_billing_payments_idempotency", "billing_id, idempotency_key");
+        addColumnIfMissing("audit_logs", "client_ip", "VARCHAR(45) NULL");
+        addColumnIfMissing("audit_logs", "performed_by_role", VARCHAR_255_NULL);
     }
 
     /** Adds a column only if it does not already exist. Idempotent. */

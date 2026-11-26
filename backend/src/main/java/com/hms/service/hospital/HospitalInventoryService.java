@@ -57,7 +57,8 @@ public class HospitalInventoryService {
         if (hospitalId == null) {
             throw new UnauthorizedException("Hospital ID not found in context");
         }
-        return hospitalInventoryPurchaseRepository.findByHospitalIdOrderByPurchaseDateDesc(hospitalId);
+        return hospitalInventoryPurchaseRepository.findByHospitalIdOrderByPurchaseDateDesc(hospitalId,
+                org.springframework.data.domain.PageRequest.of(0, com.hms.util.Pages.MAX_SIZE)); // newest page, not the whole history
     }
 
     @Transactional

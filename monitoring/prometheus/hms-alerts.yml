@@ -9,8 +9,8 @@ groups:
         for: 1m
         labels: { severity: critical }
         annotations:
-          summary: "HMS backend is DOWN ({{ $labels.environment }})"
-          description: "Prometheus cannot scrape {{ $labels.instance }} for >1m. Patient-facing outage likely."
+          summary: 'HMS backend is DOWN ({{ $labels.environment }})'
+          description: 'Prometheus cannot scrape {{ $labels.instance }} for >1m. Patient-facing outage likely.'
 
       - alert: HMSHighErrorRate
         # >5% of requests are 5xx over 5m.
@@ -20,8 +20,8 @@ groups:
         for: 5m
         labels: { severity: critical }
         annotations:
-          summary: "HMS 5xx error rate >5% ({{ $labels.environment }})"
-          description: "Server errors elevated for 5m — investigate logs and recent deploys."
+          summary: 'HMS 5xx error rate >5% ({{ $labels.environment }})'
+          description: 'Server errors elevated for 5m — investigate logs and recent deploys.'
 
   - name: hms-latency
     rules:
@@ -33,8 +33,8 @@ groups:
         for: 10m
         labels: { severity: warning }
         annotations:
-          summary: "HMS p95 latency >1s ({{ $labels.environment }})"
-          description: "95th-percentile request latency degraded for 10m."
+          summary: 'HMS p95 latency >1s ({{ $labels.environment }})'
+          description: '95th-percentile request latency degraded for 10m.'
 
   - name: hms-resources
     rules:
@@ -45,8 +45,8 @@ groups:
         for: 10m
         labels: { severity: warning }
         annotations:
-          summary: "HMS JVM heap >90% ({{ $labels.environment }})"
-          description: "Heap sustained above 90% — risk of GC thrash / OOM."
+          summary: 'HMS JVM heap >90% ({{ $labels.environment }})'
+          description: 'Heap sustained above 90% — risk of GC thrash / OOM.'
 
       - alert: HMSDBPoolNearExhaustion
         expr: |
@@ -55,14 +55,32 @@ groups:
         for: 5m
         labels: { severity: warning }
         annotations:
-          summary: "HMS DB connection pool >90% used ({{ $labels.environment }})"
-          description: "HikariCP near exhaustion — slow queries or a connection leak."
+          summary: 'HMS DB connection pool >90% used ({{ $labels.environment }})'
+          description: 'HikariCP near exhaustion — slow queries or a connection leak.'
 
+      - alert: HMSDiskSpaceLow
+        # Micrometer DiskSpaceMetrics (registered by Spring Boot) measures the disk the app runs
+        # on, which also holds the logs and, on the VPS, the nightly backups (/var/backups/hms).
+        expr: |
+          1 - (disk_free_bytes{job="hms-backend"} / disk_total_bytes{job="hms-backend"}) > 0.8
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: 'HMS disk >80% full ({{ $labels.environment }})'
+          description: 'Free space on {{ $labels.path }} is running out — prune old backups/logs before writes start failing.'
+      - alert: HMSDiskSpaceCritical
+        expr: |
+          1 - (disk_free_bytes{job="hms-backend"} / disk_total_bytes{job="hms-backend"}) > 0.9
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: 'HMS disk >90% full ({{ $labels.environment }})'
+          description: 'MySQL, uploads and the nightly backup will fail when the disk fills. Act now.'
       - alert: HMSDBDown
         # Micrometer publishes the DB health indicator as a gauge (1=UP, 0=DOWN) when enabled.
         expr: hikaricp_connections{job="hms-backend"} == 0
         for: 2m
         labels: { severity: critical }
         annotations:
-          summary: "HMS database connectivity lost ({{ $labels.environment }})"
-          description: "No database connections available for >2m."
+          summary: 'HMS database connectivity lost ({{ $labels.environment }})'
+          description: 'No database connections available for >2m.'

@@ -103,6 +103,9 @@ class SurgeryServiceTest {
         when(doctorRepository.findByEmailAndHospitalId("doc@x.com", 7L)).thenReturn(Optional.of(d));
         when(surgeryRepository.findByPatientIdAndStatusIn(eq(500L), any())).thenReturn(List.of());
         org.mockito.Mockito.lenient().when(surgeryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        org.mockito.Mockito.lenient().when(patientRepository.findByIdAndHospitalIdForUpdate(eq(500L), eq(7L)))
+                .thenReturn(Optional.of(new com.hms.entity.Patient()));
+
 
         Surgery saved = service.createRequest(createReq());
 
@@ -116,6 +119,8 @@ class SurgeryServiceTest {
     void createRequest_rejectsSecondActiveSurgery() {
         when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
         when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(admission()));
+        org.mockito.Mockito.lenient().when(patientRepository.findByIdAndHospitalIdForUpdate(eq(500L), eq(7L)))
+                .thenReturn(Optional.of(new com.hms.entity.Patient()));
         Surgery existing = new Surgery(); existing.setStatus(Surgery.REQUESTED);
         when(surgeryRepository.findByPatientIdAndStatusIn(eq(500L), any())).thenReturn(List.of(existing));
 

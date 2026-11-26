@@ -18,6 +18,9 @@ public interface SurgeryRepository extends JpaRepository<Surgery, Long> {
 
     Optional<Surgery> findByPublicIdAndHospitalId(String publicId, Long hospitalId);
 
+    /** Tenant-scoped lookup by numeric id (a stray id from another hospital finds nothing). */
+    Optional<Surgery> findByIdAndHospitalId(Long id, Long hospitalId);
+
     /** Serializes lifecycle commands while keeping foreign IDs indistinguishable from missing ones. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT s FROM Surgery s WHERE s.publicId = :publicId AND s.hospitalId = :hospitalId")

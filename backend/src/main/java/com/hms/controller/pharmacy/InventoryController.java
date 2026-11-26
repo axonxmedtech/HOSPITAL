@@ -30,7 +30,7 @@ public class InventoryController {
             @RequestParam(required = false) Long categoryId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(page, com.hms.util.Pages.cap(size));
         return ResponseEntity.ok(service.getInventory(q, categoryId, pageable));
     }
 
@@ -45,7 +45,7 @@ public class InventoryController {
     public ResponseEntity<?> getLowStock(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        return ResponseEntity.ok(service.getLowStockInventory(PageRequest.of(page, size)));
+        return ResponseEntity.ok(service.getLowStockInventory(PageRequest.of(page, com.hms.util.Pages.cap(size))));
     }
 
     @GetMapping("/expiring")
@@ -54,7 +54,7 @@ public class InventoryController {
             @RequestParam(defaultValue = "30") int days,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        return ResponseEntity.ok(service.getExpiringInventory(days, PageRequest.of(page, size)));
+        return ResponseEntity.ok(service.getExpiringInventory(days, PageRequest.of(page, com.hms.util.Pages.cap(size))));
     }
 
     @PostMapping("/adjust")
@@ -72,7 +72,7 @@ public class InventoryController {
             @PathVariable Long batchId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        return ResponseEntity.ok(transactionService.getTransactionHistory(batchId, PageRequest.of(page, size)));
+        return ResponseEntity.ok(transactionService.getTransactionHistory(batchId, PageRequest.of(page, com.hms.util.Pages.cap(size))));
     }
 
     @PostMapping("/batches/{id}/block")
@@ -109,6 +109,6 @@ public class InventoryController {
     public ResponseEntity<?> getReturnsHistory(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        return ResponseEntity.ok(transactionService.getReturnsHistory(org.springframework.data.domain.PageRequest.of(page, size)));
+        return ResponseEntity.ok(transactionService.getReturnsHistory(org.springframework.data.domain.PageRequest.of(page, com.hms.util.Pages.cap(size))));
     }
 }

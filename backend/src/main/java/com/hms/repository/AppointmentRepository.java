@@ -157,6 +157,18 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
       java.time.LocalDate appointmentDate);
 
   /**
+   * The slot check for a booking: the doctor's active appointments that day, read with
+   * {@code FOR UPDATE}. A locking read sees the latest committed rows, where a plain read inside
+   * a REPEATABLE READ transaction may return an older snapshot and miss a booking another desk
+   * just committed. Call after {@code DoctorRepository.lockById}, which serialises bookings for
+   * the doctor; together they stop two desks booking the same slot at the same moment.
+   */
+  @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+  @Query("SELECT a FROM Appointment a WHERE a.doctorId = :doctorId AND a.appointmentDate = :date AND a.isActive = true")
+  List<Appointment> lockActiveForDoctorOnDate(@Param("doctorId") Long doctorId,
+      @Param("date") java.time.LocalDate date);
+
+  /**
    * Find active appointments for a specific patient
    * Used for Patient History
    */

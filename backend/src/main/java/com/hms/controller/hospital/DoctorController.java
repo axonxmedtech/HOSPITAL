@@ -72,7 +72,7 @@ public class DoctorController {
         if (search != null && !search.trim().isEmpty()) {
             return ResponseEntity.ok(doctorService.searchDoctors(search));
         }
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(page, com.hms.util.Pages.cap(size));
         return ResponseEntity.ok(doctorService.getAllDoctors(pageable));
     }
 

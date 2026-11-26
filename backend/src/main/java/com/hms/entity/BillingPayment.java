@@ -46,6 +46,15 @@ public class BillingPayment {
     @Column(length = 255)
     private String note;
 
+    /**
+     * Client-generated key for one act of taking this payment (Idempotency-Key). A retry of the
+     * same act -- a double-click, or a resend after a dropped response -- carries the same key and
+     * is answered from the payment already recorded instead of taking the money twice. Unique per
+     * bill; NULL for payments recorded without one.
+     */
+    @Column(name = "idempotency_key", length = 64)
+    private String idempotencyKey;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;

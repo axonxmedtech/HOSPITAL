@@ -1,9 +1,8 @@
 # Example Prometheus scrape config for HMS. Merge into your prometheus.yml.
-# /actuator/prometheus is AUTHENTICATED (not public). Pick ONE secure access model:
-#   (A) Prometheus runs on the same VPS and scrapes localhost, with Nginx restricting
-#       /actuator/prometheus to 127.0.0.1 (recommended — no app change).
-#   (B) Bind Actuator to a separate management port not exposed by Nginx
-#       (set MANAGEMENT_SERVER_PORT on the service; then target that port here).
+# /actuator/prometheus is NOT public: it needs a Super Admin login or the scrape token.
+# Set METRICS_SCRAPE_TOKEN (32+ random chars, e.g. `openssl rand -hex 32`) in the backend's env,
+# put the same value in /etc/prometheus/hms_scrape_token (chmod 600), and Prometheus sends it as
+# a bearer token. The token reads metrics only -- no patient or tenant data.
 # See docs/monitoring/OBSERVABILITY.md §Securing the scrape.
 
 global:
@@ -18,14 +17,13 @@ scrape_configs:
     metrics_path: /actuator/prometheus
     scheme: http
     static_configs:
-      # Model (A): same-host scrape of the app port (Nginx allow-lists this path to localhost).
+      # Same-host scrape of the app port.
       - targets: ['127.0.0.1:8080']
         labels:
           environment: production
-    # If /actuator/prometheus is protected by HTTP basic auth at the Nginx layer, add:
-    # basic_auth:
-    #   username: prometheus
-    #   password_file: /etc/prometheus/hms_scrape_password
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/hms_scrape_token
 
 # alerting:               # wire Alertmanager for notifications
 #   alertmanagers:

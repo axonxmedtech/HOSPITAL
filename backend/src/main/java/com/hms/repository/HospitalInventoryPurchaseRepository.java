@@ -8,4 +8,6 @@ import java.util.List;
 @Repository
 public interface HospitalInventoryPurchaseRepository extends JpaRepository<HospitalInventoryPurchase, Long> {
     List<HospitalInventoryPurchase> findByHospitalIdOrderByPurchaseDateDesc(Long hospitalId);
+    /** Newest purchases first, at most one page (the screens' list). */
+    java.util.List<HospitalInventoryPurchase> findByHospitalIdOrderByPurchaseDateDesc(Long hospitalId, org.springframework.data.domain.Pageable limit);
 }

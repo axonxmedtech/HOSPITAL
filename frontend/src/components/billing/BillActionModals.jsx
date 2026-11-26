@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useToast } from '../../context/ToastContext';
 import hospitalService from '../../services/hospitalService';
 import { extractApiError } from '../../utils/apiError';
+import { newIdempotencyKey } from '../../utils/idempotencyKey';
 
 /**
  * Billing actions shared by every billing screen (reception, admin, doctor, OPD row, IPD):
@@ -112,6 +113,8 @@ export const CollectPaymentModal = ({ bill, onClose, onDone }) => {
   const [mode, setMode] = useState('CASH');
   const [reference, setReference] = useState('');
   const [saving, setSaving] = useState(false);
+  // One key for this act of collecting: a retry after a lost response is applied once.
+  const payKey = useRef(newIdempotencyKey('pay'));
 
   const amt = Number(amount);
   const isPart = amt > 0 && amt < balance;
@@ -130,6 +133,7 @@ export const CollectPaymentModal = ({ bill, onClose, onDone }) => {
         amount: amt,
         mode,
         reference: reference.trim() || null,
+        idempotencyKey: payKey.current,
       });
       onDone?.({ ...result, collected: amt, mode });
     } catch (e) {

@@ -52,6 +52,10 @@ public class AuditLog {
     @Column(name = "performed_by_role")
     private String performedByRole;
 
+    /** Address of the client that made the change (first X-Forwarded-For hop); null for jobs. */
+    @Column(name = "client_ip", length = 45)
+    private String clientIp;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime timestamp;

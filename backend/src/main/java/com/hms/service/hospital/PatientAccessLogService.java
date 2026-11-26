@@ -7,15 +7,12 @@ import com.hms.entity.User;
 import com.hms.repository.PatientAccessLogRepository;
 import com.hms.repository.UserRepository;
 import com.hms.security.SecurityContextHelper;
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -69,7 +66,7 @@ public class PatientAccessLogService {
         row.setUserEmail(email == null ? "unknown" : email);
         row.setUserId(currentUserIdOrNull());
         row.setUserRole(currentRoleOrNull());
-        row.setClientIp(clientIp());
+        row.setClientIp(com.hms.util.ClientIp.current());
         repository.save(row);
     }
 
@@ -163,15 +160,6 @@ public class PatientAccessLogService {
         }
     }
 
-    private static String clientIp() {
-        if (!(RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs)) {
-            return null;
-        }
-        HttpServletRequest request = attrs.getRequest();
-        String forwarded = request.getHeader("X-Forwarded-For");
-        String ip = forwarded != null && !forwarded.isBlank() ? forwarded.split(",")[0].trim() : request.getRemoteAddr();
-        return truncate(ip, 45);
-    }
 
     private static String displayName(User u) {
         String name = u.getName();

@@ -67,9 +67,11 @@ class AppointmentServiceNewPatientTest {
         doctor.setId(1L);
         doctor.setName("Dr. Test");
         when(doctorRepository.findByIdAndHospitalIdAndIsActiveTrue(1L, 1L)).thenReturn(Optional.of(doctor));
-        when(appointmentRepository.findByDoctorIdAndAppointmentDateAndIsActiveTrue(any(), any()))
+        // Lenient: a refused booking never reaches save, and a test may replace the day's schedule.
+        org.mockito.Mockito.lenient().when(appointmentRepository.lockActiveForDoctorOnDate(any(), any()))
                 .thenReturn(Collections.emptyList());
-        when(appointmentRepository.save(any(Appointment.class))).thenAnswer(inv -> inv.getArgument(0));
+        org.mockito.Mockito.lenient().when(appointmentRepository.save(any(Appointment.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
     }
 
     @Test
@@ -106,4 +108,62 @@ class AppointmentServiceNewPatientTest {
         assertThat(patientCaptor.getValue().getDateOfBirth()).isEqualTo(LocalDate.now());
     }
 
+    /**
+     * Two desks booking the same slot at the same moment: the doctor's row is locked before the
+     * day is read, and the day is read with a locking read, so the second booking waits for the
+     * first and then sees it. The order matters -- reading first would let both pass.
+     */
+    @Test
+    void createAppointment_locksTheDoctorBeforeReadingTheDay() {
+        mockCommonCollaborators("9876543212");
+        when(patientRegistrar.persistNewPatient(any(Patient.class))).thenAnswer(inv -> inv.getArgument(0));
+        Appointment appointment = newWalkInAppointment("9876543212", null);
+
+        service.createAppointment(appointment);
+
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(doctorRepository, appointmentRepository);
+        order.verify(doctorRepository).lockById(1L);
+        order.verify(appointmentRepository).lockActiveForDoctorOnDate(1L, appointment.getAppointmentDate());
+        order.verify(appointmentRepository).save(any(Appointment.class));
+    }
+
+    @Test
+    void createAppointment_refusesASlotAnotherDeskAlreadyTook() {
+        mockCommonCollaborators("9876543213");
+        lenientStubPatient();
+        Appointment taken = new Appointment();
+        taken.setId(77L);
+        taken.setStatus("SCHEDULED");
+        taken.setAppointmentTime(LocalTime.of(10, 0));
+        when(appointmentRepository.lockActiveForDoctorOnDate(any(), any())).thenReturn(java.util.List.of(taken));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> service.createAppointment(newWalkInAppointment("9876543213", null)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("already booked");
+        verify(appointmentRepository, org.mockito.Mockito.never()).save(any(Appointment.class));
+    }
+
+    /** The booking form asks for one day; the doctor's whole history must not be loaded. */
+    @Test
+    void doctorDayView_readsOnlyThatDay() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(1L);
+        Doctor doctor = new Doctor();
+        doctor.setId(1L);
+        when(doctorRepository.findByIdAndHospitalIdAndIsActiveTrue(1L, 1L)).thenReturn(Optional.of(doctor));
+        LocalDate day = LocalDate.now().plusDays(2);
+        when(appointmentRepository.findByDoctorIdAndAppointmentDateAndIsActiveTrue(1L, day))
+                .thenReturn(Collections.emptyList());
+
+        assertThat(service.getAppointmentsByDoctor(1L, "date", day)).isEmpty();
+
+        verify(appointmentRepository).findByDoctorIdAndAppointmentDateAndIsActiveTrue(1L, day);
+        verify(appointmentRepository, org.mockito.Mockito.never())
+                .findByDoctorIdAndHospitalIdAndIsActiveTrueOrderByAppointmentDateDesc(any(), any());
+    }
+
+    private void lenientStubPatient() {
+        org.mockito.Mockito.lenient().when(patientRegistrar.persistNewPatient(any(Patient.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+    }
 }

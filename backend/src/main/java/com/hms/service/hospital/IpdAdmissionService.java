@@ -1664,7 +1664,10 @@ public class IpdAdmissionService {
         if (date.isBefore(java.time.LocalDate.now(java.time.ZoneId.systemDefault()))) return;
 
         java.util.Set<java.time.LocalTime> taken = new java.util.HashSet<>();
-        for (com.hms.entity.Appointment a : appointmentRepository.findByDoctorIdAndAppointmentDateAndIsActiveTrue(ipd.getDoctorId(), date)) {
+        // Same slot lock as AppointmentService.lockedDaySchedule, so a desk booking at the same
+        // moment cannot take the slot this follow-up is about to use.
+        if (ipd.getDoctorId() != null) doctorRepository.lockById(ipd.getDoctorId());
+        for (com.hms.entity.Appointment a : appointmentRepository.lockActiveForDoctorOnDate(ipd.getDoctorId(), date)) {
             if (!STATUS_CANCELLED.equalsIgnoreCase(a.getStatus()) && a.getAppointmentTime() != null) taken.add(a.getAppointmentTime());
         }
         java.time.LocalTime time = ds.getFollowUpTime() != null ? ds.getFollowUpTime() : java.time.LocalTime.of(10, 0);

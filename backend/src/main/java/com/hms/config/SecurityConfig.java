@@ -47,6 +47,7 @@ public class SecurityConfig {
     private static final String DOCTOR = "DOCTOR";
     private static final String RECEPTIONIST = "RECEPTIONIST";
     private static final String PHARMACIST = "PHARMACIST";
+    private static final String SUPER_ADMIN = "SUPER_ADMIN";
 
 
     @Autowired
@@ -62,6 +63,10 @@ public class SecurityConfig {
     private String allowedOrigins;
 
     @Autowired private Environment environment;
+
+    /** Prometheus bearer token for /actuator/prometheus; blank disables it (see MetricsScrapeAuthFilter). */
+    @Value("${hms.metrics.scrape-token:}")
+    private String metricsScrapeToken;
 
     /**
      * Configure HTTP security
@@ -91,11 +96,19 @@ public class SecurityConfig {
                                 "/actuator/info")
                         .permitAll()
 
+                        // Every other Actuator endpoint (metrics, prometheus) describes the whole
+                        // platform, not one tenant: Super Admin only. Before this rule they fell
+                        // through to anyRequest().authenticated(), so any hospital login -- a
+                        // receptionist's included -- could read them. Prometheus scrapes through a
+                        // separate management port (MANAGEMENT_SERVER_PORT), see OBSERVABILITY.md.
+                        .requestMatchers("/actuator/prometheus").hasAnyRole(SUPER_ADMIN, "METRICS_SCRAPER")
+                        .requestMatchers("/actuator/**").hasRole(SUPER_ADMIN)
+
                         // Platform endpoints - only Super Admin
-                        .requestMatchers("/platform/**").hasRole("SUPER_ADMIN")
+                        .requestMatchers("/platform/**").hasRole(SUPER_ADMIN)
 
                         // WebSocket endpoints - authenticated standard HMS roles & Super Admin
-                        .requestMatchers("/ws/**").hasAnyRole(HOSPITAL_ADMIN, DOCTOR, RECEPTIONIST, PHARMACIST, "NURSE", "NURSE_INCHARGE", "SUPER_ADMIN", "OT_INCHARGE")
+                        .requestMatchers("/ws/**").hasAnyRole(HOSPITAL_ADMIN, DOCTOR, RECEPTIONIST, PHARMACIST, "NURSE", "NURSE_INCHARGE", SUPER_ADMIN, "OT_INCHARGE")
 
                         // Legacy patient import: HOSPITAL_ADMIN only, decided HERE in the filter chain
                         // rather than only by the controller's @PreAuthorize. Method security runs after
@@ -138,6 +151,10 @@ public class SecurityConfig {
                 // Both custom filters reference the same built-in anchor. Java's stable sort
                 // preserves insertion order, so rateLimitFilter executes first.
                 .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
+                // Before the JWT filter: a Prometheus scrape token is not a JWT, and the JWT filter
+                // leaves an authentication that is already set alone.
+                .addFilterBefore(new com.hms.security.MetricsScrapeAuthFilter(metricsScrapeToken),
+                        UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 // Demo ended / plan expired: applied once the caller's tenant is known.
                 .addFilterAfter(tenantAccessGuardFilter, JwtAuthenticationFilter.class);

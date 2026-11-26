@@ -1095,8 +1095,12 @@ const hospitalService = {
   /**
    * Get appointments for a specific doctor
    */
-  getAppointmentsByDoctor: async (doctorId, view) => {
-    const query = view ? `?view=${view}` : '';
+  /** `view='date'` with `date` (YYYY-MM-DD) returns only that day — what slot pickers need. */
+  getAppointmentsByDoctor: async (doctorId, view, date) => {
+    const params = new URLSearchParams();
+    if (view) params.set('view', view);
+    if (date) params.set('date', date);
+    const query = params.toString() ? `?${params}` : '';
     const response = await apiClient.get(`/hospital/appointments/doctor/${doctorId}${query}`);
     return response.data;
   },

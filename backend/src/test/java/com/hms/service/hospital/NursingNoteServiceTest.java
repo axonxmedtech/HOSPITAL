@@ -37,6 +37,8 @@ class NursingNoteServiceTest {
 
     @Mock com.hms.service.RealtimeNotifier notifier;
 
+    @Mock com.hms.repository.SurgeryRepository surgeryRepository;
+
     @InjectMocks NursingNoteService service;
 
     private IpdAdmission admission() {
@@ -54,6 +56,33 @@ class NursingNoteServiceTest {
         r.setIpdAdmissionId(1L);
         r.setNoteText(text);
         return r;
+    }
+
+    /** A note may point at a surgery only if it is this admission's own (same hospital, same stay). */
+    @Test
+    void create_refusesASurgeryOfAnotherAdmission_andAcceptsItsOwn() {
+        when(securityHelper.getCurrentHospitalId()).thenReturn(7L);
+        org.mockito.Mockito.lenient().when(securityHelper.getCurrentUserId()).thenReturn(20L);
+        org.mockito.Mockito.lenient().when(securityHelper.getCurrentUserRole()).thenReturn("NURSE");
+        when(ipdAdmissionRepository.findById(1L)).thenReturn(Optional.of(admission()));
+        org.mockito.Mockito.lenient().when(noteRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        org.mockito.Mockito.lenient().when(performingNurseResolver.resolve(any())).thenReturn(20L);
+
+        com.hms.entity.Surgery elsewhere = new com.hms.entity.Surgery();
+        elsewhere.setIpdAdmissionId(2L); // another patient's stay
+        when(surgeryRepository.findByIdAndHospitalId(40L, 7L)).thenReturn(Optional.of(elsewhere));
+        NursingNoteRequest foreign = req("Post-op check");
+        foreign.setSurgeryId(40L);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.create(foreign))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("not this patient's");
+        verify(noteRepository, org.mockito.Mockito.never()).save(any());
+
+        com.hms.entity.Surgery own = new com.hms.entity.Surgery();
+        own.setIpdAdmissionId(1L);
+        when(surgeryRepository.findByIdAndHospitalId(41L, 7L)).thenReturn(Optional.of(own));
+        NursingNoteRequest mine = req("Post-op check");
+        mine.setSurgeryId(41L);
+        assertThat(service.create(mine).getSurgeryId()).isEqualTo(41L);
     }
 
     @Test

@@ -103,7 +103,7 @@ public class AppointmentController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String view) {
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(page, com.hms.util.Pages.cap(size));
         return ResponseEntity.ok(appointmentService.getAllAppointments(search, pageable, view));
     }
 
@@ -128,7 +128,7 @@ public class AppointmentController {
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(page, com.hms.util.Pages.cap(size));
         org.springframework.data.domain.Page<Appointment> appointments = appointmentService.getMyAppointments(view,
                 search, pageable);
         return ResponseEntity.ok(appointments);
@@ -145,8 +145,13 @@ public class AppointmentController {
     @GetMapping("/doctor/{doctorId}")
     @PreAuthorize("hasAnyRole('HOSPITAL_ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<?> getAppointmentsByDoctor(@PathVariable Long doctorId,
-            @RequestParam(required = false) String view) {
-        List<Appointment> appointments = appointmentService.getAppointmentsByDoctor(doctorId, view);
+            @RequestParam(required = false) String view,
+            // view=date&date=YYYY-MM-DD: one day only (the booking form's taken slots), instead
+            // of the doctor's whole history.
+            @RequestParam(required = false)
+            @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE)
+            java.time.LocalDate date) {
+        List<Appointment> appointments = appointmentService.getAppointmentsByDoctor(doctorId, view, date);
         return ResponseEntity.ok(appointments);
     }
 

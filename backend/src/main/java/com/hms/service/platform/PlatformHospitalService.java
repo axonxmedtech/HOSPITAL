@@ -720,7 +720,8 @@ public class PlatformHospitalService {
         // Platform login shows only platform-level activity (tenant onboarding/updates/blocks,
         // plan changes, password resets) — i.e. Super Admin actions, which carry a null hospitalId.
         // Each tenant's own internal events (hospitalId set) stay in that tenant's audit view.
-        return auditLogRepository.findByHospitalIdIsNullOrderByTimestampDesc();
+        return auditLogRepository.findByHospitalIdIsNullOrderByTimestampDesc(
+                org.springframework.data.domain.PageRequest.of(0, com.hms.service.AuditLogService.MAX_LOGS));
     }
 
     /**

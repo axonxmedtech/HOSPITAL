@@ -80,6 +80,13 @@ public class SurgeryService {
         if (admission != null) IpdClinicalState.requireActive(admission);
         Long patientId = admission != null ? admission.getPatientId() : req.getPatientId();
 
+        // Lock the patient's row, scoped to this hospital. Two things at once: a day-care request
+        // may only name a patient of the caller's own hospital (the id came straight from the
+        // request and was never checked), and two requests for the same patient at the same
+        // moment run one after the other, so the active-surgery check below cannot pass twice.
+        patientRepository.findByIdAndHospitalIdForUpdate(patientId, hospitalId)
+                .orElseThrow(() -> new com.hms.exception.ResourceNotFoundException("Patient not found in your hospital"));
+
         // Scope the "already has an active surgery" check to the PATIENT so it holds for
         // day-care too; admission-scoped, it would silently pass for a second day-care case.
         if (!surgeryRepository.findByPatientIdAndStatusIn(patientId, ACTIVE_STATUSES).isEmpty()) {
