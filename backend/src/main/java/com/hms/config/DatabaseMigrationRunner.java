@@ -2366,10 +2366,10 @@ public class DatabaseMigrationRunner {
 
     /** V48: payment idempotency key (unique per bill) and the audit trail's client IP / role. */
     private void ensureLaunchReadinessColumns() {
-        addColumnIfMissing("billing_payments", "idempotency_key", "VARCHAR(64) NULL");
-        addUniqueIndexIfMissing("billing_payments", "uk_billing_payments_idempotency", "billing_id, idempotency_key");
+        addColumnIfMissing(BILLING_PAYMENTS_TABLE, "idempotency_key", "VARCHAR(64) NULL");
+        addUniqueIndexIfMissing(BILLING_PAYMENTS_TABLE, "uk_billing_payments_idempotency", "billing_id, idempotency_key");
         addColumnIfMissing("audit_logs", "client_ip", "VARCHAR(45) NULL");
-        addColumnIfMissing("audit_logs", "performed_by_role", "VARCHAR(255) NULL");
+        addColumnIfMissing("audit_logs", "performed_by_role", VARCHAR_255_NULL);
     }
 
     /** Adds a column only if it does not already exist. Idempotent. */
